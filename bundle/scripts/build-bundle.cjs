@@ -43,15 +43,45 @@ async function main() {
     logLevel: 'info',
   });
 
-  // ---------- 客户端插件 ----------
+  // ---------- 客户端插件（浏览器侧，被 DSH 客户端 loader 经 __ModuleLoader__.load 加载）----------
+  // 产物形态照官方 sidebar：CJS 内部 require/module.exports，再由 banner/footer 包进
+  // window.__ModuleLoader__.load({ id, factory:(require)=>{...} }) 外壳。
+  // React / jsx-runtime 全部外部化（由宿主 ModuleLoader 解析到宿主单例 React，避免双实例）。
   await build({
-    entryPoints: [path.join(root, 'src/client/index.ts')],
+    entryPoints: [path.join(root, 'src/client/index.tsx')],
     outfile: path.join(root, 'lib/client/index.js'),
     bundle: true,
-    format: 'esm',
+    format: 'cjs',
     platform: 'browser',
     target: 'es2020',
-    external: ['@deepseek-ai/cordis', '@deepseek-ai/dsh-client-ui-slots', 'react', 'react-dom'],
+    jsx: 'automatic', // 自动 JSX 运行时 → import { jsx } from "react/jsx-runtime"（外部化）
+    external: [
+      'react',
+      'react/jsx-runtime', // 必须补：自动 JSX 运行时，否则内联进 bundle 与宿主 React 双实例
+      'react-dom',
+      'react-dom/client',
+      '@deepseek-ai/cordis',
+      '@deepseek-ai/dsh-client-ui-slots',
+    ],
+    // 外壳开头：__ModuleLoader__.load 头 + factory 闭包内预置 module/exports
+    banner: {
+      js:
+        'window.__ModuleLoader__.load({' +
+        'id: "dsh-wiki-rag",' +
+        'factory: (require) => {' +
+        'var module = { exports: {} };' +
+        'var exports = module.exports;' +
+        'Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });',
+    },
+    // 外壳结尾：导出 apply/inject + return + 收尾
+    footer: {
+      js:
+        'exports.inject = inject;' +
+        'exports.apply = apply;' +
+        'return module.exports;' +
+        '}' +
+        '});',
+    },
     sourcemap: true,
     logLevel: 'info',
   });

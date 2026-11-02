@@ -1,16 +1,29 @@
 {
   "name": "dsh-wiki-rag",
-  "version": "1.0.0.1",
+  "version": "1.0.0.7",
   "description": "DeepSeek Harness Wiki 风格知识库 RAG 插件（DSH bundle 形态）",
   "type": "module",
+  "engines": {
+    "dsh": "~0.2.1-rc.5"
+  },
   "main": "./lib/host/index.js",
   "exports": {
     ".": "./lib/host/index.js",
+    "./client": "./lib/client/index.js",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
     }
   },
   "scripts": {
@@ -19,7 +32,9 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-tools": "*"
+    "@deepseek-ai/dsh-tools": "*",
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.0.1-rc.1"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.5",
