@@ -345,7 +345,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             {activeDoc.type}
           </span>
           <span style={{
-            fontSize: 10, color: activeDoc.status === "ready" ? "#22c55e" : activeDoc.status === "stale" ? "#eab308" : "#ef4444",
+            fontSize: 10, color: activeDoc.status === "ready" ? "var(--dsw-alias-state-success)" : activeDoc.status === "stale" ? "var(--dsw-alias-state-warning)" : "var(--dsw-alias-state-danger)",
           }}>
             ●
           </span>
@@ -354,7 +354,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             style={{
               height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "#fff", fontSize: 12, cursor: "pointer",
+              color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer",
             }}
           >
             保存
@@ -472,7 +472,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             style={{
               height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "#fff", fontSize: 12, cursor: "pointer",
+              color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer",
             }}
           >
             保存
@@ -624,7 +624,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             }}
           >
             <div style={{
-              width: 16, height: 16, borderRadius: 8, background: "#fff",
+              width: 16, height: 16, borderRadius: 8, background: "var(--dsw-alias-label-on-primary)",
               position: "absolute", top: 2,
               left: externalNetEnabled ? 18 : 2,
               transition: "left 0.2s",
@@ -666,7 +666,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             style={{
               height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "#fff", fontSize: 11, cursor: "pointer",
+              color: "var(--dsw-alias-label-on-primary)", fontSize: 11, cursor: "pointer",
             }}
           >
             + 新建
@@ -877,7 +877,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             autoFocus
             style={{ flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }}
           />
-          <button onClick={doNewMd} style={{ height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }}>
+          <button onClick={doNewMd} style={{ height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 11, cursor: "pointer" }}>
             新建
           </button>
         </div>
@@ -913,7 +913,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 style={{ padding: "6px 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12, resize: "vertical" }} />
             </>
           )}
-          <button onClick={doImport} style={{ height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }}>
+          <button onClick={doImport} style={{ height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 11, cursor: "pointer" }}>
             导入
           </button>
         </div>
@@ -1154,7 +1154,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             </div>
             <div
               onClick={() => { doDelete(contextMenu.docId); setContextMenu(null); }}
-              style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" }}
+              style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "var(--dsw-alias-state-danger)" }}
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
@@ -1177,16 +1177,16 @@ function WikiSidebar(props: WikiSidebarProps) {
           }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>变更确认：{diffModal.title}</div>
             <div style={{ flex: 1, overflow: "auto", fontSize: 12, fontFamily: "monospace" }}>
-              <div style={{ color: "#ef4444", marginBottom: 4 }}>− 旧版本</div>
+              <div style={{ color: "var(--dsw-alias-state-danger)", marginBottom: 4 }}>− 旧版本</div>
               <pre style={{ margin: "0 0 12px 0", whiteSpace: "pre-wrap" }}>{diffModal.old}</pre>
-              <div style={{ color: "#22c55e", marginBottom: 4 }}>+ 新版本</div>
+              <div style={{ color: "var(--dsw-alias-state-success)", marginBottom: 4 }}>+ 新版本</div>
               <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{diffModal.new}</pre>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }}>
                 拒绝
               </button>
-              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 12, cursor: "pointer" }}>
+              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }}>
                 接受
               </button>
             </div>

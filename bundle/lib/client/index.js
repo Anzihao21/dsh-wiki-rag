@@ -370,7 +370,7 @@ function WikiSidebar(props) {
             }, children: activeDoc.type }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
               fontSize: 10,
-              color: activeDoc.status === "ready" ? "#22c55e" : activeDoc.status === "stale" ? "#eab308" : "#ef4444"
+              color: activeDoc.status === "ready" ? "var(--dsw-alias-state-success)" : activeDoc.status === "stale" ? "var(--dsw-alias-state-warning)" : "var(--dsw-alias-state-danger)"
             }, children: "\u25CF" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
@@ -382,7 +382,7 @@ function WikiSidebar(props) {
                   borderRadius: "var(--dsw-radius-sm)",
                   border: "none",
                   background: "var(--dsw-alias-state-business-primary)",
-                  color: "#fff",
+                  color: "var(--dsw-alias-label-on-primary)",
                   fontSize: 12,
                   cursor: "pointer"
                 },
@@ -520,7 +520,7 @@ function WikiSidebar(props) {
                   borderRadius: "var(--dsw-radius-sm)",
                   border: "none",
                   background: "var(--dsw-alias-state-business-primary)",
-                  color: "#fff",
+                  color: "var(--dsw-alias-label-on-primary)",
                   fontSize: 12,
                   cursor: "pointer"
                 },
@@ -696,7 +696,7 @@ function WikiSidebar(props) {
                   width: 16,
                   height: 16,
                   borderRadius: 8,
-                  background: "#fff",
+                  background: "var(--dsw-alias-label-on-primary)",
                   position: "absolute",
                   top: 2,
                   left: externalNetEnabled ? 18 : 2,
@@ -745,7 +745,7 @@ function WikiSidebar(props) {
               borderRadius: "var(--dsw-radius-sm)",
               border: "none",
               background: "var(--dsw-alias-state-business-primary)",
-              color: "#fff",
+              color: "var(--dsw-alias-label-on-primary)",
               fontSize: 11,
               cursor: "pointer"
             },
@@ -992,7 +992,7 @@ function WikiSidebar(props) {
               style: { flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doNewMd, style: { height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }, children: "\u65B0\u5EFA" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doNewMd, style: { height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 11, cursor: "pointer" }, children: "\u65B0\u5EFA" })
         ] }),
         showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["file", "\u6587\u4EF6"], ["url", "URL"], ["note", "\u7B14\u8BB0"]].map(([k, l]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setImportType(k), style: {
@@ -1035,7 +1035,7 @@ function WikiSidebar(props) {
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doImport, style: { height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }, children: "\u5BFC\u5165" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doImport, style: { height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 11, cursor: "pointer" }, children: "\u5BFC\u5165" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [
           ["all", "\u5168\u90E8"],
@@ -1311,7 +1311,7 @@ function WikiSidebar(props) {
                         doDelete(contextMenu.docId);
                         setContextMenu(null);
                       },
-                      style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" },
+                      style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "var(--dsw-alias-state-danger)" },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
                       children: t ? t("wiki.delete") : "Delete"
@@ -1346,14 +1346,14 @@ function WikiSidebar(props) {
             diffModal.title
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "monospace" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#ef4444", marginBottom: 4 }, children: "\u2212 \u65E7\u7248\u672C" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "var(--dsw-alias-state-danger)", marginBottom: 4 }, children: "\u2212 \u65E7\u7248\u672C" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { style: { margin: "0 0 12px 0", whiteSpace: "pre-wrap" }, children: diffModal.old }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#22c55e", marginBottom: 4 }, children: "+ \u65B0\u7248\u672C" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "var(--dsw-alias-state-success)", marginBottom: 4 }, children: "+ \u65B0\u7248\u672C" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { style: { margin: 0, whiteSpace: "pre-wrap" }, children: diffModal.new })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }, children: "\u62D2\u7EDD" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 12, cursor: "pointer" }, children: "\u63A5\u53D7" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }, children: "\u63A5\u53D7" })
           ] })
         ] }) })
       ]
