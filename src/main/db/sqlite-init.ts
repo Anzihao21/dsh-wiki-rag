@@ -1,105 +1,170 @@
-import Database from 'better-sqlite3';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-let db: Database.Database | null = null;
+// 简单 JSON 文件存储（替代 SQLite，纯 JS 实现，无需编译）
+interface DBData {
+  knowledge_files: any[];
+  vector_chunks: any[];
+  operation_log: any[];
+  _autoinc: {
+    knowledge_files: number;
+    vector_chunks: number;
+    operation_log: number;
+  };
+}
+
 let dbPath = '';
-
-// 建表 SQL：知识库主表、向量切片表、操作日志表
-const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS knowledge_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_name TEXT NOT NULL,
-    source_path TEXT NOT NULL,
-    md_path TEXT NOT NULL,
-    zip_archive_path TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    create_time INTEGER NOT NULL,
-    last_sync_time INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS vector_chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id INTEGER NOT NULL,
-    chunk_text TEXT NOT NULL,
-    vector_blob BLOB NOT NULL,
-    FOREIGN KEY(file_id) REFERENCES knowledge_files(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_vector_file_id ON vector_chunks(file_id);
-
-CREATE TABLE IF NOT EXISTS operation_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT NOT NULL,
-    detail TEXT,
-    time INTEGER NOT NULL
-);
-`;
+let data: DBData = {
+  knowledge_files: [],
+  vector_chunks: [],
+  operation_log: [],
+  _autoinc: {
+    knowledge_files: 0,
+    vector_chunks: 0,
+    operation_log: 0,
+  },
+};
+let dirty = false;
 
 export function getDbPath(): string {
   return dbPath;
 }
 
 /**
- * 初始化数据库连接并建表。
- * @param filePath 数据库文件路径，默认放到 DSH 数据目录
+ * 初始化数据库（JSON 文件）
  */
 export async function initDatabase(filePath?: string): Promise<void> {
-  dbPath = filePath || path.join(process.cwd(), 'dsh-wiki-rag.db');
-  if (db) {
-    return;
-  }
-  // 确保目录存在
+  dbPath = filePath || path.join(process.cwd(), 'dsh-wiki-rag.db.json');
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
 
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-
-  runSchema();
-}
-
-/** 逐条执行建表语句 */
-function runSchema(): void {
-  const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
-  for (const stmt of statements) {
-    run(stmt);
+  try {
+    const raw = await fs.readFile(dbPath, 'utf-8');
+    data = JSON.parse(raw);
+    // 确保表存在
+    if (!data.knowledge_files) data.knowledge_files = [];
+    if (!data.vector_chunks) data.vector_chunks = [];
+    if (!data.operation_log) data.operation_log = [];
+    if (!data._autoinc) data._autoinc = { knowledge_files: 0, vector_chunks: 0, operation_log: 0 };
+  } catch {
+    // 文件不存在，用空数据
+    data = {
+      knowledge_files: [],
+      vector_chunks: [],
+      operation_log: [],
+      _autoinc: { knowledge_files: 0, vector_chunks: 0, operation_log: 0 },
+    };
   }
 }
 
-function getDb(): Database.Database {
-  if (!db) {
-    throw new Error('数据库尚未初始化，请先调用 initDatabase()');
-  }
-  return db;
+/** 持久化到文件 */
+async function save(): Promise<void> {
+  if (!dirty) return;
+  await fs.writeFile(dbPath, JSON.stringify(data, null, 2), 'utf-8');
+  dirty = false;
 }
 
-/** 执行 SQL（同步） */
+/** 模拟 SQL 执行（简化版，只支持 INSERT/SELECT/DELETE/WHERE id=?） */
 export function run(sql: string, params: any[] = []): void {
-  getDb().prepare(sql).run(...params);
-}
+  dirty = true;
 
-/** 查询单行（同步） */
-export function get<T>(sql: string, params: any[] = []): T | undefined {
-  return getDb().prepare(sql).get(...params) as T | undefined;
-}
-
-/** 查询多行（同步） */
-export function all<T>(sql: string, params: any[] = []): T[] {
-  return getDb().prepare(sql).all(...params) as T[];
-}
-
-/** 返回最后插入的自增 id（同步） */
-export function lastInsertId(): number {
-  const row = get<{ id: number }>('SELECT last_insert_rowid() AS id');
-  return row?.id ?? 0;
-}
-
-/** 关闭数据库连接（同步） */
-export function closeDatabase(): void {
-  if (!db) {
+  // INSERT INTO knowledge_files (...) VALUES (?, ?, ...)
+  if (sql.startsWith('INSERT INTO knowledge_files')) {
+    const id = ++data._autoinc.knowledge_files;
+    data.knowledge_files.push({
+      id,
+      file_name: params[0],
+      source_path: params[1],
+      md_path: params[2],
+      zip_archive_path: params[3],
+      file_type: params[4],
+      create_time: params[5],
+      last_sync_time: params[6] || 0,
+    });
     return;
   }
-  db.close();
-  db = null;
+
+  // INSERT INTO vector_chunks (...) VALUES (?, ?, ...)
+  if (sql.startsWith('INSERT INTO vector_chunks')) {
+    const id = ++data._autoinc.vector_chunks;
+    data.vector_chunks.push({
+      id,
+      file_id: params[0],
+      chunk_text: params[1],
+      vector_blob: params[2],
+    });
+    return;
+  }
+
+  // INSERT INTO operation_log (...) VALUES (?, ?, ...)
+  if (sql.startsWith('INSERT INTO operation_log')) {
+    const id = ++data._autoinc.operation_log;
+    data.operation_log.push({
+      id,
+      action: params[0],
+      detail: params[1],
+      time: params[2],
+    });
+    return;
+  }
+
+  // DELETE FROM knowledge_files WHERE id = ?
+  if (sql.startsWith('DELETE FROM knowledge_files WHERE id = ?')) {
+    data.knowledge_files = data.knowledge_files.filter((r) => r.id !== params[0]);
+    // 级联删除 vector_chunks
+    data.vector_chunks = data.vector_chunks.filter((r) => r.file_id !== params[0]);
+    return;
+  }
+
+  // UPDATE knowledge_files SET last_sync_time = ? WHERE id = ?
+  if (sql.startsWith('UPDATE knowledge_files SET last_sync_time')) {
+    const row = data.knowledge_files.find((r) => r.id === params[1]);
+    if (row) row.last_sync_time = params[0];
+    return;
+  }
+}
+
+/** 查询单行 */
+export function get<T>(sql: string, params: any[] = []): T | undefined {
+  // SELECT * FROM knowledge_files WHERE id = ?
+  if (sql.startsWith('SELECT * FROM knowledge_files WHERE id = ?')) {
+    return data.knowledge_files.find((r) => r.id === params[0]) as T | undefined;
+  }
+
+  // SELECT last_insert_rowid() AS id
+  if (sql.includes('last_insert_rowid')) {
+    return { id: data._autoinc.knowledge_files } as T;
+  }
+
+  return undefined;
+}
+
+/** 查询多行 */
+export function all<T>(sql: string, params: any[] = []): T[] {
+  // SELECT * FROM knowledge_files ORDER BY create_time DESC
+  if (sql.startsWith('SELECT * FROM knowledge_files')) {
+    return [...data.knowledge_files].sort((a, b) => b.create_time - a.create_time) as T[];
+  }
+
+  // SELECT * FROM vector_chunks WHERE file_id = ?
+  if (sql.startsWith('SELECT * FROM vector_chunks WHERE file_id = ?')) {
+    return data.vector_chunks.filter((r) => r.file_id === params[0]) as T[];
+  }
+
+  // SELECT * FROM operation_log ORDER BY time DESC
+  if (sql.startsWith('SELECT * FROM operation_log')) {
+    return [...data.operation_log].sort((a, b) => b.time - a.time) as T[];
+  }
+
+  return [];
+}
+
+/** 返回最后插入的自增 id */
+export function lastInsertId(): number {
+  return data._autoinc.knowledge_files;
+}
+
+/** 关闭数据库（保存到文件） */
+export async function closeDatabase(): Promise<void> {
+  await save();
 }
