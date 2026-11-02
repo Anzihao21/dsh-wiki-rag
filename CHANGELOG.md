@@ -2,6 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.3] - 2026-11-03
+
+### Fixed
+- `ragSearch` 入参防御：新增 `normalizeSearchInput`，空串 / 纯空白 / 非 string query 直接返回 `[]`（不进 embedding）；`topK` clamp 到 `[1, 50]`，非数字 / NaN 回退 5；超长 query 截断到 4000 字符；`keywordWeight` 越界回退 0.3
+- HTTP `/api/wiki/search` 端点改用 `normalizeSearchInput` 统一校验，避免客户端传恶意 topK 拖垮排序
+- 新增 6 例归一化单元测试
+
 ## [2.0.2] - 2026-11-03
 
 ### Security

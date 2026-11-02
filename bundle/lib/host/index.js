@@ -33521,7 +33521,29 @@ async function rerankLocal(query, results) {
 }
 
 // ../src/main/rag/rag-search.ts
+var MAX_QUERY_LEN = 4e3;
+var MIN_TOPK = 1;
+var MAX_TOPK = 50;
+function normalizeSearchInput(query, topK) {
+  if (typeof query !== "string") return null;
+  const trimmed = query.trim().slice(0, MAX_QUERY_LEN);
+  if (!trimmed) return null;
+  let k = typeof topK === "number" && Number.isFinite(topK) ? Math.floor(topK) : 5;
+  if (Number.isNaN(k)) k = 5;
+  k = Math.max(MIN_TOPK, Math.min(MAX_TOPK, k));
+  return { query: trimmed, topK: k };
+}
 async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
+  const norm = normalizeSearchInput(query, topK);
+  if (!norm) {
+    await writeLog("rag-search-empty", `query=${JSON.stringify(query)}`);
+    return [];
+  }
+  query = norm.query;
+  topK = norm.topK;
+  if (!Number.isFinite(keywordWeight) || keywordWeight < 0 || keywordWeight > 1) {
+    keywordWeight = 0.3;
+  }
   const qVec = await embedText(query);
   const chunks = await getAllChunks();
   if (chunks.length === 0) {
@@ -34482,11 +34504,11 @@ function apply(ctx, config) {
           } catch {
             return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
           }
-          if (typeof parsed?.query !== "string" || !parsed.query.trim()) {
+          const norm = normalizeSearchInput(parsed?.query, parsed?.topK);
+          if (!norm) {
             return json(400, { error: "\u7F3A\u5C11 query" });
           }
-          const topK = typeof parsed.topK === "number" ? parsed.topK : 5;
-          const results = await ragSearch(parsed.query, topK);
+          const results = await ragSearch(norm.query, norm.topK);
           return json(200, results.map((r) => ({
             ...r,
             title: r.file_name,

@@ -18,7 +18,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { initDatabase, getDbPath } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
-import { ragSearch } from '../../../src/main/rag/rag-search';
+import { ragSearch, normalizeSearchInput } from '../../../src/main/rag/rag-search';
 import { initEmbedding } from '../../../src/main/rag/embedding';
 import { initRerank } from '../../../src/main/rag/rerank';
 import { writeLog, listLogs } from '../../../src/main/db/log-db';
@@ -515,11 +515,11 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           try { parsed = JSON.parse(body || '{}'); } catch {
             return json(400, { error: '请求体不是合法 JSON' });
           }
-          if (typeof parsed?.query !== 'string' || !parsed.query.trim()) {
+          const norm = normalizeSearchInput(parsed?.query, parsed?.topK);
+          if (!norm) {
             return json(400, { error: '缺少 query' });
           }
-          const topK = typeof parsed.topK === 'number' ? parsed.topK : 5;
-          const results = await ragSearch(parsed.query, topK);
+          const results = await ragSearch(norm.query, norm.topK);
           return json(200, results.map((r) => ({
             ...r,
             title: r.file_name,

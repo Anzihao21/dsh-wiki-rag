@@ -5,6 +5,31 @@ import { rerank } from './rerank';
 import { writeLog } from '../db/log-db';
 import type { RagSearchResult } from '../types';
 
+/** 单次检索 query 最大字符数（超出截断，避免 n-gram / 远端 API 被打爆） */
+const MAX_QUERY_LEN = 4000;
+/** topK 上下限 */
+const MIN_TOPK = 1;
+const MAX_TOPK = 50;
+
+/**
+ * 归一化检索入参：
+ * - 空串 / 纯空白 → 视为无 query，返回空数组（不进 embedding）
+ * - topK 越界 → clamp 到 [1, 50]
+ * - query 超长 → 截断到 MAX_QUERY_LEN
+ */
+export function normalizeSearchInput(
+  query: unknown,
+  topK: unknown
+): { query: string; topK: number } | null {
+  if (typeof query !== 'string') return null;
+  const trimmed = query.trim().slice(0, MAX_QUERY_LEN);
+  if (!trimmed) return null;
+  let k = typeof topK === 'number' && Number.isFinite(topK) ? Math.floor(topK) : 5;
+  if (Number.isNaN(k)) k = 5;
+  k = Math.max(MIN_TOPK, Math.min(MAX_TOPK, k));
+  return { query: trimmed, topK: k };
+}
+
 /**
  * Agent 调用检索接口：向量相似度 + 关键词加权 混合检索 → 重排（可选）。
  *
@@ -22,6 +47,18 @@ export async function ragSearch(
   topK = 5,
   keywordWeight = 0.3
 ): Promise<RagSearchResult[]> {
+  const norm = normalizeSearchInput(query, topK);
+  if (!norm) {
+    await writeLog('rag-search-empty', `query=${JSON.stringify(query)}`);
+    return [];
+  }
+  query = norm.query;
+  topK = norm.topK;
+  // keywordWeight 越界兜底
+  if (!Number.isFinite(keywordWeight) || keywordWeight < 0 || keywordWeight > 1) {
+    keywordWeight = 0.3;
+  }
+
   const qVec = await embedText(query);
   const chunks = await getAllChunks();
   if (chunks.length === 0) {
