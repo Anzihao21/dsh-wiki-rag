@@ -114,6 +114,8 @@ function WikiSidebar(props) {
   const [showNewMd, setShowNewMd] = (0, import_react.useState)(false);
   const [newMdTitle, setNewMdTitle] = (0, import_react.useState)("");
   const [contextMenu, setContextMenu] = (0, import_react.useState)(null);
+  const [renamingId, setRenamingId] = (0, import_react.useState)(null);
+  const [renameText, setRenameText] = (0, import_react.useState)("");
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [searchResults, setSearchResults] = (0, import_react.useState)(null);
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
@@ -270,6 +272,12 @@ function WikiSidebar(props) {
     setDocs([newDoc, ...docs]);
     setShowNewMd(false);
     setNewMdTitle("");
+  };
+  const doRename = (id) => {
+    if (!renameText.trim()) return;
+    setDocs(docs.map((d) => d.id === id ? { ...d, title: renameText.trim() } : d));
+    setRenamingId(null);
+    setRenameText("");
   };
   const saveEdit = () => {
     setDocs(docs.map(
@@ -1111,7 +1119,34 @@ function WikiSidebar(props) {
                       children: d.type
                     }
                   ),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  renamingId === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      autoFocus: true,
+                      value: renameText,
+                      onChange: (e) => setRenameText(e.target.value),
+                      onKeyDown: (e) => {
+                        if (e.key === "Enter") doRename(d.id);
+                        if (e.key === "Escape") {
+                          setRenamingId(null);
+                          setRenameText("");
+                        }
+                      },
+                      onBlur: () => doRename(d.id),
+                      style: {
+                        flex: 1,
+                        height: 20,
+                        padding: "0 4px",
+                        boxSizing: "border-box",
+                        borderRadius: 4,
+                        border: "1px solid var(--dsw-alias-state-business-primary)",
+                        background: "var(--dsw-alias-bg-layer-0)",
+                        color: "var(--dsw-alias-label-primary)",
+                        outline: "none",
+                        fontSize: 13
+                      }
+                    }
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "span",
                     {
                       style: {
@@ -1212,6 +1247,21 @@ function WikiSidebar(props) {
                   boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
                 },
                 children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "div",
+                    {
+                      onClick: () => {
+                        setRenamingId(contextMenu.docId);
+                        const doc = docs.find((d) => d.id === contextMenu.docId);
+                        setRenameText(doc?.title || "");
+                        setContextMenu(null);
+                      },
+                      style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
+                      onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
+                      onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
+                      children: "\u270F\uFE0F \u91CD\u547D\u540D"
+                    }
+                  ),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "div",
                     {

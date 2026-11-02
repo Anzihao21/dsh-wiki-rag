@@ -123,6 +123,8 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [showNewMd, setShowNewMd] = useState(false);
   const [newMdTitle, setNewMdTitle] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; docId: string } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
@@ -239,6 +241,14 @@ function WikiSidebar(props: WikiSidebarProps) {
     setDocs([newDoc, ...docs]);
     setShowNewMd(false);
     setNewMdTitle("");
+  };
+
+  // 重命名文档
+  const doRename = (id: string) => {
+    if (!renameText.trim()) return;
+    setDocs(docs.map((d) => d.id === id ? { ...d, title: renameText.trim() } : d));
+    setRenamingId(null);
+    setRenameText("");
   };
 
   // 保存编辑内容
@@ -1006,19 +1016,38 @@ function WikiSidebar(props: WikiSidebarProps) {
                   >
                     {d.type}
                   </span>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: 13,
-                      fontWeight: active ? 600 : 500,
-                    }}
-                  >
-                    {d.title}
-                  </span>
+                  {renamingId === d.id ? (
+                    <input
+                      autoFocus
+                      value={renameText}
+                      onChange={(e) => setRenameText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") doRename(d.id);
+                        if (e.key === "Escape") { setRenamingId(null); setRenameText(""); }
+                      }}
+                      onBlur={() => doRename(d.id)}
+                      style={{
+                        flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box",
+                        borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)",
+                        background: "var(--dsw-alias-bg-layer-0)",
+                        color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13,
+                      }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: 13,
+                        fontWeight: active ? 600 : 500,
+                      }}
+                    >
+                      {d.title}
+                    </span>
+                  )}
                 </div>
                 <div
                   style={{
@@ -1078,6 +1107,19 @@ function WikiSidebar(props: WikiSidebarProps) {
               minWidth: 140, boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
             }}
           >
+            <div
+              onClick={() => {
+                setRenamingId(contextMenu.docId);
+                const doc = docs.find(d => d.id === contextMenu.docId);
+                setRenameText(doc?.title || "");
+                setContextMenu(null);
+              }}
+              style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              ✏️ 重命名
+            </div>
             <div
               onClick={async () => {
                 setDiffModal({ old: "旧内容示例\n...", new: "新内容示例\n...", title: "从源目录更新" });
