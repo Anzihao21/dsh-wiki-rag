@@ -111,6 +111,9 @@ function WikiSidebar(props) {
   const [importType, setImportType] = (0, import_react.useState)("file");
   const [noteTitle, setNoteTitle] = (0, import_react.useState)("");
   const [noteContent, setNoteContent] = (0, import_react.useState)("");
+  const [showNewMd, setShowNewMd] = (0, import_react.useState)(false);
+  const [newMdTitle, setNewMdTitle] = (0, import_react.useState)("");
+  const [contextMenu, setContextMenu] = (0, import_react.useState)(null);
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [searchResults, setSearchResults] = (0, import_react.useState)(null);
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
@@ -254,6 +257,19 @@ function WikiSidebar(props) {
     } catch {
     }
     setDocs(docs.filter((d) => d.id !== id));
+  };
+  const doNewMd = () => {
+    if (!newMdTitle.trim()) return;
+    const newDoc = {
+      id: String(Date.now()),
+      title: newMdTitle.trim(),
+      type: "MD",
+      status: "ready",
+      summary: "\u65B0\u5EFA\u7A7A\u767D\u6587\u6863"
+    };
+    setDocs([newDoc, ...docs]);
+    setShowNewMd(false);
+    setNewMdTitle("");
   };
   const saveEdit = () => {
     setDocs(docs.map(
@@ -833,6 +849,24 @@ function WikiSidebar(props) {
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
+                    title: "\u65B0\u5EFA MD",
+                    onClick: () => setShowNewMd(!showNewMd),
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "\u270F\uFE0F"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
                     title: t ? t("wiki.refresh") : "\u5237\u65B0",
                     onClick: async () => {
                       const list = await apiList();
@@ -937,6 +971,20 @@ function WikiSidebar(props) {
             }
           }
         ),
+        showNewMd && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              value: newMdTitle,
+              onChange: (e) => setNewMdTitle(e.target.value),
+              onKeyDown: (e) => e.key === "Enter" && doNewMd(),
+              placeholder: "\u8F93\u5165\u65B0\u6587\u6863\u6807\u9898\u2026",
+              autoFocus: true,
+              style: { flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doNewMd, style: { height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }, children: "\u65B0\u5EFA" })
+        ] }),
         showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["file", "\u6587\u4EF6"], ["url", "URL"], ["note", "\u7B14\u8BB0"]].map(([k, l]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setImportType(k), style: {
             flex: 1,
@@ -1029,6 +1077,10 @@ function WikiSidebar(props) {
                 setActiveId(d.id);
                 setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
                 setView("editor");
+              },
+              onContextMenu: (e) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, docId: d.id });
               },
               style: {
                 padding: "8px 10px",
@@ -1133,6 +1185,62 @@ function WikiSidebar(props) {
               " \u6761 \xB7 \u5DF2\u7D22\u5F15 ",
               stats.ready || docs.filter((d) => d.status === "ready").length
             ]
+          }
+        ),
+        contextMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "div",
+          {
+            onClick: () => setContextMenu(null),
+            onContextMenu: (e) => {
+              e.preventDefault();
+              setContextMenu(null);
+            },
+            style: { position: "fixed", inset: 0, zIndex: 998 },
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e) => e.stopPropagation(),
+                style: {
+                  position: "fixed",
+                  left: contextMenu.x,
+                  top: contextMenu.y,
+                  background: "var(--dsw-alias-bg-layer-1)",
+                  borderRadius: "var(--dsw-radius-md)",
+                  border: "1px solid var(--dsw-alias-border-l4)",
+                  padding: 4,
+                  minWidth: 140,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "div",
+                    {
+                      onClick: async () => {
+                        setDiffModal({ old: "\u65E7\u5185\u5BB9\u793A\u4F8B\n...", new: "\u65B0\u5185\u5BB9\u793A\u4F8B\n...", title: "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0" });
+                        setContextMenu(null);
+                      },
+                      style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
+                      onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
+                      onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
+                      children: "\u{1F504} \u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0"
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "div",
+                    {
+                      onClick: () => {
+                        doDelete(contextMenu.docId);
+                        setContextMenu(null);
+                      },
+                      style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" },
+                      onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
+                      onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
+                      children: "\u{1F5D1} \u5220\u9664\u6587\u6863"
+                    }
+                  )
+                ]
+              }
+            )
           }
         ),
         diffModal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {

@@ -120,6 +120,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [importType, setImportType] = useState<"file" | "url" | "note">("file");
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
+  const [showNewMd, setShowNewMd] = useState(false);
+  const [newMdTitle, setNewMdTitle] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; docId: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
@@ -221,6 +224,21 @@ function WikiSidebar(props: WikiSidebarProps) {
   const doDelete = async (id: string) => {
     try { await apiDelete(id); } catch { /* ignore */ }
     setDocs(docs.filter((d) => d.id !== id));
+  };
+
+  // 新建空白 MD
+  const doNewMd = () => {
+    if (!newMdTitle.trim()) return;
+    const newDoc: WikiDoc = {
+      id: String(Date.now()),
+      title: newMdTitle.trim(),
+      type: "MD",
+      status: "ready",
+      summary: "新建空白文档",
+    };
+    setDocs([newDoc, ...docs]);
+    setShowNewMd(false);
+    setNewMdTitle("");
   };
 
   // 保存编辑内容
@@ -750,6 +768,17 @@ function WikiSidebar(props: WikiSidebarProps) {
             +
           </button>
           <button
+            title="新建 MD"
+            onClick={() => setShowNewMd(!showNewMd)}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            ✏️
+          </button>
+          <button
             title={t ? t("wiki.refresh") : "刷新"}
             onClick={async () => {
               const list = await apiList();
@@ -825,6 +854,23 @@ function WikiSidebar(props: WikiSidebarProps) {
           fontSize: 13,
         }}
       />
+
+      {/* 新建 MD 面板（点 ✏️ 展开） */}
+      {showNewMd && (
+        <div style={{ display: "flex", gap: 4 }}>
+          <input
+            value={newMdTitle}
+            onChange={(e) => setNewMdTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && doNewMd()}
+            placeholder="输入新文档标题…"
+            autoFocus
+            style={{ flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }}
+          />
+          <button onClick={doNewMd} style={{ height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }}>
+            新建
+          </button>
+        </div>
+      )}
 
       {/* 导入面板（点 + 展开） */}
       {showImport && (
@@ -925,6 +971,10 @@ function WikiSidebar(props: WikiSidebarProps) {
                   setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n暂无内容\n");
                   setView("editor");
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, docId: d.id });
+                }}
                 style={{
                   padding: "8px 10px",
                   borderRadius: "var(--dsw-radius-md)",
@@ -1011,6 +1061,45 @@ function WikiSidebar(props: WikiSidebarProps) {
       >
         共 {stats.total || docs.length} 条 · 已索引 {stats.ready || docs.filter((d) => d.status === "ready").length}
       </div>
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 998 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed", left: contextMenu.x, top: contextMenu.y,
+              background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)",
+              border: "1px solid var(--dsw-alias-border-l4)", padding: 4,
+              minWidth: 140, boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div
+              onClick={async () => {
+                setDiffModal({ old: "旧内容示例\n...", new: "新内容示例\n...", title: "从源目录更新" });
+                setContextMenu(null);
+              }}
+              style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              🔄 从源目录更新
+            </div>
+            <div
+              onClick={() => { doDelete(contextMenu.docId); setContextMenu(null); }}
+              style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              🗑 删除文档
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Diff 确认弹窗 */}
       {diffModal && (
