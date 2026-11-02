@@ -1,12 +1,14 @@
 import { all, get, run } from './sqlite-init';
 import type { VectorChunk } from '../types';
 
-/** 写入向量切片 */
+/** 写入向量切片；空文本 / 空向量直接跳过（不入库，避免污染相似度计算） */
 export async function insertVectorChunk(
   fileId: number,
   chunkText: string,
   vector: Buffer
 ): Promise<void> {
+  if (!chunkText || !chunkText.trim()) return;
+  if (!vector || vector.length === 0) return;
   await run(
     'INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, ?, ?)',
     [fileId, chunkText, vector]

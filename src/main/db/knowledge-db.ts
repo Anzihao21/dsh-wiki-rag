@@ -30,6 +30,13 @@ export async function listKnowledgeFiles(): Promise<KnowledgeFile[]> {
   return all<KnowledgeFile>('SELECT * FROM knowledge_files ORDER BY create_time DESC');
 }
 
+/** 按 source_path 精确查找（用于重复导入去重） */
+export async function findKnowledgeFileBySourcePath(
+  sourcePath: string
+): Promise<KnowledgeFile | undefined> {
+  return get<KnowledgeFile>('SELECT * FROM knowledge_files WHERE source_path = ?', [sourcePath]);
+}
+
 /** 查询某目录下已存在的文件名列表（用于同名重命名判定） */
 export async function listFileNamesByPath(mdDir: string): Promise<string[]> {
   const rows = await all<{ file_name: string }>(

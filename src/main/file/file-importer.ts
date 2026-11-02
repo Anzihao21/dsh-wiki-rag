@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { insertKnowledgeFile, listFileNamesByPath } from '../db/knowledge-db';
+import { insertKnowledgeFile, listFileNamesByPath, findKnowledgeFileBySourcePath } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
 import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
 import { chunkText } from '../rag/text-chunk';
@@ -116,6 +116,23 @@ export class FileImporter {
     mdText: string,
     fileType: FileType
   ): Promise<ImportResult> {
+    // 计算入库时实际写入的 source_path（与下方 insert 保持一致）
+    const isLocalRef = sourceRef.startsWith('/') || isUncPath(sourceRef);
+    const storedSourcePath = isLocalRef ? sourceRef : `ref://${sourceRef}`;
+
+    // 重复导入去重：同一 source_path 已存在时直接复用旧记录，不新建条目
+    const existing = await findKnowledgeFileBySourcePath(storedSourcePath);
+    if (existing) {
+      await writeLog('import-dedup', `${storedSourcePath} 已存在 id=${existing.id}，跳过重复导入`);
+      return {
+        fileId: existing.id,
+        fileName: existing.file_name,
+        mdPath: existing.md_path,
+        skipped: true,
+        reason: 'duplicate source',
+      };
+    }
+
     await fs.mkdir(this.ctx.mdDir, { recursive: true });
     await fs.mkdir(this.ctx.zipDir, { recursive: true });
 
@@ -126,8 +143,8 @@ export class FileImporter {
     const mdSuffix = safeRawName.toLowerCase().endsWith('.md') ? '' : '.md';
     const baseNameForDedupe = safeRawName + mdSuffix;
 
-    const existing = await listFileNamesByPath(this.ctx.mdDir);
-    const finalMdName = resolveUniqueFileName(baseNameForDedupe, existing);
+    const existingNames = await listFileNamesByPath(this.ctx.mdDir);
+    const finalMdName = resolveUniqueFileName(baseNameForDedupe, existingNames);
     const mdPath = path.join(this.ctx.mdDir, finalMdName);
     assertInsideDir(mdPath, this.ctx.mdDir);
 
@@ -136,7 +153,6 @@ export class FileImporter {
     // 归档原始文件（网页/笔记无本地源文件时，归档 MD 本身作凭证）
     // 归档失败时降级：不中断知识入库，仅记日志（容错设计）
     const baseName = finalMdName.replace(/\.md$/i, '');
-    const isLocalRef = sourceRef.startsWith('/') || isUncPath(sourceRef);
     let zipPath = '';
     try {
       if (isLocalRef) {
@@ -150,7 +166,7 @@ export class FileImporter {
 
     const fileId = await insertKnowledgeFile({
       file_name: finalMdName,
-      source_path: isLocalRef ? sourceRef : `ref://${sourceRef}`,
+      source_path: storedSourcePath,
       md_path: mdPath,
       zip_archive_path: zipPath,
       file_type: fileType,

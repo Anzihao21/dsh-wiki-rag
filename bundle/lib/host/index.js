@@ -32946,6 +32946,9 @@ async function getKnowledgeFileById(id) {
 async function listKnowledgeFiles() {
   return all("SELECT * FROM knowledge_files ORDER BY create_time DESC");
 }
+async function findKnowledgeFileBySourcePath(sourcePath) {
+  return get("SELECT * FROM knowledge_files WHERE source_path = ?", [sourcePath]);
+}
 async function listFileNamesByPath(mdDir) {
   const rows = await all(
     "SELECT file_name FROM knowledge_files WHERE md_path LIKE ?",
@@ -33022,6 +33025,8 @@ async function listLogs(limit = 100) {
 
 // ../src/main/db/vector-db.ts
 async function insertVectorChunk(fileId, chunkText2, vector) {
+  if (!chunkText2 || !chunkText2.trim()) return;
+  if (!vector || vector.length === 0) return;
   await run(
     "INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, ?, ?)",
     [fileId, chunkText2, vector]
@@ -33347,18 +33352,30 @@ ${noteText}`;
   }
   /** 核心入库流程 */
   async commitImport(sourceRef, rawFileName, mdText, fileType) {
+    const isLocalRef = sourceRef.startsWith("/") || isUncPath(sourceRef);
+    const storedSourcePath = isLocalRef ? sourceRef : `ref://${sourceRef}`;
+    const existing = await findKnowledgeFileBySourcePath(storedSourcePath);
+    if (existing) {
+      await writeLog("import-dedup", `${storedSourcePath} \u5DF2\u5B58\u5728 id=${existing.id}\uFF0C\u8DF3\u8FC7\u91CD\u590D\u5BFC\u5165`);
+      return {
+        fileId: existing.id,
+        fileName: existing.file_name,
+        mdPath: existing.md_path,
+        skipped: true,
+        reason: "duplicate source"
+      };
+    }
     await fs4.mkdir(this.ctx.mdDir, { recursive: true });
     await fs4.mkdir(this.ctx.zipDir, { recursive: true });
     const safeRawName = sanitizeFileName(rawFileName) || "untitled.md";
     const mdSuffix = safeRawName.toLowerCase().endsWith(".md") ? "" : ".md";
     const baseNameForDedupe = safeRawName + mdSuffix;
-    const existing = await listFileNamesByPath(this.ctx.mdDir);
-    const finalMdName = resolveUniqueFileName(baseNameForDedupe, existing);
+    const existingNames = await listFileNamesByPath(this.ctx.mdDir);
+    const finalMdName = resolveUniqueFileName(baseNameForDedupe, existingNames);
     const mdPath = path6.join(this.ctx.mdDir, finalMdName);
     assertInsideDir(mdPath, this.ctx.mdDir);
     await fs4.writeFile(mdPath, mdText, "utf-8");
     const baseName = finalMdName.replace(/\.md$/i, "");
-    const isLocalRef = sourceRef.startsWith("/") || isUncPath(sourceRef);
     let zipPath = "";
     try {
       if (isLocalRef) {
@@ -33371,7 +33388,7 @@ ${noteText}`;
     }
     const fileId = await insertKnowledgeFile({
       file_name: finalMdName,
-      source_path: isLocalRef ? sourceRef : `ref://${sourceRef}`,
+      source_path: storedSourcePath,
       md_path: mdPath,
       zip_archive_path: zipPath,
       file_type: fileType,

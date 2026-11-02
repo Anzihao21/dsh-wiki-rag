@@ -2,6 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.5] - 2026-11-03
+
+### Fixed
+- `insertVectorChunk`：空文本 / 空白 / 空 Buffer 直接跳过，避免零向量污染余弦相似度计算
+- 新增 `findKnowledgeFileBySourcePath`；`FileImporter.commitImport` 在入库前按 `source_path` 精确查重，同一来源重复导入直接返回旧记录（`skipped=true, reason='duplicate source'`），不再产生重复条目
+- 新增 5 例 vector-db 单元测试
+
 ## [2.0.4] - 2026-11-03
 
 ### Fixed
