@@ -60,11 +60,34 @@ async function apiList(): Promise<WikiDoc[]> {
   } catch { return SAMPLE_DOCS; }
 }
 
-async function apiImport(source: string): Promise<void> {
+async function apiImport(source: string, opts: { kind?: string; noteText?: string; intranet?: boolean } = {}): Promise<void> {
   await fetch(`${API_BASE}/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source }),
+    body: JSON.stringify({ source, kind: opts.kind, noteText: opts.noteText, intranet: opts.intranet }),
+  });
+}
+
+async function apiRename(id: string, newName: string): Promise<void> {
+  await fetch(`${API_BASE}/${id}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newName }),
+  });
+}
+
+async function apiSyncFromSource(id: string): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/${id}/sync`, { method: "POST" });
+    return await res.json();
+  } catch { return null; }
+}
+
+async function apiAcceptUpdate(id: string, newText: string): Promise<void> {
+  await fetch(`${API_BASE}/${id}/accept-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newText }),
   });
 }
 
@@ -132,7 +155,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [snapshots, setSnapshots] = useState<{ id: number; created_at: string; note: string }[]>([]);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["/"]));
-  const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string } | null>(null);
+  const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [externalNetEnabled, setExternalNetEnabled] = useState(() => {
     try { return localStorage.getItem("wiki_externalNet") === "true"; } catch { return false; }
   });
@@ -199,21 +222,13 @@ function WikiSidebar(props: WikiSidebarProps) {
     try {
       if (importType === "note") {
         if (!noteTitle.trim()) return;
-        // 笔记导入：直接生成 MD 文档
-        const newDoc: WikiDoc = {
-          id: String(Date.now()),
-          title: noteTitle.trim(),
-          type: "MD",
-          status: "ready",
-          summary: "手动笔记",
-        };
-        setDocs([newDoc, ...docs]);
+        await apiImport(noteTitle.trim(), { kind: "note", noteText: noteContent });
       } else {
         if (!importPath.trim()) return;
-        await apiImport(importPath.trim());
-        const list = await apiList();
-        setDocs(list);
+        await apiImport(importPath.trim(), { kind: importType === "url" ? "url" : "file" });
       }
+      const list = await apiList();
+      setDocs(list);
       const s = await fetch(`${API_BASE}/stats`).then(r => r.json());
       setStats(s);
     } catch { /* ignore */ }
@@ -245,9 +260,11 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // 重命名文档
-  const doRename = (id: string) => {
+  const doRename = async (id: string) => {
     if (!renameText.trim()) return;
-    setDocs(docs.map((d) => d.id === id ? { ...d, title: renameText.trim() } : d));
+    try { await apiRename(id, renameText.trim()); } catch { /* ignore */ }
+    const list = await apiList();
+    setDocs(list);
     setRenamingId(null);
     setRenameText("");
   };
@@ -1143,8 +1160,21 @@ function WikiSidebar(props: WikiSidebarProps) {
             </div>
             <div
               onClick={async () => {
-                setDiffModal({ old: "旧内容示例\n...", new: "新内容示例\n...", title: "从源目录更新" });
+                const docId = contextMenu.docId;
                 setContextMenu(null);
+                const outcome = await apiSyncFromSource(docId);
+                if (outcome && outcome.status === "needs-confirm" && outcome.diff) {
+                  setDiffModal({
+                    old: outcome.diff.oldText || "",
+                    new: outcome.diff.newText || "",
+                    title: `从源目录更新：${outcome.diff.fileName || ""}`,
+                    fileId: docId,
+                    newText: outcome.diff.newText || "",
+                  });
+                } else {
+                  const reason = outcome?.reason || "无可用更新";
+                  setDiffModal({ old: "", new: reason, title: "从源目录更新" });
+                }
               }}
               style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 }}
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
@@ -1183,10 +1213,24 @@ function WikiSidebar(props: WikiSidebarProps) {
               <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{diffModal.new}</pre>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }}>
+              <button onClick={async () => {
+                if (diffModal.fileId) {
+                  try { await fetch(`${API_BASE}/${diffModal.fileId}/dismiss`, { method: "POST" }); } catch { /* ignore */ }
+                }
+                setDiffModal(null);
+              }} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }}>
                 拒绝
               </button>
-              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }}>
+              <button onClick={async () => {
+                if (diffModal.fileId && diffModal.newText != null) {
+                  try {
+                    await apiAcceptUpdate(diffModal.fileId, diffModal.newText);
+                    const list = await apiList();
+                    setDocs(list);
+                  } catch { /* ignore */ }
+                }
+                setDiffModal(null);
+              }} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }}>
                 接受
               </button>
             </div>

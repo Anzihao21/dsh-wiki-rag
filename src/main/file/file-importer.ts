@@ -47,8 +47,8 @@ export class FileImporter {
     const resolved = sourcePath;
     const fileName = path.basename(resolved);
 
-    if (await isOversize(resolved)) {
-      return { fileId: 0, fileName, mdPath: '', skipped: true, reason: '文件超过大小阈值，已拦截' };
+    if (await isOversize(resolved, 10)) {
+      return { fileId: 0, fileName, mdPath: '', skipped: true, reason: '文件超过 10MB 大小阈值，已拦截' };
     }
 
     const mdText = await extractTextToMarkdown(resolved);

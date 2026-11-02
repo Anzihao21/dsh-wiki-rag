@@ -59,11 +59,33 @@ async function apiList() {
     return SAMPLE_DOCS;
   }
 }
-async function apiImport(source) {
+async function apiImport(source, opts = {}) {
   await fetch(`${API_BASE}/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source })
+    body: JSON.stringify({ source, kind: opts.kind, noteText: opts.noteText, intranet: opts.intranet })
+  });
+}
+async function apiRename(id, newName) {
+  await fetch(`${API_BASE}/${id}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newName })
+  });
+}
+async function apiSyncFromSource(id) {
+  try {
+    const res = await fetch(`${API_BASE}/${id}/sync`, { method: "POST" });
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function apiAcceptUpdate(id, newText) {
+  await fetch(`${API_BASE}/${id}/accept-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newText })
   });
 }
 async function apiDelete(id) {
@@ -231,20 +253,13 @@ function WikiSidebar(props) {
     try {
       if (importType === "note") {
         if (!noteTitle.trim()) return;
-        const newDoc = {
-          id: String(Date.now()),
-          title: noteTitle.trim(),
-          type: "MD",
-          status: "ready",
-          summary: "\u624B\u52A8\u7B14\u8BB0"
-        };
-        setDocs([newDoc, ...docs]);
+        await apiImport(noteTitle.trim(), { kind: "note", noteText: noteContent });
       } else {
         if (!importPath.trim()) return;
-        await apiImport(importPath.trim());
-        const list = await apiList();
-        setDocs(list);
+        await apiImport(importPath.trim(), { kind: importType === "url" ? "url" : "file" });
       }
+      const list = await apiList();
+      setDocs(list);
       const s = await fetch(`${API_BASE}/stats`).then((r) => r.json());
       setStats(s);
     } catch {
@@ -274,9 +289,14 @@ function WikiSidebar(props) {
     setShowNewMd(false);
     setNewMdTitle("");
   };
-  const doRename = (id) => {
+  const doRename = async (id) => {
     if (!renameText.trim()) return;
-    setDocs(docs.map((d) => d.id === id ? { ...d, title: renameText.trim() } : d));
+    try {
+      await apiRename(id, renameText.trim());
+    } catch {
+    }
+    const list = await apiList();
+    setDocs(list);
     setRenamingId(null);
     setRenameText("");
   };
@@ -1295,8 +1315,21 @@ function WikiSidebar(props) {
                     "div",
                     {
                       onClick: async () => {
-                        setDiffModal({ old: "\u65E7\u5185\u5BB9\u793A\u4F8B\n...", new: "\u65B0\u5185\u5BB9\u793A\u4F8B\n...", title: "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0" });
+                        const docId = contextMenu.docId;
                         setContextMenu(null);
+                        const outcome = await apiSyncFromSource(docId);
+                        if (outcome && outcome.status === "needs-confirm" && outcome.diff) {
+                          setDiffModal({
+                            old: outcome.diff.oldText || "",
+                            new: outcome.diff.newText || "",
+                            title: `\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0\uFF1A${outcome.diff.fileName || ""}`,
+                            fileId: docId,
+                            newText: outcome.diff.newText || ""
+                          });
+                        } else {
+                          const reason = outcome?.reason || "\u65E0\u53EF\u7528\u66F4\u65B0";
+                          setDiffModal({ old: "", new: reason, title: "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0" });
+                        }
                       },
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
@@ -1352,8 +1385,26 @@ function WikiSidebar(props) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { style: { margin: 0, whiteSpace: "pre-wrap" }, children: diffModal.new })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }, children: "\u62D2\u7EDD" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }, children: "\u63A5\u53D7" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: async () => {
+              if (diffModal.fileId) {
+                try {
+                  await fetch(`${API_BASE}/${diffModal.fileId}/dismiss`, { method: "POST" });
+                } catch {
+                }
+              }
+              setDiffModal(null);
+            }, style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }, children: "\u62D2\u7EDD" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: async () => {
+              if (diffModal.fileId && diffModal.newText != null) {
+                try {
+                  await apiAcceptUpdate(diffModal.fileId, diffModal.newText);
+                  const list = await apiList();
+                  setDocs(list);
+                } catch {
+                }
+              }
+              setDiffModal(null);
+            }, style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer" }, children: "\u63A5\u53D7" })
           ] })
         ] }) })
       ]
