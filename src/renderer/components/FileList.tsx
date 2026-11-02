@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { KnowledgeFile } from '../../main/types';
 import { ipc } from '../ipc';
+import { IconButton, ConfirmModal } from '../ui-kit';
+import { IconRefreshOutlineRegular, IconTrashOutlineRegular, IconDownloadOutlineRegular } from '../assets/icons/icons';
 
 interface Props {
   files: KnowledgeFile[];
@@ -19,73 +21,72 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Props) {
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    if (!confirm('确定删除该知识条目及其归档包吗？')) return;
-    await ipc('wiki:deleteFile', id);
+  const [pendingDelete, setPendingDelete] = useState<KnowledgeFile | null>(null);
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    await ipc('wiki:deleteFile', pendingDelete.id);
+    setPendingDelete(null);
     onRefresh();
   };
 
-  const handleSync = async (e: React.MouseEvent, f: KnowledgeFile) => {
-    e.stopPropagation();
+  const handleSync = async (f: KnowledgeFile) => {
     const result = await ipc<any>('wiki:triggerSync', f.id, f.zip_archive_path, f.md_path);
     if (result.status === 'no-change') {
-      alert(result.reason || '无改动');
+      onOpenDiff(null);
     } else if (result.status === 'needs-confirm' && result.diff) {
       onOpenDiff(result.diff);
     } else if (result.status === 'source-lost') {
-      alert(`源文件丢失：${result.reason}`);
+      onOpenDiff({ fileName: f.file_name, message: `源文件丢失：${result.reason}`, lost: true });
     }
   };
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-dsh-border px-6 py-3">
-        <h1 className="text-lg font-semibold">知识库文件</h1>
-        <button
-          onClick={onRefresh}
-          className="rounded-md border border-dsh-border px-3 py-1 text-sm text-dsh-muted hover:bg-dsh-panel"
-        >
-          刷新
-        </button>
+      <div className="dsw-page-header">
+        <div>
+          <h1 className="dsw-page-title">知识库文件</h1>
+          <div className="dsw-page-subtitle">管理已导入的知识条目，点击条目进入编辑器</div>
+        </div>
+        <IconButton label="刷新" variant="ghost" onClick={onRefresh}>
+          <IconRefreshOutlineRegular size={16} />
+        </IconButton>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+
+      <div className="dsw-scroll">
         {files.length === 0 ? (
-          <div className="mt-16 text-center text-dsh-muted">暂无文件，请前往「导入」添加</div>
+          <div className="dsw-empty">暂无文件，请前往「导入」添加</div>
         ) : (
-          <ul className="space-y-2">
+          <div className="flex flex-col gap-2">
             {files.map((f) => (
-              <li
-                key={f.id}
-                onClick={() => onSelect(f)}
-                className="group flex cursor-pointer items-center justify-between rounded-lg border border-dsh-border bg-dsh-panel px-4 py-3 transition hover:border-dsh-accent"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="rounded bg-dsh-border px-2 py-0.5 text-xs text-dsh-muted">
-                    {TYPE_LABEL[f.file_type] || f.file_type}
-                  </span>
-                  <span className="font-medium">{f.file_name}</span>
+              <div key={f.id} className="dsw-list-item" onClick={() => onSelect(f)}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="dsw-tag">{TYPE_LABEL[f.file_type] || f.file_type}</span>
+                  <span className="dsw-list-item-title truncate">{f.file_name}</span>
                 </div>
-                <div className="flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
-                  <button
-                    onClick={(e) => handleSync(e, f)}
-                    className="rounded px-2 py-1 text-xs text-dsh-accent hover:bg-dsh-border"
-                    title="从源目录更新"
-                  >
-                    同步
-                  </button>
-                  <button
-                    onClick={(e) => handleDelete(e, f.id)}
-                    className="rounded px-2 py-1 text-xs text-red-400 hover:bg-dsh-border"
-                  >
-                    删除
-                  </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <IconButton label="从源目录更新" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSync(f); }}>
+                    <IconDownloadOutlineRegular size={14} />
+                  </IconButton>
+                  <IconButton label="删除" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPendingDelete(f); }}>
+                    <IconTrashOutlineRegular size={14} />
+                  </IconButton>
                 </div>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        title="删除知识条目"
+        message={`确定删除「${pendingDelete?.file_name}」及其归档包吗？删除后不可恢复。`}
+        confirmLabel="删除"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { ipc } from '../ipc';
+import { Button, InputField } from '../ui-kit';
+import { IconPlusOutlineRegular, IconLinkOutlineRegular, IconListPenOutlineRegular, IconFolderOpenOutlineRegular, IconGlobeOutlineRegular } from '../assets/icons/icons';
 
 interface Props {
   onImported: () => void;
@@ -7,6 +9,7 @@ interface Props {
 
 /**
  * 文件导入面板：本地单文件 / 文件夹批量 / 局域网路径 / 网页URL / 笔记。
+ * 官方一致 UI：官方 InputField / Button / 官方图标。
  */
 export default function ImportPanel({ onImported }: Props) {
   const [localPath, setLocalPath] = useState('');
@@ -14,131 +17,109 @@ export default function ImportPanel({ onImported }: Props) {
   const [url, setUrl] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteText, setNoteText] = useState('');
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const run = async (p: Promise<any>) => {
-    setMsg('');
+    setMsg(null);
+    setBusy(true);
     try {
       const r = await p;
-      setMsg(r?.skipped ? `跳过：${r.reason}` : '导入成功');
+      const skipped = Array.isArray(r) ? r.some((x) => x.skipped) : r?.skipped;
+      setMsg({ ok: true, text: skipped ? '部分条目被跳过（同名冲突）' : '导入成功' });
       onImported();
     } catch (e) {
-      setMsg(`导入失败：${(e as Error).message}`);
+      setMsg({ ok: false, text: `导入失败：${(e as Error).message}` });
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-6">
-      <h1 className="mb-6 text-lg font-semibold">文件导入</h1>
+    <div className="flex h-full flex-col">
+      <div className="dsw-page-header">
+        <div>
+          <h1 className="dsw-page-title">文件导入</h1>
+          <div className="dsw-page-subtitle">支持本地、文件夹批量、局域网、网页与笔记五种来源</div>
+        </div>
+      </div>
 
-      <Section title="本地单文件">
-        <input
-          value={localPath}
-          onChange={(e) => setLocalPath(e.target.value)}
-          placeholder="输入源文件绝对路径，如 /data/docs/项目说明.docx"
-          className="inp"
-        />
-        <Btn onClick={() => run(ipc('wiki:importFile', localPath))} disabled={!localPath}>
-          导入文件
-        </Btn>
-      </Section>
+      <div className="dsw-scroll">
+        <div className="flex flex-col gap-4" style={{ maxWidth: 560 }}>
+          <Section title="本地单文件" icon={<IconListPenOutlineRegular size={16} />}>
+            <InputField
+              placeholder="输入源文件绝对路径，如 /data/docs/项目说明.docx"
+              value={localPath}
+              onChange={(e) => setLocalPath(e.target.value)}
+            />
+            <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!localPath || busy} onClick={() => run(ipc('wiki:importFile', localPath))}>
+              导入文件
+            </Button>
+          </Section>
 
-      <Section title="本地文件夹批量导入">
-        <input
-          value={folderPath}
-          onChange={(e) => setFolderPath(e.target.value)}
-          placeholder="输入文件夹路径"
-          className="inp"
-        />
-        <Btn onClick={() => run(ipc('wiki:importFolder', folderPath))} disabled={!folderPath}>
-          批量导入
-        </Btn>
-      </Section>
+          <Section title="本地文件夹批量导入" icon={<IconFolderOpenOutlineRegular size={16} />}>
+            <InputField placeholder="输入文件夹路径" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
+            <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!folderPath || busy} onClick={() => run(ipc('wiki:importFolder', folderPath))}>
+              批量导入
+            </Button>
+          </Section>
 
-      <Section title="局域网共享路径">
-        <input
-          value={folderPath}
-          onChange={(e) => setFolderPath(e.target.value)}
-          placeholder='\\192.168.x.x\share\doc 或本地目录'
-          className="inp"
-        />
-        <Btn onClick={() => run(ipc('wiki:importFolder', folderPath))} disabled={!folderPath}>
-          从共享路径导入
-        </Btn>
-        <p className="mt-2 text-xs text-dsh-muted">
-          运行 DSH 的账号需已具备共享目录读写权限
-        </p>
-      </Section>
+          <Section title="局域网共享路径" icon={<IconFolderOpenOutlineRegular size={16} />}>
+            <InputField placeholder='\\192.168.x.x\share\doc 或本地目录' value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
+            <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!folderPath || busy} onClick={() => run(ipc('wiki:importFolder', folderPath))}>
+              从共享路径导入
+            </Button>
+            <div className="dsw-page-subtitle">运行 DSH 的账号需已具备共享目录读写权限</div>
+          </Section>
 
-      <Section title="网页 URL 抓取">
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com/page"
-          className="inp"
-        />
-        <Btn onClick={() => run(ipc('wiki:importUrl', url))} disabled={!url}>
-          抓取入库
-        </Btn>
-      </Section>
+          <Section title="网页 URL 抓取" icon={<IconGlobeOutlineRegular size={16} />}>
+            <InputField placeholder="https://example.com/page" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <Button variant="primary" leadingIcon={<IconLinkOutlineRegular size={14} />} disabled={!url || busy} onClick={() => run(ipc('wiki:importUrl', url))}>
+              抓取入库
+            </Button>
+          </Section>
 
-      <Section title="笔记直接添加">
-        <input
-          value={noteTitle}
-          onChange={(e) => setNoteTitle(e.target.value)}
-          placeholder="笔记标题"
-          className="inp"
-        />
-        <textarea
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          placeholder="笔记正文（Markdown）"
-          className="inp h-28 resize-y"
-        />
-        <Btn
-          onClick={() => run(ipc('wiki:importNote', noteTitle, noteText))}
-          disabled={!noteTitle}
-        >
-          新建知识库文档
-        </Btn>
-      </Section>
+          <Section title="笔记直接添加" icon={<IconListPenOutlineRegular size={16} />}>
+            <InputField placeholder="笔记标题" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} />
+            <label className="dsw-field">
+              <textarea
+                className="dsw-textarea"
+                style={{ minHeight: 100 }}
+                placeholder="笔记正文（Markdown）"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+              />
+            </label>
+            <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!noteTitle || busy} onClick={() => run(ipc('wiki:importNote', noteTitle, noteText))}>
+              新建知识库文档
+            </Button>
+          </Section>
 
-      {msg && <div className="mt-4 rounded-md bg-dsh-panel px-4 py-2 text-sm text-dsh-accent">{msg}</div>}
-
-      <style>{`
-        .inp { width: 100%; border-radius: .5rem; border: 1px solid #2a2f3a; background: #0f1115;
-          padding: .5rem .75rem; font-size: .875rem; outline: none; margin-bottom: .5rem; color:#e6e9ef; }
-        .inp:focus { border-color: #4c8dff; }
-      `}</style>
+          {msg && (
+            <div
+              className="rounded-md px-4 py-2 text-sm"
+              style={{
+                background: msg.ok ? 'var(--dsw-alias-state-success-tertiary)' : 'var(--dsw-alias-state-error-secondary)',
+                color: msg.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-label-primary-foreground)'
+              }}
+            >
+              {msg.text}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="mb-6 rounded-lg border border-dsh-border bg-dsh-panel p-4">
-      <h2 className="mb-3 text-sm font-semibold text-dsh-muted">{title}</h2>
+    <div className="flex flex-col gap-3 rounded-lg p-4" style={{ border: '0.5px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)' }}>
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="dsw-list-item-title">{title}</span>
+      </div>
       {children}
     </div>
-  );
-}
-
-function Btn({
-  children,
-  onClick,
-  disabled
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-md bg-dsh-accent px-3 py-1.5 text-sm text-white disabled:opacity-40"
-    >
-      {children}
-    </button>
   );
 }

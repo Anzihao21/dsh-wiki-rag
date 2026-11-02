@@ -6,8 +6,20 @@ import WikiEditor from './components/WikiEditor';
 import ImportPanel from './components/ImportPanel';
 import SettingPanel from './components/SettingPanel';
 import DiffModal from './components/DiffModal';
+import { IconSprite } from './assets/icons/IconSprite';
+import {
+  IconListPenOutlineRegular,
+  IconPlusOutlineRegular,
+  IconSettingsOutlineRegular
+} from './assets/icons/icons';
 
 type View = 'files' | 'import' | 'settings';
+
+const NAV_ITEMS: Array<{ view: View; label: string; icon: React.ReactNode }> = [
+  { view: 'files', label: '知识库', icon: <IconListPenOutlineRegular size={18} /> },
+  { view: 'import', label: '导入', icon: <IconPlusOutlineRegular size={18} /> },
+  { view: 'settings', label: '设置', icon: <IconSettingsOutlineRegular size={18} /> }
+];
 
 export default function App() {
   const [view, setView] = useState<View>('files');
@@ -34,25 +46,19 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen">
+    <div className="flex h-screen w-screen overflow-hidden">
+      <IconSprite />
       {/* 左侧主导航 */}
-      <nav className="flex w-16 flex-col items-center border-r border-dsh-border bg-dsh-panel py-4">
-        {(
-          [
-            ['files', '📚'],
-            ['import', '➕'],
-            ['settings', '⚙️']
-          ] as Array<[View, string]>
-        ).map(([v, icon]) => (
+      <nav className="dsw-sidebar">
+        {NAV_ITEMS.map((it) => (
           <button
-            key={v}
-            onClick={() => setView(v)}
-            className={`mb-2 flex h-10 w-10 items-center justify-center rounded-lg text-lg transition ${
-              view === v ? 'bg-dsh-accent text-white' : 'text-dsh-muted hover:bg-dsh-border'
-            }`}
-            title={v}
+            key={it.view}
+            className="dsw-nav-item"
+            aria-current={view === it.view}
+            onClick={() => setView(it.view)}
+            title={it.label}
           >
-            {icon}
+            {it.icon}
           </button>
         ))}
       </nav>
@@ -60,12 +66,7 @@ export default function App() {
       {/* 内容区 */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {view === 'files' && (
-          <FileList
-            files={files}
-            onSelect={setSelected}
-            onRefresh={refresh}
-            onOpenDiff={setDiff}
-          />
+          <FileList files={files} onSelect={setSelected} onRefresh={refresh} onOpenDiff={setDiff} />
         )}
         {view === 'import' && <ImportPanel onImported={handleImport} />}
         {view === 'settings' && <SettingPanel />}
@@ -73,11 +74,7 @@ export default function App() {
 
       {/* 编辑器抽屉 */}
       {selected && (
-        <WikiEditor
-          file={selected}
-          onClose={() => setSelected(null)}
-          onSaved={() => refresh()}
-        />
+        <WikiEditor file={selected} onClose={() => setSelected(null)} onSaved={() => refresh()} />
       )}
 
       {/* Diff 弹窗 */}
