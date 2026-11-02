@@ -295,7 +295,7 @@ function SkeletonRows({ count = 6 }) {
 var ErrorBoundary = class extends import_react.Component {
   constructor(p) {
     super(p);
-    this.state = { hasError: false };
+    this.state = { hasError: false, retryCount: 0 };
   }
   static getDerivedStateFromError(e) {
     return { hasError: true, msg: String(e && e.message || e) };
@@ -305,6 +305,7 @@ var ErrorBoundary = class extends import_react.Component {
   }
   render() {
     if (this.state.hasError) {
+      const exhausted = this.state.retryCount >= 3;
       return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         padding: 24,
         color: "var(--dsw-alias-label-primary)",
@@ -316,7 +317,14 @@ var ErrorBoundary = class extends import_react.Component {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
-            onClick: () => this.setState({ hasError: false }),
+            onClick: () => {
+              this.setState((s) => ({
+                hasError: false,
+                msg: void 0,
+                retryCount: s.retryCount + 1
+              }));
+            },
+            disabled: exhausted,
             style: {
               marginTop: 12,
               height: 28,
@@ -326,14 +334,15 @@ var ErrorBoundary = class extends import_react.Component {
               background: "var(--dsw-alias-state-business-primary)",
               color: "var(--dsw-alias-label-on-primary)",
               fontSize: 12,
-              cursor: "pointer"
+              cursor: exhausted ? "not-allowed" : "pointer",
+              opacity: exhausted ? 0.5 : 1
             },
-            children: "\u91CD\u8BD5"
+            children: exhausted ? "\u91CD\u8BD5\u6B21\u6570\u5DF2\u7528\u5C3D\uFF0C\u8BF7\u91CD\u542F\u5BBF\u4E3B" : "\u91CD\u8BD5"
           }
         )
       ] });
     }
-    return this.props.children;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_react.Fragment, { children: this.props.children }, this.state.retryCount);
   }
 };
 function flattenTree(nodes, depth, expanded, out) {
@@ -777,9 +786,12 @@ function WikiSidebar(props) {
     }
   }
   const overscan = 6;
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_H) - overscan);
-  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportH) / ROW_H) + overscan);
+  const maxScrollTop = Math.max(0, rows.length * ROW_H - 1);
+  const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
+  const startIndex = Math.max(0, Math.floor(clampedScrollTop / ROW_H) - overscan);
+  const endIndex = Math.min(rows.length, Math.ceil((clampedScrollTop + viewportH) / ROW_H) + overscan);
   const visibleRows = rows.slice(startIndex, endIndex);
+  const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToastStack, { toasts }),
     offline && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {

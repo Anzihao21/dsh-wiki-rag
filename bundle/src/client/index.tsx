@@ -10,13 +10,58 @@
  * 说明：本文件为普通 TS/TSX 源码，不 import cordis/slots 实体类型（用 any 最小类型），
  * esbuild 不做类型检查；React / jsx-runtime 由宿主外部化提供。
  */
-import { useState, useEffect, useRef, useCallback, Component } from "react";
+import { useState, useEffect, useRef, useCallback, Component, Fragment } from "react";
 
 /** cordis 插件依赖的服务名（运行时由客户端 runtime 注入到 ctx）。 */
 export const inject = ["slots", "locale", "workspaces"];
 
 const NS = "wiki";
 const API_BASE = "http://localhost:3081/api/wiki";
+
+// 本地兜底 i18n 字典：当宿主 t() 缺失或返回 key 本身时使用，避免 UI 直接暴露 wiki.xxx
+const LOCAL_FALLBACK: Record<string, string> = {
+  "wiki.title": "知识库",
+  "wiki.save": "保存",
+  "wiki.edit": "编辑",
+  "wiki.preview": "预览",
+  "wiki.settings": "设置",
+  "wiki.storage": "数据存储目录",
+  "wiki.chunkSize": "分块大小",
+  "wiki.chunkOverlap": "分块重叠",
+  "wiki.rerankTopK": "Rerank TopK",
+  "wiki.restartHint": "修改存储路径后将自动迁移已有文件",
+  "wiki.autoIndexHint": "编辑后自动刷新向量索引",
+  "wiki.back": "返回",
+  "wiki.snapshots": "快照管理",
+  "wiki.new": "新建",
+  "wiki.noSnapshots": "暂无快照",
+  "wiki.restore": "恢复",
+  "wiki.logs": "审计日志",
+  "wiki.noLogs": "暂无日志",
+  "wiki.offline": "离线 / 宿主未连接",
+  "wiki.importing": "导入中…",
+  "wiki.importDone": "导入完成",
+  "wiki.deleted": "已删除",
+  "wiki.renamed": "已重命名",
+  "wiki.folderCreated": "文件夹已创建",
+  "wiki.folderDeleted": "文件夹已删除",
+  "wiki.saved": "已保存",
+  "wiki.restored": "快照已恢复",
+  "wiki.snapshotCreated": "已创建快照",
+  "wiki.searchPlaceholder": "搜索知识库…",
+  "wiki.empty": "知识库为空",
+};
+
+/** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
+function tt(t: ((key: string) => string) | undefined, key: string): string {
+  if (t) {
+    try {
+      const v = t(key);
+      if (v && v !== key) return v;
+    } catch { /* ignore */ }
+  }
+  return LOCAL_FALLBACK[key] || key;
+}
 
 // ============================================================================
 // 类型（全部 any 最小化，运行时由宿主喂数据）
@@ -328,12 +373,19 @@ function SkeletonRows({ count = 6 }: { count?: number }) {
 // ============================================================================
 // 错误边界：捕获渲染异常，显示降级 UI
 // ============================================================================
-class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string }> {
-  constructor(p: any) { super(p); this.state = { hasError: false }; }
-  static getDerivedStateFromError(e: any) { return { hasError: true, msg: String(e && e.message || e) }; }
+class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string; retryCount: number }> {
+  constructor(p: any) {
+    super(p);
+    this.state = { hasError: false, retryCount: 0 };
+  }
+  static getDerivedStateFromError(e: any) {
+    return { hasError: true, msg: String(e && e.message || e) };
+  }
   componentDidCatch(e: any) { console.warn("[dsh-wiki-rag] render error:", e); }
   render() {
     if (this.state.hasError) {
+      // 重试超过 3 次不再让用户硬刚，提示刷新宿主
+      const exhausted = this.state.retryCount >= 3;
       return (
         <div style={{
           padding: 24, color: "var(--dsw-alias-label-primary)", fontSize: 13,
@@ -344,19 +396,29 @@ class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string }> 
             {this.state.msg}
           </div>
           <button
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => {
+              // 通过递增 key 强制 children 重新挂载，而不仅仅清除 hasError
+              this.setState((s) => ({
+                hasError: false,
+                msg: undefined,
+                retryCount: s.retryCount + 1,
+              }));
+            }}
+            disabled={exhausted}
             style={{
               marginTop: 12, height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer",
+              color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: exhausted ? "not-allowed" : "pointer",
+              opacity: exhausted ? 0.5 : 1,
             }}
           >
-            重试
+            {exhausted ? "重试次数已用尽，请重启宿主" : "重试"}
           </button>
         </div>
       );
     }
-    return this.props.children;
+    // key 变化时 React 会重新挂载 children，实现“重试”语义
+    return <Fragment key={this.state.retryCount}>{this.props.children}</Fragment>;
   }
 }
 
@@ -807,11 +869,15 @@ function WikiSidebar(props: WikiSidebarProps) {
       rows = docs.map((d) => ({ rowType: "doc", depth: 0, id: Number(d.id) || 0, title: d.title, kind: d.type, status: d.status, raw: {} as TreeNode }));
     }
   }
-  // 虚拟窗口
+  // 虚拟窗口：列表收缩（删除 / 折叠）时 clamp scrollTop，避免 startIndex 越界导致白屏
   const overscan = 6;
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_H) - overscan);
-  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportH) / ROW_H) + overscan);
+  const maxScrollTop = Math.max(0, rows.length * ROW_H - 1);
+  const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
+  const startIndex = Math.max(0, Math.floor(clampedScrollTop / ROW_H) - overscan);
+  const endIndex = Math.min(rows.length, Math.ceil((clampedScrollTop + viewportH) / ROW_H) + overscan);
   const visibleRows = rows.slice(startIndex, endIndex);
+  // 空列表兜底提示
+  const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
     <div style={rootStyle}>

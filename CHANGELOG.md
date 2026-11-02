@@ -2,6 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.10] - 2026-11-03
+
+### Fixed
+- 客户端 `ErrorBoundary`：重试按钮通过 `key` 变化强制 children 重新挂载（不再只是 `hasError=false` 导致同一错误立即复现）；连续重试 3 次后按钮置灰并提示“请重启宿主”
+- 新增本地 i18n 兜底字典 `LOCAL_FALLBACK` 与 `tt(t, key)` 助手：宿主 `t()` 缺失、抛错或返回 key 本身时回退到中文文案，避免 UI 直接暴露 `wiki.xxx`
+- 虚拟列表边界：删除 / 折叠导致列表收缩时 `scrollTop` clamp 到 `rows.length * ROW_H` 之内，避免 `startIndex` 越界白屏；新增 `isEmpty` 空列表判定
+
 ## [2.0.9] - 2026-11-03
 
 ### Fixed
