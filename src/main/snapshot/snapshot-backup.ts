@@ -4,6 +4,7 @@ import path from 'path';
 import { createWriteStream } from 'fs';
 import { listKnowledgeFiles } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
+import { assertZipEntryInside } from '../file/path-guard';
 
 /**
  * 快照备份模块。
@@ -45,7 +46,13 @@ export async function listSnapshots(snapshotDir: string): Promise<string[]> {
 export async function restoreSnapshot(snapshotZip: string, targetDir: string): Promise<string[]> {
   const { default: extract } = await import('extract-zip');
   await fs.mkdir(targetDir, { recursive: true });
-  await extract(snapshotZip, { dir: targetDir });
+  // zip-slip 防护：每个条目解压前先断言落在 targetDir 内，越界直接抛错中断
+  await extract(snapshotZip, {
+    dir: targetDir,
+    onEntry: (entry) => {
+      assertZipEntryInside(entry.fileName, targetDir);
+    },
+  });
   const restored = await fs.readdir(targetDir);
   await writeLog('snapshot-restore', snapshotZip);
   return restored;

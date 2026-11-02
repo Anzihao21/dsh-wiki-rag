@@ -2,6 +2,14 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.1] - 2026-11-03
+
+### Security
+- 新增 `src/main/file/path-guard.ts`：统一收口路径穿越校验
+- `FileImporter.commitImport`：写入 MD 前对文件名做 `sanitizeFileName`（剔除目录分隔符 / `..` 段），并断言 `mdPath` 落在 `mdDir` 之内，防止笔记标题 / URL 派生名包含 `../` 导致越界写盘
+- `restoreSnapshot`：解压快照 zip 时通过 `extract-zip` 的 `onEntry` 钩子逐条断言条目名落在目标目录内，拦截 zip-slip 攻击
+- 新增 9 例 path-guard 单元测试
+
 ## [2.0.0] - 2026-11-03
 
 ### Added

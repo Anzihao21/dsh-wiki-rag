@@ -9,6 +9,7 @@ import { embedText } from '../rag/embedding';
 import { resolveUniqueFileName, isUncPath } from './name-auto-rename';
 import { archiveSourceFile } from './zip-archive';
 import { extractTextToMarkdown, isOversize, toMdFileName, detectFileType } from './file-utils';
+import { sanitizeFileName, assertInsideDir } from './path-guard';
 import type { FileType } from '../types';
 
 export interface ImportResult {
@@ -119,9 +120,16 @@ export class FileImporter {
     await fs.mkdir(this.ctx.zipDir, { recursive: true });
 
     // 同名自动重命名（基于知识库目录已有文件名）
+    // 文件名先做路径穿越清洗：剔除目录分隔符与 .. 段，防止 MD 写到 mdDir 之外
+    const safeRawName = sanitizeFileName(rawFileName) || 'untitled.md';
+    // 保留 .md 后缀
+    const mdSuffix = safeRawName.toLowerCase().endsWith('.md') ? '' : '.md';
+    const baseNameForDedupe = safeRawName + mdSuffix;
+
     const existing = await listFileNamesByPath(this.ctx.mdDir);
-    const finalMdName = resolveUniqueFileName(rawFileName, existing);
+    const finalMdName = resolveUniqueFileName(baseNameForDedupe, existing);
     const mdPath = path.join(this.ctx.mdDir, finalMdName);
+    assertInsideDir(mdPath, this.ctx.mdDir);
 
     await fs.writeFile(mdPath, mdText, 'utf-8');
 
