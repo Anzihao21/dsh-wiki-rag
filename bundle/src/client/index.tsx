@@ -112,21 +112,26 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [q, setQ] = useState("");
   const [docs, setDocs] = useState<WikiDoc[]>(SAMPLE_DOCS);
   const [activeId, setActiveId] = useState<string>("1");
-  const [view, setView] = useState<"list" | "editor" | "settings" | "snapshots">("list");
+  const [view, setView] = useState<"list" | "editor" | "settings" | "snapshots" | "logs">("list");
   const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
   const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
+  const [importType, setImportType] = useState<"file" | "url" | "note">("file");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteContent, setNoteContent] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
   const [snapshots, setSnapshots] = useState<{ id: number; created_at: string; note: string }[]>([]);
+  const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
 
-  // 挂载时拉真实文档列表 + 统计 + 快照
+  // 挂载时拉真实文档列表 + 统计 + 快照 + 日志
   useEffect(() => {
     apiList().then(setDocs).catch(() => {});
     fetch(`${API_BASE}/stats`).then(r => r.json()).then(setStats).catch(() => {});
     fetch(`${API_BASE}/snapshots`).then(r => r.json()).then(setSnapshots).catch(() => {});
+    fetch(`${API_BASE}/logs`).then(r => r.json()).then(setLogs).catch(() => {});
   }, []);
 
   // 设置表单状态（从 localStorage 加载）
@@ -180,17 +185,31 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   // 导入新文档
   const doImport = async () => {
-    if (!importPath.trim()) return;
     try {
-      await apiImport(importPath.trim());
-      const list = await apiList();
-      setDocs(list);
-      // 刷新统计
+      if (importType === "note") {
+        if (!noteTitle.trim()) return;
+        // 笔记导入：直接生成 MD 文档
+        const newDoc: WikiDoc = {
+          id: String(Date.now()),
+          title: noteTitle.trim(),
+          type: "MD",
+          status: "ready",
+          summary: "手动笔记",
+        };
+        setDocs([newDoc, ...docs]);
+      } else {
+        if (!importPath.trim()) return;
+        await apiImport(importPath.trim());
+        const list = await apiList();
+        setDocs(list);
+      }
       const s = await fetch(`${API_BASE}/stats`).then(r => r.json());
       setStats(s);
     } catch { /* ignore */ }
     setShowImport(false);
     setImportPath("");
+    setNoteTitle("");
+    setNoteContent("");
   };
 
   // 删除文档
@@ -599,9 +618,28 @@ function WikiSidebar(props: WikiSidebarProps) {
           ) : (
             snapshots.map((s) => (
               <div key={s.id} style={{ padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>#{s.id} {s.note || "手动快照"}</div>
-                <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>
-                  {new Date(s.created_at).toLocaleString()}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>#{s.id} {s.note || "手动快照"}</div>
+                    <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>
+                      {new Date(s.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await fetch(`${API_BASE}/snapshots/${s.id}/restore`, { method: "POST" });
+                      const list = await apiList();
+                      setDocs(list);
+                    }}
+                    style={{
+                      height: 24, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)",
+                      border: "1px solid var(--dsw-alias-border-l4)",
+                      background: "transparent", color: "var(--dsw-alias-label-primary)",
+                      fontSize: 11, cursor: "pointer",
+                    }}
+                  >
+                    恢复
+                  </button>
                 </div>
               </div>
             ))
@@ -611,7 +649,35 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
-  // ---------- 列表视图 ----------
+  // ---------- 日志视图 ----------
+  if (view === "logs") {
+    return (
+      <div style={fullRow}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button onClick={() => setView("list")} style={{ height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }}>
+            ← 返回
+          </button>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>审计日志</div>
+          <div style={{ width: 60 }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
+          {logs.length === 0 ? (
+            <div style={{ padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+              暂无日志
+            </div>
+          ) : (
+            logs.map((l, i) => (
+              <div key={i} style={{ padding: "6px 10px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)", fontSize: 11 }}>
+                <div style={{ color: "var(--dsw-alias-label-tertiary)" }}>{l.time}</div>
+                <div style={{ marginTop: 2 }}><b>{l.action}</b> · {l.detail}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -675,6 +741,17 @@ function WikiSidebar(props: WikiSidebarProps) {
             📸
           </button>
           <button
+            title="日志"
+            onClick={() => setView("logs")}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            📋
+          </button>
+          <button
             title={t ? t("wiki.settings") : "设置"}
             onClick={() => setView("settings")}
             style={{
@@ -715,30 +792,37 @@ function WikiSidebar(props: WikiSidebarProps) {
         }}
       />
 
-      {/* 导入输入框（点 + 展开） */}
+      {/* 导入面板（点 + 展开） */}
       {showImport && (
-        <div style={{ display: "flex", gap: 4 }}>
-          <input
-            value={importPath}
-            onChange={(e) => setImportPath(e.target.value)}
-            placeholder="输入文件路径或 URL…"
-            style={{
-              flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box",
-              borderRadius: "var(--dsw-radius-sm)",
-              border: "1px solid var(--dsw-alias-border-l4)",
-              background: "var(--dsw-alias-bg-layer-1)",
-              color: "var(--dsw-alias-label-primary)",
-              outline: "none", fontSize: 12,
-            }}
-          />
-          <button
-            onClick={doImport}
-            style={{
-              height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)",
-              border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "#fff", fontSize: 11, cursor: "pointer",
-            }}
-          >
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+          {/* 类型切换 */}
+          <div style={{ display: "flex", gap: 2 }}>
+            {([["file", "文件"], ["url", "URL"], ["note", "笔记"]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setImportType(k)} style={{
+                flex: 1, padding: "3px 0", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
+                background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+              }}>{l}</button>
+            ))}
+          </div>
+          {/* 文件路径 / URL 输入 */}
+          {importType !== "note" && (
+            <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
+              placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"}
+              style={{ height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }} />
+          )}
+          {/* 笔记输入 */}
+          {importType === "note" && (
+            <>
+              <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)}
+                placeholder="笔记标题…"
+                style={{ height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }} />
+              <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
+                placeholder="笔记内容…" rows={3}
+                style={{ padding: "6px 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12, resize: "vertical" }} />
+            </>
+          )}
+          <button onClick={doImport} style={{ height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }}>
             导入
           </button>
         </div>

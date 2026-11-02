@@ -108,16 +108,22 @@ function WikiSidebar(props) {
   const [mdContent, setMdContent] = (0, import_react.useState)(SAMPLE_MD["1"] ?? "");
   const [showImport, setShowImport] = (0, import_react.useState)(false);
   const [importPath, setImportPath] = (0, import_react.useState)("");
+  const [importType, setImportType] = (0, import_react.useState)("file");
+  const [noteTitle, setNoteTitle] = (0, import_react.useState)("");
+  const [noteContent, setNoteContent] = (0, import_react.useState)("");
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [searchResults, setSearchResults] = (0, import_react.useState)(null);
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
   const [snapshots, setSnapshots] = (0, import_react.useState)([]);
+  const [logs, setLogs] = (0, import_react.useState)([]);
   (0, import_react.useEffect)(() => {
     apiList().then(setDocs).catch(() => {
     });
     fetch(`${API_BASE}/stats`).then((r) => r.json()).then(setStats).catch(() => {
     });
     fetch(`${API_BASE}/snapshots`).then((r) => r.json()).then(setSnapshots).catch(() => {
+    });
+    fetch(`${API_BASE}/logs`).then((r) => r.json()).then(setLogs).catch(() => {
     });
   }, []);
   const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
@@ -207,17 +213,31 @@ function WikiSidebar(props) {
     setView("list");
   };
   const doImport = async () => {
-    if (!importPath.trim()) return;
     try {
-      await apiImport(importPath.trim());
-      const list = await apiList();
-      setDocs(list);
+      if (importType === "note") {
+        if (!noteTitle.trim()) return;
+        const newDoc = {
+          id: String(Date.now()),
+          title: noteTitle.trim(),
+          type: "MD",
+          status: "ready",
+          summary: "\u624B\u52A8\u7B14\u8BB0"
+        };
+        setDocs([newDoc, ...docs]);
+      } else {
+        if (!importPath.trim()) return;
+        await apiImport(importPath.trim());
+        const list = await apiList();
+        setDocs(list);
+      }
       const s = await fetch(`${API_BASE}/stats`).then((r) => r.json());
       setStats(s);
     } catch {
     }
     setShowImport(false);
     setImportPath("");
+    setNoteTitle("");
+    setNoteContent("");
   };
   const doDelete = async (id) => {
     try {
@@ -663,15 +683,58 @@ function WikiSidebar(props) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4F8}" }),
         "\u6682\u65E0\u5FEB\u7167"
-      ] }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 500 }, children: [
-          "#",
-          s.id,
-          " ",
-          s.note || "\u624B\u52A8\u5FEB\u7167"
+      ] }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 500 }, children: [
+            "#",
+            s.id,
+            " ",
+            s.note || "\u624B\u52A8\u5FEB\u7167"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }, children: new Date(s.created_at).toLocaleString() })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }, children: new Date(s.created_at).toLocaleString() })
-      ] }, s.id)) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: async () => {
+              await fetch(`${API_BASE}/snapshots/${s.id}/restore`, { method: "POST" });
+              const list = await apiList();
+              setDocs(list);
+            },
+            style: {
+              height: 24,
+              padding: "0 8px",
+              borderRadius: "var(--dsw-radius-sm)",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              background: "transparent",
+              color: "var(--dsw-alias-label-primary)",
+              fontSize: 11,
+              cursor: "pointer"
+            },
+            children: "\u6062\u590D"
+          }
+        )
+      ] }) }, s.id)) })
+    ] });
+  }
+  if (view === "logs") {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: fullRow, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: { height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }, children: "\u2190 \u8FD4\u56DE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: "\u5BA1\u8BA1\u65E5\u5FD7" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 60 } })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: logs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4CB}" }),
+        "\u6682\u65E0\u65E5\u5FD7"
+      ] }) : logs.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "6px 10px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)", fontSize: 11 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "var(--dsw-alias-label-tertiary)" }, children: l.time }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 2 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: l.action }),
+          " \xB7 ",
+          l.detail
+        ] })
+      ] }, i)) })
     ] });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -761,6 +824,24 @@ function WikiSidebar(props) {
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
+                    title: "\u65E5\u5FD7",
+                    onClick: () => setView("logs"),
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "\u{1F4CB}"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
                     title: t ? t("wiki.settings") : "\u8BBE\u7F6E",
                     onClick: () => setView("settings"),
                     style: {
@@ -808,44 +889,48 @@ function WikiSidebar(props) {
             }
           }
         ),
-        showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["file", "\u6587\u4EF6"], ["url", "URL"], ["note", "\u7B14\u8BB0"]].map(([k, l]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setImportType(k), style: {
+            flex: 1,
+            padding: "3px 0",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "var(--dsw-radius-sm)",
+            fontSize: 11,
+            background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+            color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)"
+          }, children: l }, k)) }),
+          importType !== "note" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "input",
             {
               value: importPath,
               onChange: (e) => setImportPath(e.target.value),
-              placeholder: "\u8F93\u5165\u6587\u4EF6\u8DEF\u5F84\u6216 URL\u2026",
-              style: {
-                flex: 1,
-                height: 28,
-                padding: "0 8px",
-                boxSizing: "border-box",
-                borderRadius: "var(--dsw-radius-sm)",
-                border: "1px solid var(--dsw-alias-border-l4)",
-                background: "var(--dsw-alias-bg-layer-1)",
-                color: "var(--dsw-alias-label-primary)",
-                outline: "none",
-                fontSize: 12
-              }
+              placeholder: importType === "url" ? "https://example.com/article" : "\u8F93\u5165\u6587\u4EF6\u8DEF\u5F84\u2026",
+              style: { height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: doImport,
-              style: {
-                height: 28,
-                padding: "0 8px",
-                borderRadius: "var(--dsw-radius-sm)",
-                border: "none",
-                background: "var(--dsw-alias-state-business-primary)",
-                color: "#fff",
-                fontSize: 11,
-                cursor: "pointer"
-              },
-              children: "\u5BFC\u5165"
-            }
-          )
+          importType === "note" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: noteTitle,
+                onChange: (e) => setNoteTitle(e.target.value),
+                placeholder: "\u7B14\u8BB0\u6807\u9898\u2026",
+                style: { height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12 }
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "textarea",
+              {
+                value: noteContent,
+                onChange: (e) => setNoteContent(e.target.value),
+                placeholder: "\u7B14\u8BB0\u5185\u5BB9\u2026",
+                rows: 3,
+                style: { padding: "6px 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12, resize: "vertical" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doImport, style: { height: 28, borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 11, cursor: "pointer" }, children: "\u5BFC\u5165" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [
           ["all", "\u5168\u90E8"],
