@@ -1,0 +1,36 @@
+{
+  "name": "dsh-wiki-rag",
+  "version": "1.0.0.1",
+  "description": "DeepSeek Harness Wiki风格知识库RAG插件",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.main.json && vite build",
+    "build:test": "node scripts/build-test.cjs",
+    "test": "node scripts/build-test.cjs && node dist/test-bundle.cjs",
+    "prepare:git": "git config user.name \"安子浩\" && git config user.email \"anmitang@users.noreply.github.com\""
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "chokidar": "^3.6.0",
+    "diff": "^5.2.0",
+    "extract-zip": "^2.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.6.2",
+    "esbuild": "^0.21.3",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.3.0"
+  }
+}
