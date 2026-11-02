@@ -1280,38 +1280,65 @@ function apply(ctx: any): void {
     "wiki: dictionaries"
   );
 
-  // 2) 注册槽位 —— 占据左栏浏览区 sidebar.workspaces（single/root）
+  // 2) 注册槽位 —— 左侧主侧边栏图标 + 右侧主面板
+  //    和「插件」「自动化任务」同级，点击图标后右侧显示知识库面板。
   ctx.effect(
     () => {
       let disposed = false;
-      let unsub: (() => void) | undefined;
+      let unsubPanel: (() => void) | undefined;
+      let unsubMain: (() => void) | undefined;
       let timer: ReturnType<typeof setInterval> | undefined;
-      let disposeRegister: (() => void) | undefined;
       let attempts = 0;
 
+      const PANEL_ID = "wiki-rag";
+
       const tryRegister = () => {
-        if (disposed || disposeRegister) return;
-        let declared: unknown;
+        if (disposed || unsubPanel || unsubMain) return;
+
+        // 检查两个 slot 是否都声明了
+        let panelDeclared: unknown;
+        let mainDeclared: unknown;
         try {
-          declared = ctx.slots && typeof ctx.slots.spec === "function"
-            ? ctx.slots.spec("sidebar.workspaces") : undefined;
+          panelDeclared = ctx.slots && typeof ctx.slots.spec === "function"
+            ? ctx.slots.spec("sidebar.panellist") : undefined;
+          mainDeclared = ctx.slots && typeof ctx.slots.spec === "function"
+            ? ctx.slots.spec("main") : undefined;
         } catch {
           return;
         }
-        if (!declared) return;
+        if (!panelDeclared || !mainDeclared) return;
 
         try {
-          unsub?.(); unsub = undefined;
-          if (timer) { clearInterval(timer); timer = undefined; }
-          disposeRegister = ctx.slots.register(
+          // 注册右侧主面板（main slot）
+          unsubMain = ctx.slots.register(
             {
-              name: "sidebar.workspaces",
+              name: "main",
+              key: PANEL_ID,
               locale: NS,
-              registrant: "dsh-wiki-rag",
-              priority: -1,
+              inject: () => ({ t: ctx.locale?.bind ? ctx.locale.bind(NS) : undefined }),
             },
-            WikiSidebar
+            () => (
+              <div style={{ width: "100%", maxWidth: "960px", margin: "0 auto", padding: "24px" }}>
+                <WikiSidebar />
+              </div>
+            )
           );
+
+          // 注册左侧侧边栏图标（sidebar.panellist slot）
+          unsubPanel = ctx.slots.register(
+            {
+              name: "sidebar.panellist",
+              id: PANEL_ID,
+              order: 100,
+              label: () => ctx.locale ? ctx.locale.bind(NS)("wiki.title") : "Wiki",
+              locale: NS,
+            },
+            () => (
+              <span style={{ fontSize: 16, lineHeight: 1 }}>W</span>
+            )
+          );
+
+          if (timer) { clearInterval(timer); timer = undefined; }
         } catch (e) {
           console.warn("[dsh-wiki-rag] slots.register failed:", e);
         }
@@ -1319,10 +1346,11 @@ function apply(ctx: any): void {
 
       tryRegister();
 
-      if (!disposeRegister) {
+      if (!unsubPanel || !unsubMain) {
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
+            unsubPanel = ctx.slots.subscribeDeclaration("sidebar.panellist", tryRegister);
+            unsubMain = ctx.slots.subscribeDeclaration("main", tryRegister);
           }
         } catch {
           /* 订阅不可用则仅靠轮询 */
@@ -1338,12 +1366,12 @@ function apply(ctx: any): void {
 
       return () => {
         disposed = true;
-        unsub?.();
+        unsubPanel?.();
+        unsubMain?.();
         if (timer) clearInterval(timer);
-        disposeRegister?.();
       };
     },
-    "wiki: sidebar.workspaces registration"
+    "wiki: sidebar.panellist + main registration"
   );
 }
 

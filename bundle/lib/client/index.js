@@ -1450,44 +1450,56 @@ function apply(ctx) {
   ctx.effect(
     () => {
       let disposed = false;
-      let unsub;
+      let unsubPanel;
+      let unsubMain;
       let timer;
-      let disposeRegister;
       let attempts = 0;
+      const PANEL_ID = "wiki-rag";
       const tryRegister = () => {
-        if (disposed || disposeRegister) return;
-        let declared;
+        if (disposed || unsubPanel || unsubMain) return;
+        let panelDeclared;
+        let mainDeclared;
         try {
-          declared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.workspaces") : void 0;
+          panelDeclared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.panellist") : void 0;
+          mainDeclared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("main") : void 0;
         } catch {
           return;
         }
-        if (!declared) return;
+        if (!panelDeclared || !mainDeclared) return;
         try {
-          unsub?.();
-          unsub = void 0;
+          unsubMain = ctx.slots.register(
+            {
+              name: "main",
+              key: PANEL_ID,
+              locale: NS,
+              inject: () => ({ t: ctx.locale?.bind ? ctx.locale.bind(NS) : void 0 })
+            },
+            () => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: "100%", maxWidth: "960px", margin: "0 auto", padding: "24px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(WikiSidebar, {}) })
+          );
+          unsubPanel = ctx.slots.register(
+            {
+              name: "sidebar.panellist",
+              id: PANEL_ID,
+              order: 100,
+              label: () => ctx.locale ? ctx.locale.bind(NS)("wiki.title") : "Wiki",
+              locale: NS
+            },
+            () => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 16, lineHeight: 1 }, children: "W" })
+          );
           if (timer) {
             clearInterval(timer);
             timer = void 0;
           }
-          disposeRegister = ctx.slots.register(
-            {
-              name: "sidebar.workspaces",
-              locale: NS,
-              registrant: "dsh-wiki-rag",
-              priority: -1
-            },
-            WikiSidebar
-          );
         } catch (e) {
           console.warn("[dsh-wiki-rag] slots.register failed:", e);
         }
       };
       tryRegister();
-      if (!disposeRegister) {
+      if (!unsubPanel || !unsubMain) {
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
+            unsubPanel = ctx.slots.subscribeDeclaration("sidebar.panellist", tryRegister);
+            unsubMain = ctx.slots.subscribeDeclaration("main", tryRegister);
           }
         } catch {
         }
@@ -1501,12 +1513,12 @@ function apply(ctx) {
       }
       return () => {
         disposed = true;
-        unsub?.();
+        unsubPanel?.();
+        unsubMain?.();
         if (timer) clearInterval(timer);
-        disposeRegister?.();
       };
     },
-    "wiki: sidebar.workspaces registration"
+    "wiki: sidebar.panellist + main registration"
   );
 }
 exports.inject = inject;exports.apply = apply;return module.exports;}});
