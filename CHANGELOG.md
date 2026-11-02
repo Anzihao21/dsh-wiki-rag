@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.9] - 2026-11-03
+
+### Fixed
+- `GET /api/wiki/update-check` 新增 5 分钟内存缓存：TTL 内直接返回上次 npm registry 查询结果，响应体附带 `cached: true/false` 便于客户端区分；避免客户端轮询 / 多面板同时触发时反复打 npm registry
+
 ## [2.0.8] - 2026-11-03
 
 ### Fixed

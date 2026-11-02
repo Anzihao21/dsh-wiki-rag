@@ -482,6 +482,10 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
   }
 
+  // update-check 内存缓存：5 分钟内不重复请求 npm registry
+  const UPDATE_CHECK_TTL_MS = 5 * 60 * 1000;
+  let updateCache: { at: number; latestVersion: string } | null = null;
+
   // 启动 HTTP API server（供客户端 UI 调用）
   ctx.effect(() => {
     const server = createServer(async (req, res) => {
@@ -753,9 +757,20 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           return json(200, rest);
         }
 
-        // ---- 检查更新：GET /update-check ----
+        // ---- 检查更新：GET /api/wiki/update-check（5 分钟内存缓存）----
         if (req.method === 'GET' && pathname === '/api/wiki/update-check') {
           const currentVersion = readCurrentVersion();
+          // 缓存命中：直接复用 5 分钟内的结果，不打 npm registry
+          if (updateCache && Date.now() - updateCache.at < UPDATE_CHECK_TTL_MS) {
+            const latestVersion = updateCache.latestVersion;
+            return json(200, {
+              currentVersion,
+              latestVersion,
+              hasUpdate: latestVersion !== currentVersion,
+              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`,
+              cached: true,
+            });
+          }
           try {
             const resp = await fetch('https://registry.npmjs.org/dsh-wiki-rag/latest', {
               signal: AbortSignal.timeout(8000),
@@ -763,11 +778,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             if (!resp.ok) throw new Error(`http ${resp.status}`);
             const data = await resp.json() as { version?: string };
             const latestVersion = data.version || currentVersion;
+            updateCache = { at: Date.now(), latestVersion };
             return json(200, {
               currentVersion,
               latestVersion,
               hasUpdate: latestVersion !== currentVersion,
               packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`,
+              cached: false,
             });
           } catch {
             // 任何异常都不抛 5xx，统一 hasUpdate:false
@@ -776,6 +793,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               latestVersion: currentVersion,
               hasUpdate: false,
               packageUrl: '',
+              cached: false,
             });
           }
         }

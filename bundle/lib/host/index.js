@@ -34538,6 +34538,8 @@ function apply(ctx, config) {
       return "0.0.0";
     }
   }
+  const UPDATE_CHECK_TTL_MS = 5 * 60 * 1e3;
+  let updateCache = null;
   ctx.effect(() => {
     const server = createServer(async (req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -34785,6 +34787,16 @@ function apply(ctx, config) {
         }
         if (req.method === "GET" && pathname === "/api/wiki/update-check") {
           const currentVersion = readCurrentVersion();
+          if (updateCache && Date.now() - updateCache.at < UPDATE_CHECK_TTL_MS) {
+            const latestVersion = updateCache.latestVersion;
+            return json(200, {
+              currentVersion,
+              latestVersion,
+              hasUpdate: latestVersion !== currentVersion,
+              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`,
+              cached: true
+            });
+          }
           try {
             const resp = await fetch("https://registry.npmjs.org/dsh-wiki-rag/latest", {
               signal: AbortSignal.timeout(8e3)
@@ -34792,18 +34804,21 @@ function apply(ctx, config) {
             if (!resp.ok) throw new Error(`http ${resp.status}`);
             const data = await resp.json();
             const latestVersion = data.version || currentVersion;
+            updateCache = { at: Date.now(), latestVersion };
             return json(200, {
               currentVersion,
               latestVersion,
               hasUpdate: latestVersion !== currentVersion,
-              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`
+              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`,
+              cached: false
             });
           } catch {
             return json(200, {
               currentVersion,
               latestVersion: currentVersion,
               hasUpdate: false,
-              packageUrl: ""
+              packageUrl: "",
+              cached: false
             });
           }
         }
