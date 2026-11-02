@@ -59,6 +59,16 @@ function WikiSidebar(props) {
   const [view, setView] = (0, import_react.useState)("list");
   const [editTab, setEditTab] = (0, import_react.useState)("edit");
   const [mdContent, setMdContent] = (0, import_react.useState)(SAMPLE_MD["1"] ?? "");
+  const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)("fallback");
+  const [embeddingModelPath, setEmbeddingModelPath] = (0, import_react.useState)("");
+  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = (0, import_react.useState)("https://api.openai.com/v1");
+  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = (0, import_react.useState)("");
+  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = (0, import_react.useState)("text-embedding-3-small");
+  const [rerankProvider, setRerankProvider] = (0, import_react.useState)("none");
+  const [rerankModelPath, setRerankModelPath] = (0, import_react.useState)("");
+  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = (0, import_react.useState)("https://api.openai.com/v1");
+  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = (0, import_react.useState)("");
+  const [rerankOpenAIModel, setRerankOpenAIModel] = (0, import_react.useState)("rerank-multilingual-v3");
   const title = t ? t("wiki.title") : "\u77E5\u8BC6\u5E93";
   const placeholder = t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026";
   if (!wide) {
@@ -210,6 +220,226 @@ function WikiSidebar(props) {
       }
     );
   }
+  if (view === "settings") {
+    const inputStyle = {
+      height: 30,
+      padding: "0 8px",
+      boxSizing: "border-box",
+      borderRadius: "var(--dsw-radius-sm)",
+      border: "1px solid var(--dsw-alias-border-l4)",
+      background: "var(--dsw-alias-bg-layer-1)",
+      color: "var(--dsw-alias-label-primary)",
+      outline: "none",
+      fontSize: 12,
+      width: "100%"
+    };
+    const labelStyle = {
+      fontSize: 11,
+      color: "var(--dsw-alias-label-secondary)",
+      marginBottom: 2,
+      display: "block"
+    };
+    const sectionStyle = {
+      fontSize: 13,
+      fontWeight: 600,
+      margin: "8px 0 6px",
+      color: "var(--dsw-alias-label-primary)",
+      paddingBottom: 4,
+      borderBottom: "1px solid var(--dsw-alias-border-l1)"
+    };
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "div",
+      {
+        style: {
+          height: "100%",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: "6px 10px",
+          color: "var(--dsw-alias-label-primary)",
+          fontSize: 14,
+          fontFamily: "var(--dsw-font-family)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setView("list"),
+                style: {
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  color: "var(--dsw-alias-label-secondary)",
+                  fontSize: 16,
+                  padding: 2
+                },
+                children: "\u2190"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13 }, children: "\u8BBE\u7F6E" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setView("list"),
+                style: {
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: "var(--dsw-radius-sm)",
+                  border: "none",
+                  background: "var(--dsw-alias-state-business-primary)",
+                  color: "#fff",
+                  fontSize: 12,
+                  cursor: "pointer"
+                },
+                children: "\u4FDD\u5B58"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: sectionStyle, children: "Embedding \u5D4C\u5165\u6A21\u578B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "Provider" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "select",
+                {
+                  value: embeddingProvider,
+                  onChange: (e) => setEmbeddingProvider(e.target.value),
+                  style: inputStyle,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "fallback", children: "Fallback\uFF08\u54C8\u5E0C\u964D\u7EA7\uFF0C\u9ED8\u8BA4\uFF09" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "local", children: "Local\uFF08\u672C\u5730 ONNX \u6A21\u578B\uFF09" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "openai", children: "OpenAI \u517C\u5BB9 API" })
+                  ]
+                }
+              )
+            ] }),
+            embeddingProvider === "local" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "\u672C\u5730\u6A21\u578B\u76EE\u5F55\u8DEF\u5F84" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: embeddingModelPath,
+                  onChange: (e) => setEmbeddingModelPath(e.target.value),
+                  placeholder: "/models/bge-small-zh-v1.5",
+                  style: inputStyle
+                }
+              )
+            ] }),
+            embeddingProvider === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "API Base URL" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: embeddingOpenAIBaseURL,
+                    onChange: (e) => setEmbeddingOpenAIBaseURL(e.target.value),
+                    placeholder: "https://api.openai.com/v1",
+                    style: inputStyle
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "API Key" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "password",
+                    value: embeddingOpenAIAPIKey,
+                    onChange: (e) => setEmbeddingOpenAIAPIKey(e.target.value),
+                    placeholder: "sk-...",
+                    style: inputStyle
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "\u6A21\u578B\u540D" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: embeddingOpenAIModel,
+                    onChange: (e) => setEmbeddingOpenAIModel(e.target.value),
+                    placeholder: "text-embedding-3-small",
+                    style: inputStyle
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: sectionStyle, children: "Rerank \u91CD\u6392\u6A21\u578B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "Provider" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "select",
+                {
+                  value: rerankProvider,
+                  onChange: (e) => setRerankProvider(e.target.value),
+                  style: inputStyle,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "none", children: "None\uFF08\u4E0D\u91CD\u6392\uFF0C\u9ED8\u8BA4\uFF09" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "local", children: "Local\uFF08\u672C\u5730 cross-encoder\uFF09" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "openai", children: "OpenAI \u517C\u5BB9 API" })
+                  ]
+                }
+              )
+            ] }),
+            rerankProvider === "local" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "\u672C\u5730\u6A21\u578B\u76EE\u5F55\u8DEF\u5F84" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: rerankModelPath,
+                  onChange: (e) => setRerankModelPath(e.target.value),
+                  placeholder: "/models/bge-reranker-v2-m3",
+                  style: inputStyle
+                }
+              )
+            ] }),
+            rerankProvider === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "API Base URL" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: rerankOpenAIBaseURL,
+                    onChange: (e) => setRerankOpenAIBaseURL(e.target.value),
+                    placeholder: "https://api.openai.com/v1",
+                    style: inputStyle
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "API Key" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "password",
+                    value: rerankOpenAIAPIKey,
+                    onChange: (e) => setRerankOpenAIAPIKey(e.target.value),
+                    placeholder: "sk-...",
+                    style: inputStyle
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: "\u6A21\u578B\u540D" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: rerankOpenAIModel,
+                    onChange: (e) => setRerankOpenAIModel(e.target.value),
+                    placeholder: "rerank-multilingual-v3",
+                    style: inputStyle
+                  }
+                )
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: "\u4FDD\u5B58\u540E\u9700\u91CD\u542F DSH \u751F\u6548" })
+        ]
+      }
+    );
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "div",
     {
@@ -236,25 +466,45 @@ function WikiSidebar(props) {
             },
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: title }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "button",
-                {
-                  title: t ? t("wiki.refresh") : "\u5237\u65B0",
-                  onClick: () => {
-                  },
-                  style: {
-                    width: 24,
-                    height: 24,
-                    border: "none",
-                    borderRadius: 6,
-                    background: "transparent",
-                    cursor: "pointer",
-                    color: "var(--dsw-alias-label-secondary)",
-                    fontSize: 13
-                  },
-                  children: "\u27F3"
-                }
-              )
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 2 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    title: t ? t("wiki.refresh") : "\u5237\u65B0",
+                    onClick: () => {
+                    },
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "\u27F3"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    title: t ? t("wiki.settings") : "\u8BBE\u7F6E",
+                    onClick: () => setView("settings"),
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "\u2699\uFE0F"
+                  }
+                )
+              ] })
             ]
           }
         ),
@@ -394,12 +644,14 @@ function apply(ctx) {
       zh: {
         "wiki.title": "\u77E5\u8BC6\u5E93",
         "wiki.search": "\u641C\u7D22\u6587\u6863\u2026",
-        "wiki.refresh": "\u5237\u65B0"
+        "wiki.refresh": "\u5237\u65B0",
+        "wiki.settings": "\u8BBE\u7F6E"
       },
       en: {
         "wiki.title": "Wiki",
         "wiki.search": "Search docs\u2026",
-        "wiki.refresh": "Refresh"
+        "wiki.refresh": "Refresh",
+        "wiki.settings": "Settings"
       }
     }),
     "wiki: dictionaries"

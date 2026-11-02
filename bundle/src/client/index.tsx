@@ -63,9 +63,20 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [q, setQ] = useState("");
   const [docs] = useState<WikiDoc[]>(SAMPLE_DOCS);
   const [activeId, setActiveId] = useState<string>("1");
-  const [view, setView] = useState<"list" | "editor">("list");
+  const [view, setView] = useState<"list" | "editor" | "settings">("list");
   const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
   const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
+  // 设置表单状态
+  const [embeddingProvider, setEmbeddingProvider] = useState<"local" | "openai" | "fallback">("fallback");
+  const [embeddingModelPath, setEmbeddingModelPath] = useState("");
+  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = useState("https://api.openai.com/v1");
+  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = useState("");
+  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = useState("text-embedding-3-small");
+  const [rerankProvider, setRerankProvider] = useState<"local" | "openai" | "none">("none");
+  const [rerankModelPath, setRerankModelPath] = useState("");
+  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = useState("https://api.openai.com/v1");
+  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = useState("");
+  const [rerankOpenAIModel, setRerankOpenAIModel] = useState("rerank-multilingual-v3");
 
   const title = t ? t("wiki.title") : "知识库";
   const placeholder = t ? t("wiki.search") : "搜索文档…";
@@ -215,6 +226,190 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
+  // ---------- 设置视图 ----------
+  if (view === "settings") {
+    const inputStyle: React.CSSProperties = {
+      height: 30, padding: "0 8px", boxSizing: "border-box",
+      borderRadius: "var(--dsw-radius-sm)",
+      border: "1px solid var(--dsw-alias-border-l4)",
+      background: "var(--dsw-alias-bg-layer-1)",
+      color: "var(--dsw-alias-label-primary)",
+      outline: "none", fontSize: 12, width: "100%",
+    };
+    const labelStyle: React.CSSProperties = {
+      fontSize: 11, color: "var(--dsw-alias-label-secondary)", marginBottom: 2, display: "block",
+    };
+    const sectionStyle: React.CSSProperties = {
+      fontSize: 13, fontWeight: 600, margin: "8px 0 6px",
+      color: "var(--dsw-alias-label-primary)",
+      paddingBottom: 4, borderBottom: "1px solid var(--dsw-alias-border-l1)",
+    };
+
+    return (
+      <div
+        style={{
+          height: "100%", boxSizing: "border-box", display: "flex",
+          flexDirection: "column", gap: 8, padding: "6px 10px",
+          color: "var(--dsw-alias-label-primary)", fontSize: 14,
+          fontFamily: "var(--dsw-font-family)",
+        }}
+      >
+        {/* 头部：返回 + 标题 + 保存 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={() => setView("list")}
+            style={{
+              border: "none", background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 16, padding: 2,
+            }}
+          >
+            ←
+          </button>
+          <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>设置</span>
+          <button
+            onClick={() => setView("list")}
+            style={{
+              height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
+              border: "none", background: "var(--dsw-alias-state-business-primary)",
+              color: "#fff", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            保存
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* ---- Embedding 配置 ---- */}
+          <div style={sectionStyle}>Embedding 嵌入模型</div>
+
+          <div>
+            <label style={labelStyle}>Provider</label>
+            <select
+              value={embeddingProvider}
+              onChange={(e) => setEmbeddingProvider(e.target.value as any)}
+              style={inputStyle}
+            >
+              <option value="fallback">Fallback（哈希降级，默认）</option>
+              <option value="local">Local（本地 ONNX 模型）</option>
+              <option value="openai">OpenAI 兼容 API</option>
+            </select>
+          </div>
+
+          {embeddingProvider === "local" && (
+            <div>
+              <label style={labelStyle}>本地模型目录路径</label>
+              <input
+                value={embeddingModelPath}
+                onChange={(e) => setEmbeddingModelPath(e.target.value)}
+                placeholder="/models/bge-small-zh-v1.5"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {embeddingProvider === "openai" && (
+            <>
+              <div>
+                <label style={labelStyle}>API Base URL</label>
+                <input
+                  value={embeddingOpenAIBaseURL}
+                  onChange={(e) => setEmbeddingOpenAIBaseURL(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>API Key</label>
+                <input
+                  type="password"
+                  value={embeddingOpenAIAPIKey}
+                  onChange={(e) => setEmbeddingOpenAIAPIKey(e.target.value)}
+                  placeholder="sk-..."
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>模型名</label>
+                <input
+                  value={embeddingOpenAIModel}
+                  onChange={(e) => setEmbeddingOpenAIModel(e.target.value)}
+                  placeholder="text-embedding-3-small"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ---- Rerank 配置 ---- */}
+          <div style={sectionStyle}>Rerank 重排模型</div>
+
+          <div>
+            <label style={labelStyle}>Provider</label>
+            <select
+              value={rerankProvider}
+              onChange={(e) => setRerankProvider(e.target.value as any)}
+              style={inputStyle}
+            >
+              <option value="none">None（不重排，默认）</option>
+              <option value="local">Local（本地 cross-encoder）</option>
+              <option value="openai">OpenAI 兼容 API</option>
+            </select>
+          </div>
+
+          {rerankProvider === "local" && (
+            <div>
+              <label style={labelStyle}>本地模型目录路径</label>
+              <input
+                value={rerankModelPath}
+                onChange={(e) => setRerankModelPath(e.target.value)}
+                placeholder="/models/bge-reranker-v2-m3"
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {rerankProvider === "openai" && (
+            <>
+              <div>
+                <label style={labelStyle}>API Base URL</label>
+                <input
+                  value={rerankOpenAIBaseURL}
+                  onChange={(e) => setRerankOpenAIBaseURL(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>API Key</label>
+                <input
+                  type="password"
+                  value={rerankOpenAIAPIKey}
+                  onChange={(e) => setRerankOpenAIAPIKey(e.target.value)}
+                  placeholder="sk-..."
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>模型名</label>
+                <input
+                  value={rerankOpenAIModel}
+                  onChange={(e) => setRerankOpenAIModel(e.target.value)}
+                  placeholder="rerank-multilingual-v3"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 底部提示 */}
+        <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
+          保存后需重启 DSH 生效
+        </div>
+      </div>
+    );
+  }
+
   // ---------- 列表视图 ----------
 
   return (
@@ -241,22 +436,30 @@ function WikiSidebar(props: WikiSidebarProps) {
         }}
       >
         <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
-        <button
-          title={t ? t("wiki.refresh") : "刷新"}
-          onClick={() => {}}
-          style={{
-            width: 24,
-            height: 24,
-            border: "none",
-            borderRadius: 6,
-            background: "transparent",
-            cursor: "pointer",
-            color: "var(--dsw-alias-label-secondary)",
-            fontSize: 13,
-          }}
-        >
-          ⟳
-        </button>
+        <div style={{ display: "flex", gap: 2 }}>
+          <button
+            title={t ? t("wiki.refresh") : "刷新"}
+            onClick={() => {}}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            ⟳
+          </button>
+          <button
+            title={t ? t("wiki.settings") : "设置"}
+            onClick={() => setView("settings")}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            ⚙️
+          </button>
+        </div>
       </div>
 
       {/* 搜索框 */}
@@ -392,11 +595,13 @@ function apply(ctx: any): void {
         "wiki.title": "知识库",
         "wiki.search": "搜索文档…",
         "wiki.refresh": "刷新",
+        "wiki.settings": "设置",
       },
       en: {
         "wiki.title": "Wiki",
         "wiki.search": "Search docs…",
         "wiki.refresh": "Refresh",
+        "wiki.settings": "Settings",
       },
     }),
     "wiki: dictionaries"
