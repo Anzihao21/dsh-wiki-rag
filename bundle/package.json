@@ -28,7 +28,8 @@
   },
   "scripts": {
     "build": "node scripts/build-bundle.cjs",
-    "bundle": "node scripts/build-bundle.cjs"
+    "bundle": "node scripts/build-bundle.cjs",
+    "watch": "bash scripts/watch.sh"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
