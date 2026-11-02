@@ -30416,7 +30416,7 @@ import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 // ../src/main/db/sqlite-init.ts
-import sqlite3 from "sqlite3";
+import Database from "better-sqlite3";
 import { promises as fs } from "fs";
 import path from "path";
 var db = null;
@@ -30460,17 +30460,14 @@ async function initDatabase(filePath) {
   }
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
-  db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-      console.error("[dsh-wiki-rag] \u6570\u636E\u5E93\u6253\u5F00\u5931\u8D25:", err);
-    }
-  });
-  await runSchema();
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  runSchema();
 }
-async function runSchema() {
+function runSchema() {
   const statements = SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean);
   for (const stmt of statements) {
-    await run(stmt);
+    run(stmt);
   }
 }
 function getDb() {
@@ -30480,48 +30477,17 @@ function getDb() {
   return db;
 }
 function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().run(sql, params, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
+  getDb().prepare(sql).run(...params);
 }
 function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().get(sql, params, (err, row) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(row);
-      }
-    });
-  });
+  return getDb().prepare(sql).get(...params);
 }
 function all(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().all(sql, params, (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows);
-      }
-    });
-  });
+  return getDb().prepare(sql).all(...params);
 }
 function lastInsertId() {
-  return new Promise((resolve, reject) => {
-    getDb().get("SELECT last_insert_rowid() AS id", (err, row) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(row.id);
-      }
-    });
-  });
+  const row = get("SELECT last_insert_rowid() AS id");
+  return row?.id ?? 0;
 }
 
 // ../src/main/file/file-importer.ts
