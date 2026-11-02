@@ -2,6 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.7] - 2026-11-03
+
+### Fixed
+- `applySettingsPatch` 迁移逻辑重写：先收集 md/zip/snapshot 文件移动计划与 DB 更新计划，再 mkdir 目标目录；任意一步失败时反向 `rename` 回已移动的文件并抛出异常，旧目录与旧 DB 路径保持可用
+- 全部文件移动成功后才统一更新 DB 路径，避免“文件已动但 DB 半更新”的中间态
+- 非路径类设置（chunkSize / webTimeout / webMode 等）在迁移成功后再提交，失败时旧值不被污染
+
 ## [2.0.6] - 2026-11-03
 
 ### Fixed

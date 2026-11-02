@@ -350,20 +350,88 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   }
 
   // 应用设置修改：移动已有文件到新目录并更新 DB，重建 importer
+  // 迁移过程中任意一步失败 → 反向回滚已移动的文件 + 还原 DB 路径，保持旧目录可用
   async function applySettingsPatch(patch: Record<string, any>): Promise<void> {
+    // 1. 先解析目标值（不立即改 settings），便于失败时回滚
     const oldMd = settings.mdStoragePath;
     const oldZip = settings.zipStoragePath;
     const oldSnap = snapshotStoragePath;
 
+    let nextMd = oldMd;
+    let nextZip = oldZip;
+    let nextSnap = oldSnap;
     if (typeof patch.mdStoragePath === 'string' && patch.mdStoragePath.trim()) {
-      settings.mdStoragePath = path.resolve(patch.mdStoragePath);
+      nextMd = path.resolve(patch.mdStoragePath);
     }
     if (typeof patch.zipStoragePath === 'string' && patch.zipStoragePath.trim()) {
-      settings.zipStoragePath = path.resolve(patch.zipStoragePath);
+      nextZip = path.resolve(patch.zipStoragePath);
     }
     if (typeof patch.snapshotStoragePath === 'string' && patch.snapshotStoragePath.trim()) {
-      snapshotStoragePath = path.resolve(patch.snapshotStoragePath);
+      nextSnap = path.resolve(patch.snapshotStoragePath);
     }
+
+    // 收集文件移动计划（oldPath → newPath），执行失败时反向 rename
+    const moves: Array<{ from: string; to: string }> = [];
+    // 收集 DB 更新计划：(id, newMdPath) / (id, newZipPath)
+    const mdUpdates: Array<{ id: number; name: string; oldPath: string; newPath: string }> = [];
+    const zipUpdates: Array<{ id: number; oldPath: string; newPath: string }> = [];
+
+    if (nextMd !== oldMd) {
+      for (const f of await listKnowledgeFiles()) {
+        const newMd = path.join(nextMd, f.file_name);
+        moves.push({ from: f.md_path, to: newMd });
+        mdUpdates.push({ id: f.id, name: f.file_name, oldPath: f.md_path, newPath: newMd });
+      }
+    }
+    if (nextZip !== oldZip) {
+      for (const f of await listKnowledgeFiles()) {
+        if (!f.zip_archive_path) continue;
+        const newZip = path.join(nextZip, path.basename(f.zip_archive_path));
+        moves.push({ from: f.zip_archive_path, to: newZip });
+        zipUpdates.push({ id: f.id, oldPath: f.zip_archive_path, newPath: newZip });
+      }
+    }
+    if (nextSnap !== oldSnap) {
+      try {
+        for (const n of await fs.readdir(oldSnap)) {
+          moves.push({ from: path.join(oldSnap, n), to: path.join(nextSnap, n) });
+        }
+      } catch { /* 旧快照目录不存在，无需移动 */ }
+    }
+
+    // 2. mkdir 目标目录（失败直接抛，不影响旧目录）
+    if (nextMd !== oldMd) await fs.mkdir(nextMd, { recursive: true });
+    if (nextZip !== oldZip) await fs.mkdir(nextZip, { recursive: true });
+    if (nextSnap !== oldSnap) await fs.mkdir(nextSnap, { recursive: true });
+
+    // 3. 执行移动；任意一步失败 → 反向回滚已完成的 move
+    const movedSoFar: Array<{ from: string; to: string }> = [];
+    try {
+      for (const m of moves) {
+        try {
+          await fs.rename(m.from, m.to);
+          movedSoFar.push(m);
+        } catch {
+          // 源文件已不存在：视为“逻辑上已迁移”，不阻塞 DB 更新
+        }
+      }
+      // 4. 全部移动完成后再更新 DB
+      for (const u of mdUpdates) await updateMdPath(u.id, u.name, u.newPath);
+      for (const u of zipUpdates) await updateZipPath(u.id, u.newPath);
+    } catch (e) {
+      // 回滚：把已移动的文件 rename 回原处
+      for (const m of movedSoFar.reverse()) {
+        try { await fs.rename(m.to, m.from); } catch { /* ignore */ }
+      }
+      await writeLog('settings-migrate-rollback', (e as Error).message);
+      throw e;
+    }
+
+    // 5. 迁移成功，提交新设置
+    settings.mdStoragePath = nextMd;
+    settings.zipStoragePath = nextZip;
+    snapshotStoragePath = nextSnap;
+
     if (typeof patch.chunkSize === 'number') settings.chunkSize = patch.chunkSize;
     if (typeof patch.chunkOverlap === 'number') settings.chunkOverlap = patch.chunkOverlap;
     if (typeof patch.webTimeout === 'number') settings.webTimeout = patch.webTimeout;
@@ -375,35 +443,6 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
     if (patch.rerankProvider === 'local' || patch.rerankProvider === 'openai' || patch.rerankProvider === 'none') {
       settings.rerankProvider = patch.rerankProvider;
-    }
-
-    // 移动 md 文件并更新 DB md_path
-    if (settings.mdStoragePath !== oldMd) {
-      await fs.mkdir(settings.mdStoragePath, { recursive: true });
-      for (const f of await listKnowledgeFiles()) {
-        const newMd = path.join(settings.mdStoragePath, f.file_name);
-        try { await fs.rename(f.md_path, newMd); } catch { /* 原文件已失也更新记录 */ }
-        await updateMdPath(f.id, f.file_name, newMd);
-      }
-    }
-    // 移动 zip 归档并更新 DB zip_archive_path
-    if (settings.zipStoragePath !== oldZip) {
-      await fs.mkdir(settings.zipStoragePath, { recursive: true });
-      for (const f of await listKnowledgeFiles()) {
-        if (!f.zip_archive_path) continue;
-        const newZip = path.join(settings.zipStoragePath, path.basename(f.zip_archive_path));
-        try { await fs.rename(f.zip_archive_path, newZip); } catch { /* ignore */ }
-        await updateZipPath(f.id, newZip);
-      }
-    }
-    // 移动快照文件
-    if (snapshotStoragePath !== oldSnap) {
-      await fs.mkdir(snapshotStoragePath, { recursive: true });
-      try {
-        for (const n of await fs.readdir(oldSnap)) {
-          try { await fs.rename(path.join(oldSnap, n), path.join(snapshotStoragePath, n)); } catch { /* ignore */ }
-        }
-      } catch { /* 旧快照目录不存在 */ }
     }
 
     // 用新配置重建 importer

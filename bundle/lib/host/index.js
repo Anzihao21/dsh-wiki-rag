@@ -34432,15 +34432,71 @@ function apply(ctx, config) {
     const oldMd = settings3.mdStoragePath;
     const oldZip = settings3.zipStoragePath;
     const oldSnap = snapshotStoragePath;
+    let nextMd = oldMd;
+    let nextZip = oldZip;
+    let nextSnap = oldSnap;
     if (typeof patch.mdStoragePath === "string" && patch.mdStoragePath.trim()) {
-      settings3.mdStoragePath = path9.resolve(patch.mdStoragePath);
+      nextMd = path9.resolve(patch.mdStoragePath);
     }
     if (typeof patch.zipStoragePath === "string" && patch.zipStoragePath.trim()) {
-      settings3.zipStoragePath = path9.resolve(patch.zipStoragePath);
+      nextZip = path9.resolve(patch.zipStoragePath);
     }
     if (typeof patch.snapshotStoragePath === "string" && patch.snapshotStoragePath.trim()) {
-      snapshotStoragePath = path9.resolve(patch.snapshotStoragePath);
+      nextSnap = path9.resolve(patch.snapshotStoragePath);
     }
+    const moves = [];
+    const mdUpdates = [];
+    const zipUpdates = [];
+    if (nextMd !== oldMd) {
+      for (const f of await listKnowledgeFiles()) {
+        const newMd = path9.join(nextMd, f.file_name);
+        moves.push({ from: f.md_path, to: newMd });
+        mdUpdates.push({ id: f.id, name: f.file_name, oldPath: f.md_path, newPath: newMd });
+      }
+    }
+    if (nextZip !== oldZip) {
+      for (const f of await listKnowledgeFiles()) {
+        if (!f.zip_archive_path) continue;
+        const newZip = path9.join(nextZip, path9.basename(f.zip_archive_path));
+        moves.push({ from: f.zip_archive_path, to: newZip });
+        zipUpdates.push({ id: f.id, oldPath: f.zip_archive_path, newPath: newZip });
+      }
+    }
+    if (nextSnap !== oldSnap) {
+      try {
+        for (const n of await fs7.readdir(oldSnap)) {
+          moves.push({ from: path9.join(oldSnap, n), to: path9.join(nextSnap, n) });
+        }
+      } catch {
+      }
+    }
+    if (nextMd !== oldMd) await fs7.mkdir(nextMd, { recursive: true });
+    if (nextZip !== oldZip) await fs7.mkdir(nextZip, { recursive: true });
+    if (nextSnap !== oldSnap) await fs7.mkdir(nextSnap, { recursive: true });
+    const movedSoFar = [];
+    try {
+      for (const m of moves) {
+        try {
+          await fs7.rename(m.from, m.to);
+          movedSoFar.push(m);
+        } catch {
+        }
+      }
+      for (const u of mdUpdates) await updateMdPath(u.id, u.name, u.newPath);
+      for (const u of zipUpdates) await updateZipPath(u.id, u.newPath);
+    } catch (e) {
+      for (const m of movedSoFar.reverse()) {
+        try {
+          await fs7.rename(m.to, m.from);
+        } catch {
+        }
+      }
+      await writeLog("settings-migrate-rollback", e.message);
+      throw e;
+    }
+    settings3.mdStoragePath = nextMd;
+    settings3.zipStoragePath = nextZip;
+    snapshotStoragePath = nextSnap;
     if (typeof patch.chunkSize === "number") settings3.chunkSize = patch.chunkSize;
     if (typeof patch.chunkOverlap === "number") settings3.chunkOverlap = patch.chunkOverlap;
     if (typeof patch.webTimeout === "number") settings3.webTimeout = patch.webTimeout;
@@ -34452,41 +34508,6 @@ function apply(ctx, config) {
     }
     if (patch.rerankProvider === "local" || patch.rerankProvider === "openai" || patch.rerankProvider === "none") {
       settings3.rerankProvider = patch.rerankProvider;
-    }
-    if (settings3.mdStoragePath !== oldMd) {
-      await fs7.mkdir(settings3.mdStoragePath, { recursive: true });
-      for (const f of await listKnowledgeFiles()) {
-        const newMd = path9.join(settings3.mdStoragePath, f.file_name);
-        try {
-          await fs7.rename(f.md_path, newMd);
-        } catch {
-        }
-        await updateMdPath(f.id, f.file_name, newMd);
-      }
-    }
-    if (settings3.zipStoragePath !== oldZip) {
-      await fs7.mkdir(settings3.zipStoragePath, { recursive: true });
-      for (const f of await listKnowledgeFiles()) {
-        if (!f.zip_archive_path) continue;
-        const newZip = path9.join(settings3.zipStoragePath, path9.basename(f.zip_archive_path));
-        try {
-          await fs7.rename(f.zip_archive_path, newZip);
-        } catch {
-        }
-        await updateZipPath(f.id, newZip);
-      }
-    }
-    if (snapshotStoragePath !== oldSnap) {
-      await fs7.mkdir(snapshotStoragePath, { recursive: true });
-      try {
-        for (const n of await fs7.readdir(oldSnap)) {
-          try {
-            await fs7.rename(path9.join(oldSnap, n), path9.join(snapshotStoragePath, n));
-          } catch {
-          }
-        }
-      } catch {
-      }
     }
     importer = new FileImporter({
       mdDir: settings3.mdStoragePath,
