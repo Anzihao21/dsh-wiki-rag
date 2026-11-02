@@ -183,9 +183,11 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (!importPath.trim()) return;
     try {
       await apiImport(importPath.trim());
-      // 重新拉列表
       const list = await apiList();
       setDocs(list);
+      // 刷新统计
+      const s = await fetch(`${API_BASE}/stats`).then(r => r.json());
+      setStats(s);
     } catch { /* ignore */ }
     setShowImport(false);
     setImportPath("");
@@ -280,6 +282,19 @@ function WikiSidebar(props: WikiSidebarProps) {
           </button>
           <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {activeDoc.title}
+          </span>
+          {/* 元信息：类型 + 状态 */}
+          <span style={{
+            fontSize: 10, padding: "1px 5px", borderRadius: 4,
+            background: "var(--dsw-alias-bg-layer-2)",
+            color: "var(--dsw-alias-label-secondary)",
+          }}>
+            {activeDoc.type}
+          </span>
+          <span style={{
+            fontSize: 10, color: activeDoc.status === "ready" ? "#22c55e" : activeDoc.status === "stale" ? "#eab308" : "#ef4444",
+          }}>
+            ●
           </span>
           <button
             onClick={saveEdit}
@@ -560,7 +575,20 @@ function WikiSidebar(props: WikiSidebarProps) {
             ← 返回
           </button>
           <div style={{ fontWeight: 600, fontSize: 14 }}>快照管理</div>
-          <div style={{ width: 60 }} />
+          <button
+            onClick={async () => {
+              await fetch(`${API_BASE}/snapshots`, { method: "POST" });
+              const snaps = await fetch(`${API_BASE}/snapshots`).then(r => r.json());
+              setSnapshots(snaps);
+            }}
+            style={{
+              height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
+              border: "none", background: "var(--dsw-alias-state-business-primary)",
+              color: "#fff", fontSize: 11, cursor: "pointer",
+            }}
+          >
+            + 新建
+          </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
           {snapshots.length === 0 ? (

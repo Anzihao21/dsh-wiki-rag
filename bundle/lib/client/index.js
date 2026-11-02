@@ -212,6 +212,8 @@ function WikiSidebar(props) {
       await apiImport(importPath.trim());
       const list = await apiList();
       setDocs(list);
+      const s = await fetch(`${API_BASE}/stats`).then((r) => r.json());
+      setStats(s);
     } catch {
     }
     setShowImport(false);
@@ -305,6 +307,17 @@ function WikiSidebar(props) {
               }
             ),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: activeDoc.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              fontSize: 10,
+              padding: "1px 5px",
+              borderRadius: 4,
+              background: "var(--dsw-alias-bg-layer-2)",
+              color: "var(--dsw-alias-label-secondary)"
+            }, children: activeDoc.type }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              fontSize: 10,
+              color: activeDoc.status === "ready" ? "#22c55e" : activeDoc.status === "stale" ? "#eab308" : "#ef4444"
+            }, children: "\u25CF" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
@@ -625,7 +638,27 @@ function WikiSidebar(props) {
           }
         ),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: "\u5FEB\u7167\u7BA1\u7406" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 60 } })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: async () => {
+              await fetch(`${API_BASE}/snapshots`, { method: "POST" });
+              const snaps = await fetch(`${API_BASE}/snapshots`).then((r) => r.json());
+              setSnapshots(snaps);
+            },
+            style: {
+              height: 26,
+              padding: "0 10px",
+              borderRadius: "var(--dsw-radius-sm)",
+              border: "none",
+              background: "var(--dsw-alias-state-business-primary)",
+              color: "#fff",
+              fontSize: 11,
+              cursor: "pointer"
+            },
+            children: "+ \u65B0\u5EFA"
+          }
+        )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4F8}" }),
