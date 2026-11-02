@@ -1458,7 +1458,7 @@ function apply(ctx) {
         if (disposed || disposeRegister) return;
         let declared;
         try {
-          declared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.footer.action") : void 0;
+          declared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.workspaces") : void 0;
         } catch {
           return;
         }
@@ -1472,10 +1472,10 @@ function apply(ctx) {
           }
           disposeRegister = ctx.slots.register(
             {
-              name: "sidebar.footer.action",
+              name: "sidebar.workspaces",
               locale: NS,
               registrant: "dsh-wiki-rag",
-              priority: 10
+              priority: -1
             },
             WikiSidebar
           );
@@ -1487,7 +1487,7 @@ function apply(ctx) {
       if (!disposeRegister) {
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.footer.action", tryRegister);
+            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
           }
         } catch {
         }
@@ -1506,7 +1506,7 @@ function apply(ctx) {
         disposeRegister?.();
       };
     },
-    "wiki: sidebar.footer.action registration"
+    "wiki: sidebar.workspaces registration"
   );
 }
 exports.inject = inject;exports.apply = apply;return module.exports;}});

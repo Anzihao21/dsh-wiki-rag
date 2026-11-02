@@ -1280,8 +1280,7 @@ function apply(ctx: any): void {
     "wiki: dictionaries"
   );
 
-  // 2) 注册槽位 —— 侧边栏底部入口 sidebar.footer.action（和「设置」同级）
-  //    点击入口后切换到知识库面板。
+  // 2) 注册槽位 —— 占据左栏浏览区 sidebar.workspaces（single/root）
   ctx.effect(
     () => {
       let disposed = false;
@@ -1295,7 +1294,7 @@ function apply(ctx: any): void {
         let declared: unknown;
         try {
           declared = ctx.slots && typeof ctx.slots.spec === "function"
-            ? ctx.slots.spec("sidebar.footer.action") : undefined;
+            ? ctx.slots.spec("sidebar.workspaces") : undefined;
         } catch {
           return;
         }
@@ -1306,10 +1305,10 @@ function apply(ctx: any): void {
           if (timer) { clearInterval(timer); timer = undefined; }
           disposeRegister = ctx.slots.register(
             {
-              name: "sidebar.footer.action",
+              name: "sidebar.workspaces",
               locale: NS,
               registrant: "dsh-wiki-rag",
-              priority: 10,
+              priority: -1,
             },
             WikiSidebar
           );
@@ -1323,7 +1322,7 @@ function apply(ctx: any): void {
       if (!disposeRegister) {
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.footer.action", tryRegister);
+            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
           }
         } catch {
           /* 订阅不可用则仅靠轮询 */
@@ -1344,7 +1343,7 @@ function apply(ctx: any): void {
         disposeRegister?.();
       };
     },
-    "wiki: sidebar.footer.action registration"
+    "wiki: sidebar.workspaces registration"
   );
 }
 
