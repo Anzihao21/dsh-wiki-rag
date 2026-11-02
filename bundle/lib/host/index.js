@@ -34223,6 +34223,17 @@ function apply(ctx, config) {
   const watcher = new FileWatcher();
   const pendingChanges = [];
   const jobs = /* @__PURE__ */ new Map();
+  const JOBS_KEEP = 50;
+  function pruneJobs() {
+    if (jobs.size <= JOBS_KEEP) return;
+    const finished = [...jobs.values()].filter((j) => j.status !== "running").sort((a, b) => a.startedAt - b.startedAt);
+    let toDelete = jobs.size - JOBS_KEEP;
+    for (const j of finished) {
+      if (toDelete <= 0) break;
+      jobs.delete(j.jobId);
+      toDelete--;
+    }
+  }
   const inProgress = /* @__PURE__ */ new Set();
   function acquire(key) {
     if (inProgress.has(key)) return false;
@@ -34602,6 +34613,7 @@ function apply(ctx, config) {
               await writeLog("import-async-error", `${jobId}: ${e.message}`);
             } finally {
               release(opKey);
+              pruneJobs();
             }
           })();
           return json(200, { jobId });
@@ -34758,6 +34770,7 @@ function apply(ctx, config) {
           return json(200, { status: "saved", settings: publicSettings() });
         }
         if (req.method === "GET" && pathname === "/api/wiki/jobs") {
+          pruneJobs();
           const list = [...jobs.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
           return json(200, list.map((j) => {
             const { startedAt: _s, ...rest } = j;

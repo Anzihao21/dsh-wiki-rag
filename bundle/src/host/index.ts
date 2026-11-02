@@ -131,6 +131,21 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     startedAt: number;
   }
   const jobs = new Map<string, Job>();
+  /** 内存 job 保留上限：超出后删除最旧的已结束 job，防止长运行内存泄漏 */
+  const JOBS_KEEP = 50;
+  function pruneJobs(): void {
+    if (jobs.size <= JOBS_KEEP) return;
+    // 只清理已结束（done / error）的 job，running 的不能删
+    const finished = [...jobs.values()]
+      .filter((j) => j.status !== 'running')
+      .sort((a, b) => a.startedAt - b.startedAt);
+    let toDelete = jobs.size - JOBS_KEEP;
+    for (const j of finished) {
+      if (toDelete <= 0) break;
+      jobs.delete(j.jobId);
+      toDelete--;
+    }
+  }
 
   // ---- 并发去重：同一路径/同一文件的进行中操作 ----
   const inProgress = new Set<string>();
@@ -543,6 +558,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               await writeLog('import-async-error', `${jobId}: ${e.message}`);
             } finally {
               release(opKey);
+              pruneJobs();
             }
           })();
           return json(200, { jobId });
@@ -722,6 +738,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
         // ---- 批量任务：GET /jobs（最近 20，最新在前）----
         if (req.method === 'GET' && pathname === '/api/wiki/jobs') {
+          pruneJobs();
           const list = [...jobs.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
           return json(200, list.map((j) => {
             const { startedAt: _s, ...rest } = j;

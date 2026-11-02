@@ -2,6 +2,12 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.8] - 2026-11-03
+
+### Fixed
+- 内存 `jobs` Map 新增 `pruneJobs()`：保留上限 50 条，超出时按 `startedAt` 升序删除最旧的**已结束**（done / error）job，running 中的 job 不参与清理
+- 在 job 异步包装的 `finally` 与 `GET /api/wiki/jobs` 列表入口各触发一次 `pruneJobs`，避免长运行下后台任务历史无限堆积
+
 ## [2.0.7] - 2026-11-03
 
 ### Fixed
