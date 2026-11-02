@@ -112,7 +112,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [q, setQ] = useState("");
   const [docs, setDocs] = useState<WikiDoc[]>(SAMPLE_DOCS);
   const [activeId, setActiveId] = useState<string>("1");
-  const [view, setView] = useState<"list" | "editor" | "settings">("list");
+  const [view, setView] = useState<"list" | "editor" | "settings" | "snapshots">("list");
   const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
   const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
   const [showImport, setShowImport] = useState(false);
@@ -120,11 +120,13 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
+  const [snapshots, setSnapshots] = useState<{ id: number; created_at: string; note: string }[]>([]);
 
-  // 挂载时拉真实文档列表 + 统计
+  // 挂载时拉真实文档列表 + 统计 + 快照
   useEffect(() => {
     apiList().then(setDocs).catch(() => {});
     fetch(`${API_BASE}/stats`).then(r => r.json()).then(setStats).catch(() => {});
+    fetch(`${API_BASE}/snapshots`).then(r => r.json()).then(setSnapshots).catch(() => {});
   }, []);
 
   // 设置表单状态（从 localStorage 加载）
@@ -541,6 +543,46 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
+  // ---------- 快照视图 ----------
+  if (view === "snapshots") {
+    return (
+      <div style={fullRow}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button
+            onClick={() => setView("list")}
+            style={{
+              height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              background: "transparent", color: "var(--dsw-alias-label-primary)",
+              fontSize: 12, cursor: "pointer",
+            }}
+          >
+            ← 返回
+          </button>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>快照管理</div>
+          <div style={{ width: 60 }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
+          {snapshots.length === 0 ? (
+            <div style={{ padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>📸</div>
+              暂无快照
+            </div>
+          ) : (
+            snapshots.map((s) => (
+              <div key={s.id} style={{ padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>#{s.id} {s.note || "手动快照"}</div>
+                <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>
+                  {new Date(s.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ---------- 列表视图 ----------
 
   return (
@@ -592,6 +634,17 @@ function WikiSidebar(props: WikiSidebarProps) {
             }}
           >
             ⟳
+          </button>
+          <button
+            title="快照"
+            onClick={() => setView("snapshots")}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            📸
           </button>
           <button
             title={t ? t("wiki.settings") : "设置"}

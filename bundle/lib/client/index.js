@@ -111,10 +111,13 @@ function WikiSidebar(props) {
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [searchResults, setSearchResults] = (0, import_react.useState)(null);
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
+  const [snapshots, setSnapshots] = (0, import_react.useState)([]);
   (0, import_react.useEffect)(() => {
     apiList().then(setDocs).catch(() => {
     });
     fetch(`${API_BASE}/stats`).then((r) => r.json()).then(setStats).catch(() => {
+    });
+    fetch(`${API_BASE}/snapshots`).then((r) => r.json()).then(setSnapshots).catch(() => {
     });
   }, []);
   const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
@@ -601,6 +604,43 @@ function WikiSidebar(props) {
       }
     );
   }
+  if (view === "snapshots") {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: fullRow, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => setView("list"),
+            style: {
+              height: 26,
+              padding: "0 10px",
+              borderRadius: "var(--dsw-radius-sm)",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              background: "transparent",
+              color: "var(--dsw-alias-label-primary)",
+              fontSize: 12,
+              cursor: "pointer"
+            },
+            children: "\u2190 \u8FD4\u56DE"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: "\u5FEB\u7167\u7BA1\u7406" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 60 } })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4F8}" }),
+        "\u6682\u65E0\u5FEB\u7167"
+      ] }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 500 }, children: [
+          "#",
+          s.id,
+          " ",
+          s.note || "\u624B\u52A8\u5FEB\u7167"
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }, children: new Date(s.created_at).toLocaleString() })
+      ] }, s.id)) })
+    ] });
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "div",
     {
@@ -665,6 +705,24 @@ function WikiSidebar(props) {
                       fontSize: 13
                     },
                     children: "\u27F3"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    title: "\u5FEB\u7167",
+                    onClick: () => setView("snapshots"),
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "\u{1F4F8}"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
