@@ -2,6 +2,14 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.6] - 2026-11-03
+
+### Fixed
+- `FileWatcher` 重写：单例 chokidar 实例按路径增量 `add/unwatch`，`source_path → { fileId, fileName }` 映射避免 change 事件闭包串号
+- 新增 500ms 防抖（同一文件连续写盘只回调一次），新增 `unwatchPath()` / `watchedCount()` 方法；`stop()` 清理所有防抖定时器
+- 宿主删除条目时同步调用 `watcher.unwatchPath(source_path)`，避免已删除条目仍被监听
+- 新增 4 例 file-watcher 单元测试（去重 / 防抖 / unwatch / stop）
+
 ## [2.0.5] - 2026-11-03
 
 ### Fixed

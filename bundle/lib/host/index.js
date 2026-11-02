@@ -33438,45 +33438,92 @@ ${noteText}`;
 
 // ../src/main/file/file-watcher.ts
 var import_chokidar = __toESM(require_chokidar(), 1);
+var DEBOUNCE_MS = 500;
 var FileWatcher = class {
   watcher = null;
   callback = null;
-  watchedPaths = /* @__PURE__ */ new Set();
+  /** source_path → { fileId, fileName }；与 chokidar 内部监听集保持一致 */
+  watched = /* @__PURE__ */ new Map();
+  /** 路径 → 防抖定时器 */
+  debounceTimers = /* @__PURE__ */ new Map();
   setCallback(cb) {
     this.callback = cb;
   }
-  /** 启动对某知识条目的源文件监听 */
+  ensureWatcher() {
+    if (!this.watcher) {
+      this.watcher = import_chokidar.default.watch([], { ignoreInitial: true });
+      this.watcher.on("change", (p) => this.handleChange(p));
+      this.watcher.on("error", (e) => {
+        writeLog("watch-error", e.message);
+      });
+    }
+    return this.watcher;
+  }
+  handleChange(p) {
+    writeLog("watch-change", `\u6E90\u6587\u4EF6\u53D8\u66F4: ${p}`);
+    const meta = this.watched.get(p);
+    if (!meta) return;
+    const prev = this.debounceTimers.get(p);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      this.debounceTimers.delete(p);
+      this.callback?.({
+        fileId: meta.fileId,
+        fileName: meta.fileName,
+        sourcePath: p
+      });
+    }, DEBOUNCE_MS);
+    this.debounceTimers.set(p, timer);
+  }
+  /** 启动对某知识条目的源文件监听；重复监听同一路径幂等 */
   watchSource(fileId) {
-    const record = getKnowledgeFileById(fileId);
-    record.then((file) => {
-      if (!file || this.watchedPaths.has(file.source_path)) {
+    void getKnowledgeFileById(fileId).then((file) => {
+      if (!file) return;
+      const existing = this.watched.get(file.source_path);
+      if (existing) {
+        existing.fileId = fileId;
+        existing.fileName = file.file_name;
         return;
       }
-      this.watchedPaths.add(file.source_path);
-      if (!this.watcher) {
-        this.watcher = import_chokidar.default.watch([], { ignoreInitial: true });
-        this.watcher.on("change", (p) => {
-          writeLog("watch-change", `\u6E90\u6587\u4EF6\u53D8\u66F4: ${p}`);
-          this.callback?.({
-            fileId,
-            fileName: file.file_name,
-            sourcePath: p
-          });
-        });
-        this.watcher.on("error", (e) => {
-          writeLog("watch-error", e.message);
-        });
-      }
-      this.watcher.add(file.source_path);
+      this.watched.set(file.source_path, {
+        fileId,
+        fileName: file.file_name
+      });
+      this.ensureWatcher().add(file.source_path);
     });
   }
-  /** 停止全部监听 */
-  async stop() {
-    if (this.watcher) {
-      await this.watcher.close();
-      this.watcher = null;
-      this.watchedPaths.clear();
+  /** 停止监听某条源路径（条目被删除 / 移动时调用） */
+  unwatchPath(sourcePath) {
+    if (!this.watched.has(sourcePath)) return;
+    this.watched.delete(sourcePath);
+    const timer = this.debounceTimers.get(sourcePath);
+    if (timer) {
+      clearTimeout(timer);
+      this.debounceTimers.delete(sourcePath);
     }
+    if (this.watcher) {
+      try {
+        this.watcher.unwatch(sourcePath);
+      } catch {
+      }
+    }
+  }
+  /** 当前已监听路径数（测试 / 调试用） */
+  watchedCount() {
+    return this.watched.size;
+  }
+  /** 停止全部监听并清理状态 */
+  async stop() {
+    for (const t of this.debounceTimers.values()) clearTimeout(t);
+    this.debounceTimers.clear();
+    if (this.watcher) {
+      try {
+        await this.watcher.close();
+      } catch {
+      }
+      this.watcher = null;
+    }
+    this.watched.clear();
   }
 };
 
@@ -34741,6 +34788,10 @@ function apply(ctx, config) {
                 }
                 try {
                   if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
+                } catch {
+                }
+                try {
+                  watcher.unwatchPath(record.source_path);
                 } catch {
                 }
               }

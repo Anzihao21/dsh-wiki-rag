@@ -738,6 +738,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               if (record) {
                 try { await fs.unlink(record.md_path); } catch { /* ignore */ }
                 try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
+                // 条目删除时同步摘掉源文件监听
+                try { watcher.unwatchPath(record.source_path); } catch { /* ignore */ }
               }
               await deleteKnowledgeFile(id);
               pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
