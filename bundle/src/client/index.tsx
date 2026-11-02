@@ -125,6 +125,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; docId: string } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["/"]));
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
@@ -970,7 +971,26 @@ function WikiSidebar(props: WikiSidebarProps) {
             )}
           </div>
         ) : (
-          filtered.map((d) => {
+          <>
+          {/* 根目录标题 */}
+          <div
+            onClick={() => {
+              const next = new Set(expandedDirs);
+              if (next.has("/")) next.delete("/"); else next.add("/");
+              setExpandedDirs(next);
+            }}
+            style={{
+              padding: "6px 10px", fontSize: 12, fontWeight: 600,
+              color: "var(--dsw-alias-label-secondary)", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            <span>{expandedDirs.has("/") ? "📂" : "📁"}</span>
+            <span>根目录</span>
+            <span style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }}>{filtered.length}</span>
+          </div>
+          {/* 文档列表 */}
+          {expandedDirs.has("/") && filtered.map((d) => {
             const st = statusStyle(d.status);
             const active = d.id === activeId;
             return (
@@ -1075,7 +1095,8 @@ function WikiSidebar(props: WikiSidebarProps) {
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
 

@@ -116,6 +116,7 @@ function WikiSidebar(props) {
   const [contextMenu, setContextMenu] = (0, import_react.useState)(null);
   const [renamingId, setRenamingId] = (0, import_react.useState)(null);
   const [renameText, setRenameText] = (0, import_react.useState)("");
+  const [expandedDirs, setExpandedDirs] = (0, import_react.useState)(/* @__PURE__ */ new Set(["/"]));
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [searchResults, setSearchResults] = (0, import_react.useState)(null);
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
@@ -1075,136 +1076,164 @@ function WikiSidebar(props) {
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginTop: 4, fontSize: 11 }, children: "\u70B9\u53F3\u4E0A\u89D2 + \u5BFC\u5165\u7B2C\u4E00\u4E2A\u6587\u6863" })
             ] }) : "\u65E0\u5339\u914D\u6587\u6863"
           }
-        ) : filtered.map((d) => {
-          const st = statusStyle(d.status);
-          const active = d.id === activeId;
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "div",
             {
               onClick: () => {
-                setActiveId(d.id);
-                setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
-                setView("editor");
-              },
-              onContextMenu: (e) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, docId: d.id });
+                const next = new Set(expandedDirs);
+                if (next.has("/")) next.delete("/");
+                else next.add("/");
+                setExpandedDirs(next);
               },
               style: {
-                padding: "8px 10px",
-                borderRadius: "var(--dsw-radius-md)",
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--dsw-alias-label-secondary)",
                 cursor: "pointer",
-                background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-                borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent"
-              },
-              onMouseEnter: (e) => {
-                if (!active) e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)";
-              },
-              onMouseLeave: (e) => {
-                e.currentTarget.style.background = active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent";
+                display: "flex",
+                alignItems: "center",
+                gap: 4
               },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "span",
-                    {
-                      style: {
-                        fontSize: 10,
-                        padding: "1px 5px",
-                        borderRadius: "var(--dsw-radius-sm)",
-                        background: "var(--dsw-alias-bg-module-platform)",
-                        color: "var(--dsw-alias-label-secondary)",
-                        flexShrink: 0
-                      },
-                      children: d.type
-                    }
-                  ),
-                  renamingId === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      autoFocus: true,
-                      value: renameText,
-                      onChange: (e) => setRenameText(e.target.value),
-                      onKeyDown: (e) => {
-                        if (e.key === "Enter") doRename(d.id);
-                        if (e.key === "Escape") {
-                          setRenamingId(null);
-                          setRenameText("");
-                        }
-                      },
-                      onBlur: () => doRename(d.id),
-                      style: {
-                        flex: 1,
-                        height: 20,
-                        padding: "0 4px",
-                        boxSizing: "border-box",
-                        borderRadius: 4,
-                        border: "1px solid var(--dsw-alias-state-business-primary)",
-                        background: "var(--dsw-alias-bg-layer-0)",
-                        color: "var(--dsw-alias-label-primary)",
-                        outline: "none",
-                        fontSize: 13
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: expandedDirs.has("/") ? "\u{1F4C2}" : "\u{1F4C1}" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u6839\u76EE\u5F55" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }, children: filtered.length })
+              ]
+            }
+          ),
+          expandedDirs.has("/") && filtered.map((d) => {
+            const st = statusStyle(d.status);
+            const active = d.id === activeId;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: () => {
+                  setActiveId(d.id);
+                  setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
+                  setView("editor");
+                },
+                onContextMenu: (e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, docId: d.id });
+                },
+                style: {
+                  padding: "8px 10px",
+                  borderRadius: "var(--dsw-radius-md)",
+                  cursor: "pointer",
+                  background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                  borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent"
+                },
+                onMouseEnter: (e) => {
+                  if (!active) e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)";
+                },
+                onMouseLeave: (e) => {
+                  e.currentTarget.style.background = active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent";
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "span",
+                      {
+                        style: {
+                          fontSize: 10,
+                          padding: "1px 5px",
+                          borderRadius: "var(--dsw-radius-sm)",
+                          background: "var(--dsw-alias-bg-module-platform)",
+                          color: "var(--dsw-alias-label-secondary)",
+                          flexShrink: 0
+                        },
+                        children: d.type
                       }
-                    }
-                  ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "span",
-                    {
-                      style: {
-                        flex: 1,
-                        minWidth: 0,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: 13,
-                        fontWeight: active ? 600 : 500
-                      },
-                      children: d.title
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  "div",
-                  {
-                    style: {
-                      marginTop: 3,
-                      fontSize: 11,
-                      color: "var(--dsw-alias-label-tertiary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap"
-                    },
-                    children: d.summary
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 11, color: st.color, display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-                    "\u25CF ",
-                    st.label
+                    ),
+                    renamingId === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        autoFocus: true,
+                        value: renameText,
+                        onChange: (e) => setRenameText(e.target.value),
+                        onKeyDown: (e) => {
+                          if (e.key === "Enter") doRename(d.id);
+                          if (e.key === "Escape") {
+                            setRenamingId(null);
+                            setRenameText("");
+                          }
+                        },
+                        onBlur: () => doRename(d.id),
+                        style: {
+                          flex: 1,
+                          height: 20,
+                          padding: "0 4px",
+                          boxSizing: "border-box",
+                          borderRadius: 4,
+                          border: "1px solid var(--dsw-alias-state-business-primary)",
+                          background: "var(--dsw-alias-bg-layer-0)",
+                          color: "var(--dsw-alias-label-primary)",
+                          outline: "none",
+                          fontSize: 13
+                        }
+                      }
+                    ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "span",
+                      {
+                        style: {
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 13,
+                          fontWeight: active ? 600 : 500
+                        },
+                        children: d.title
+                      }
+                    )
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "button",
+                    "div",
                     {
-                      onClick: (e) => {
-                        e.stopPropagation();
-                        doDelete(d.id);
-                      },
                       style: {
-                        border: "none",
-                        background: "transparent",
-                        cursor: "pointer",
+                        marginTop: 3,
+                        fontSize: 11,
                         color: "var(--dsw-alias-label-tertiary)",
-                        fontSize: 12,
-                        padding: 0
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
                       },
-                      children: "\u2715"
+                      children: d.summary
                     }
-                  )
-                ] })
-              ]
-            },
-            d.id
-          );
-        }) }),
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 11, color: st.color, display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                      "\u25CF ",
+                      st.label
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          doDelete(d.id);
+                        },
+                        style: {
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          color: "var(--dsw-alias-label-tertiary)",
+                          fontSize: 12,
+                          padding: 0
+                        },
+                        children: "\u2715"
+                      }
+                    )
+                  ] })
+                ]
+              },
+              d.id
+            );
+          })
+        ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "div",
           {
