@@ -1218,13 +1218,8 @@ function apply(ctx: any): void {
     "wiki: dictionaries"
   );
 
-  // 2) 注册槽位 —— 占据左栏浏览区 sidebar.workspaces（single/root，由 ui-sidebar 声明）。
-  //    不重复声明其 kind/scope；注册动作包在 ctx.effect 里，fiber 卸载时级联注销。
-  //
-  // 时序：apply 可能在 ui-sidebar 声明 sidebar.workspaces 之前就进入某个上下文。
-  // 直接注册会抛 "not declared"；直接 skip 又会永久错过（声明稍后才出现）。
-  // 故未声明时不抛、不弃：订阅声明事件 + 轮询兜底，待本上下文声明了该槽再注册。
-  // 真正无侧栏 UI 的上下文（永远不声明）在 15s 后静默放弃，不影响 boot。
+  // 2) 注册槽位 —— 侧边栏底部入口 sidebar.footer.action（和「设置」同级）
+  //    点击入口后切换到知识库面板。
   ctx.effect(
     () => {
       let disposed = false;
@@ -1238,24 +1233,21 @@ function apply(ctx: any): void {
         let declared: unknown;
         try {
           declared = ctx.slots && typeof ctx.slots.spec === "function"
-            ? ctx.slots.spec("sidebar.workspaces") : undefined;
+            ? ctx.slots.spec("sidebar.footer.action") : undefined;
         } catch {
-          return; // 探测本身失败，等下一轮
+          return;
         }
-        if (!declared) return; // 尚未声明，继续等
+        if (!declared) return;
 
         try {
           unsub?.(); unsub = undefined;
           if (timer) { clearInterval(timer); timer = undefined; }
           disposeRegister = ctx.slots.register(
             {
-              name: "sidebar.workspaces",
+              name: "sidebar.footer.action",
               locale: NS,
               registrant: "dsh-wiki-rag",
-              // 内置 ui-workspace 已在 priority 0 占据本 single 槽；
-              // single 槽按 priority 升序、"lowest renders"（最小 priority 实际渲染）。
-              // 传 -1 与其错开避免同优先级冲突，并排在前成为实际渲染者，shadow 内置实现。
-              priority: -1,
+              priority: 10,
             },
             WikiSidebar
           );
@@ -1267,34 +1259,30 @@ function apply(ctx: any): void {
       tryRegister();
 
       if (!disposeRegister) {
-        // 订阅声明事件（子槽声明时同步回调）
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
+            unsub = ctx.slots.subscribeDeclaration("sidebar.footer.action", tryRegister);
           }
         } catch {
           /* 订阅不可用则仅靠轮询 */
         }
-        // 轮询兜底，15s 仍未声明则放弃
         timer = setInterval(() => {
-          attempts += 1;
-          tryRegister();
-          if (!disposeRegister && attempts > 150) { // 150 * 100ms = 15s
-            if (timer) { clearInterval(timer); timer = undefined; }
-            try { unsub?.(); } catch { /* noop */ }
-            unsub = undefined;
+          if (++attempts > 15) {
+            if (timer) clearInterval(timer);
+            return;
           }
-        }, 100);
+          tryRegister();
+        }, 1000);
       }
 
       return () => {
         disposed = true;
-        try { unsub?.(); } catch { /* noop */ }
+        unsub?.();
         if (timer) clearInterval(timer);
-        try { disposeRegister?.(); } catch { /* noop */ }
+        disposeRegister?.();
       };
     },
-    "wiki: sidebar.workspaces registration"
+    "wiki: sidebar.footer.action registration"
   );
 }
 

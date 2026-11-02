@@ -1389,7 +1389,7 @@ function apply(ctx) {
         if (disposed || disposeRegister) return;
         let declared;
         try {
-          declared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.workspaces") : void 0;
+          declared = ctx.slots && typeof ctx.slots.spec === "function" ? ctx.slots.spec("sidebar.footer.action") : void 0;
         } catch {
           return;
         }
@@ -1403,13 +1403,10 @@ function apply(ctx) {
           }
           disposeRegister = ctx.slots.register(
             {
-              name: "sidebar.workspaces",
+              name: "sidebar.footer.action",
               locale: NS,
               registrant: "dsh-wiki-rag",
-              // 内置 ui-workspace 已在 priority 0 占据本 single 槽；
-              // single 槽按 priority 升序、"lowest renders"（最小 priority 实际渲染）。
-              // 传 -1 与其错开避免同优先级冲突，并排在前成为实际渲染者，shadow 内置实现。
-              priority: -1
+              priority: 10
             },
             WikiSidebar
           );
@@ -1421,40 +1418,26 @@ function apply(ctx) {
       if (!disposeRegister) {
         try {
           if (typeof ctx.slots?.subscribeDeclaration === "function") {
-            unsub = ctx.slots.subscribeDeclaration("sidebar.workspaces", tryRegister);
+            unsub = ctx.slots.subscribeDeclaration("sidebar.footer.action", tryRegister);
           }
         } catch {
         }
         timer = setInterval(() => {
-          attempts += 1;
-          tryRegister();
-          if (!disposeRegister && attempts > 150) {
-            if (timer) {
-              clearInterval(timer);
-              timer = void 0;
-            }
-            try {
-              unsub?.();
-            } catch {
-            }
-            unsub = void 0;
+          if (++attempts > 15) {
+            if (timer) clearInterval(timer);
+            return;
           }
-        }, 100);
+          tryRegister();
+        }, 1e3);
       }
       return () => {
         disposed = true;
-        try {
-          unsub?.();
-        } catch {
-        }
+        unsub?.();
         if (timer) clearInterval(timer);
-        try {
-          disposeRegister?.();
-        } catch {
-        }
+        disposeRegister?.();
       };
     },
-    "wiki: sidebar.workspaces registration"
+    "wiki: sidebar.footer.action registration"
   );
 }
 exports.inject = inject;exports.apply = apply;return module.exports;}});
