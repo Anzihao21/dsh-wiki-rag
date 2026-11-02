@@ -30411,6 +30411,7 @@ var require_chokidar = __commonJS({
 // src/host/index.ts
 import path8 from "node:path";
 import { promises as fs7 } from "node:fs";
+import { createServer } from "node:http";
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
@@ -31654,6 +31655,74 @@ function apply(ctx, config) {
     await initDatabase(path8.join(dataDir, "dsh-wiki-rag.db"));
     await writeLog("plugin-activate", `wiki-rag-host DB=${getDbPath()}`);
   }, "wiki-rag db init");
+  ctx.effect(() => {
+    const server = createServer(async (req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      const url = new URL(req.url || "", "http://localhost");
+      const body = await new Promise((resolve) => {
+        let data = "";
+        req.on("data", (c) => data += c);
+        req.on("end", () => resolve(data));
+      });
+      try {
+        if (req.method === "GET" && url.pathname === "/api/wiki/list") {
+          const files = await listKnowledgeFiles();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(files));
+          return;
+        }
+        if (req.method === "POST" && url.pathname === "/api/wiki/import") {
+          const { source } = JSON.parse(body);
+          const result = await importer.importLocalFile(source);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.method === "DELETE" && url.pathname.startsWith("/api/wiki/")) {
+          const id = parseInt(url.pathname.split("/").pop() || "0");
+          await deleteKnowledgeFile(id);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "deleted", id }));
+          return;
+        }
+        if (req.method === "POST" && url.pathname === "/api/wiki/search") {
+          const { query, topK } = JSON.parse(body);
+          const results = await ragSearch(query, topK || 5);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(results));
+          return;
+        }
+        if (req.method === "GET" && url.pathname === "/api/wiki/snapshots") {
+          const snaps = await listSnapshots();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(snaps));
+          return;
+        }
+        if (req.method === "GET" && url.pathname === "/api/wiki/stats") {
+          const counts = await countByType();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(counts));
+          return;
+        }
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "not found" }));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    server.listen(3081, () => {
+      console.log("[dsh-wiki-rag] API server on http://localhost:3081");
+    });
+    return () => server.close();
+  }, "wiki: http api server");
   ctx.tools.register(defineTool({
     name: "wiki_rag_search",
     description: "\u68C0\u7D22 Wiki \u77E5\u8BC6\u5E93\u5185\u6587\u6863\u8D44\u6599\uFF0C\u8FD4\u56DE\u76F8\u5173\u539F\u6587\u7247\u6BB5 + \u6587\u6863\u540D/\u6765\u6E90\u8DEF\u5F84\u3002",

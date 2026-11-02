@@ -42,6 +42,33 @@ var SAMPLE_MD = {
   "2": "# \u63A5\u5165\u6307\u5357\n\n## \u7B2C\u4E00\u6B65\n\n\u5B89\u88C5\u63D2\u4EF6\uFF1A\n\n```bash\ndsh plugin add dsh-wiki-rag\n```\n\n## \u7B2C\u4E8C\u6B65\n\n\u91CD\u542F DSH\uFF0C\u5DE6\u4FA7\u680F\u51FA\u73B0\u300C\u77E5\u8BC6\u5E93\u300D\u9762\u677F\u3002\n",
   "3": "# API \u53C2\u8003\n\n### wiki_rag_search\n\n\u68C0\u7D22\u77E5\u8BC6\u5E93\uFF0C\u8FD4\u56DE\u76F8\u5173\u6587\u6863\u7247\u6BB5\u3002\n\n| \u53C2\u6570 | \u7C7B\u578B | \u8BF4\u660E |\n|------|------|------|\n| query | string | \u68C0\u7D22\u8BCD |\n| topK | number | \u8FD4\u56DE\u6761\u6570 |\n"
 };
+var API_BASE = "http://localhost:3081/api/wiki";
+async function apiList() {
+  try {
+    const res = await fetch(`${API_BASE}/list`);
+    if (!res.ok) throw new Error("list failed");
+    const data = await res.json();
+    return data.map((f) => ({
+      id: String(f.id),
+      title: f.title || f.source_path?.split("/").pop() || "\u672A\u547D\u540D",
+      type: f.kind === "pdf" ? "PDF" : "MD",
+      status: f.chunk_count > 0 ? "ready" : "stale",
+      summary: f.source_path || ""
+    }));
+  } catch {
+    return SAMPLE_DOCS;
+  }
+}
+async function apiImport(source) {
+  await fetch(`${API_BASE}/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source })
+  });
+}
+async function apiDelete(id) {
+  await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
+}
 function statusStyle(status) {
   if (status === "error") {
     return { label: "\u5F02\u5E38", color: "var(--dsw-alias-state-error-primary)" };
@@ -62,6 +89,10 @@ function WikiSidebar(props) {
   const [showImport, setShowImport] = (0, import_react.useState)(false);
   const [importPath, setImportPath] = (0, import_react.useState)("");
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
+  (0, import_react.useEffect)(() => {
+    apiList().then(setDocs).catch(() => {
+    });
+  }, []);
   const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
     try {
       return localStorage.getItem("wiki_embeddingProvider") || "fallback";
@@ -148,20 +179,22 @@ function WikiSidebar(props) {
     }
     setView("list");
   };
-  const doImport = () => {
+  const doImport = async () => {
     if (!importPath.trim()) return;
-    const newDoc = {
-      id: String(Date.now()),
-      title: importPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "\u65B0\u6587\u6863",
-      type: importPath.endsWith(".pdf") ? "PDF" : "MD",
-      status: "ready",
-      summary: "\u65B0\u5BFC\u5165"
-    };
-    setDocs([newDoc, ...docs]);
+    try {
+      await apiImport(importPath.trim());
+      const list = await apiList();
+      setDocs(list);
+    } catch {
+    }
     setShowImport(false);
     setImportPath("");
   };
-  const doDelete = (id) => {
+  const doDelete = async (id) => {
+    try {
+      await apiDelete(id);
+    } catch {
+    }
     setDocs(docs.filter((d) => d.id !== id));
   };
   const saveEdit = () => {

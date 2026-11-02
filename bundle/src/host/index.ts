@@ -9,6 +9,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { createServer } from 'node:http';
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
@@ -103,6 +104,68 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     await initDatabase(path.join(dataDir, 'dsh-wiki-rag.db'));
     await writeLog('plugin-activate', `wiki-rag-host DB=${getDbPath()}`);
   }, 'wiki-rag db init');
+
+  // 启动 HTTP API server（供客户端 UI 调用）
+  ctx.effect(() => {
+    const server = createServer(async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+      const url = new URL(req.url || '', 'http://localhost');
+      const body = await new Promise<string>((resolve) => {
+        let data = '';
+        req.on('data', (c) => (data += c));
+        req.on('end', () => resolve(data));
+      });
+
+      try {
+        if (req.method === 'GET' && url.pathname === '/api/wiki/list') {
+          const files = await listKnowledgeFiles();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(files)); return;
+        }
+        if (req.method === 'POST' && url.pathname === '/api/wiki/import') {
+          const { source } = JSON.parse(body);
+          const result = await importer.importLocalFile(source);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result)); return;
+        }
+        if (req.method === 'DELETE' && url.pathname.startsWith('/api/wiki/')) {
+          const id = parseInt(url.pathname.split('/').pop() || '0');
+          await deleteKnowledgeFile(id);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'deleted', id })); return;
+        }
+        if (req.method === 'POST' && url.pathname === '/api/wiki/search') {
+          const { query, topK } = JSON.parse(body);
+          const results = await ragSearch(query, topK || 5);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(results)); return;
+        }
+        if (req.method === 'GET' && url.pathname === '/api/wiki/snapshots') {
+          const snaps = await listSnapshots();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(snaps)); return;
+        }
+        if (req.method === 'GET' && url.pathname === '/api/wiki/stats') {
+          const counts = await countByType();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(counts)); return;
+        }
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not found' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    server.listen(3081, () => {
+      console.log('[dsh-wiki-rag] API server on http://localhost:3081');
+    });
+    return () => server.close();
+  }, 'wiki: http api server');
 
   // ---------- Agent 工具：检索 ----------
   ctx.tools.register(defineTool({

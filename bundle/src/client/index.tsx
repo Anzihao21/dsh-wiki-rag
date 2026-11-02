@@ -11,7 +11,7 @@
  * 说明：本文件为普通 TS/TSX 源码，不 import cordis/slots 实体类型（用 any 最小类型），
  * esbuild 不做类型检查；React / jsx-runtime 由宿主外部化提供。
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /** cordis 插件依赖的服务名（运行时由客户端 runtime 注入到 ctx）。 */
 export const inject = ["slots", "locale", "workspaces"];
@@ -42,6 +42,55 @@ const SAMPLE_MD: Record<string, string> = {
   "3": "# API 参考\n\n### wiki_rag_search\n\n检索知识库，返回相关文档片段。\n\n| 参数 | 类型 | 说明 |\n|------|------|------|\n| query | string | 检索词 |\n| topK | number | 返回条数 |\n",
 };
 
+// ---------- API 调用（连宿主端 HTTP server） ----------
+const API_BASE = "http://localhost:3081/api/wiki";
+
+async function apiList(): Promise<WikiDoc[]> {
+  try {
+    const res = await fetch(`${API_BASE}/list`);
+    if (!res.ok) throw new Error("list failed");
+    const data = await res.json();
+    return data.map((f: any) => ({
+      id: String(f.id),
+      title: f.title || f.source_path?.split("/").pop() || "未命名",
+      type: f.kind === "pdf" ? "PDF" : "MD",
+      status: f.chunk_count > 0 ? "ready" : "stale",
+      summary: f.source_path || "",
+    }));
+  } catch { return SAMPLE_DOCS; }
+}
+
+async function apiImport(source: string): Promise<void> {
+  await fetch(`${API_BASE}/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  });
+}
+
+async function apiDelete(id: string): Promise<void> {
+  await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
+}
+
+async function apiSearch(query: string): Promise<WikiDoc[]> {
+  try {
+    const res = await fetch(`${API_BASE}/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, topK: 10 }),
+    });
+    if (!res.ok) throw new Error("search failed");
+    const results = await res.json();
+    return results.map((r: any, i: number) => ({
+      id: String(i),
+      title: r.title || `结果 ${i + 1}`,
+      type: "MD" as const,
+      status: "ready" as const,
+      summary: r.content?.slice(0, 60) || "",
+    }));
+  } catch { return []; }
+}
+
 interface WikiSidebarProps {
   wide: boolean; // owner：侧栏是否展开（否则 56px 图标 rail）
   expandSidebar: () => void; // owner：收起态请求展开
@@ -69,6 +118,11 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
+
+  // 挂载时拉真实文档列表
+  useEffect(() => {
+    apiList().then(setDocs).catch(() => {});
+  }, []);
 
   // 设置表单状态（从 localStorage 加载）
   const [embeddingProvider, setEmbeddingProvider] = useState<"local" | "openai" | "fallback">(() => {
@@ -120,22 +174,21 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // 导入新文档
-  const doImport = () => {
+  const doImport = async () => {
     if (!importPath.trim()) return;
-    const newDoc: WikiDoc = {
-      id: String(Date.now()),
-      title: importPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "新文档",
-      type: importPath.endsWith(".pdf") ? "PDF" : "MD",
-      status: "ready",
-      summary: "新导入",
-    };
-    setDocs([newDoc, ...docs]);
+    try {
+      await apiImport(importPath.trim());
+      // 重新拉列表
+      const list = await apiList();
+      setDocs(list);
+    } catch { /* ignore */ }
     setShowImport(false);
     setImportPath("");
   };
 
   // 删除文档
-  const doDelete = (id: string) => {
+  const doDelete = async (id: string) => {
+    try { await apiDelete(id); } catch { /* ignore */ }
     setDocs(docs.filter((d) => d.id !== id));
   };
 
