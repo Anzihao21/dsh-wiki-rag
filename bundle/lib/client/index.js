@@ -69,6 +69,26 @@ async function apiImport(source) {
 async function apiDelete(id) {
   await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
 }
+async function apiSearch(query) {
+  try {
+    const res = await fetch(`${API_BASE}/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, topK: 10 })
+    });
+    if (!res.ok) throw new Error("search failed");
+    const results = await res.json();
+    return results.map((r, i) => ({
+      id: String(i),
+      title: r.title || `\u7ED3\u679C ${i + 1}`,
+      type: "MD",
+      status: "ready",
+      summary: r.content?.slice(0, 60) || ""
+    }));
+  } catch {
+    return [];
+  }
+}
 function statusStyle(status) {
   if (status === "error") {
     return { label: "\u5F02\u5E38", color: "var(--dsw-alias-state-error-primary)" };
@@ -89,8 +109,12 @@ function WikiSidebar(props) {
   const [showImport, setShowImport] = (0, import_react.useState)(false);
   const [importPath, setImportPath] = (0, import_react.useState)("");
   const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
+  const [searchResults, setSearchResults] = (0, import_react.useState)(null);
+  const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
   (0, import_react.useEffect)(() => {
     apiList().then(setDocs).catch(() => {
+    });
+    fetch(`${API_BASE}/stats`).then((r) => r.json()).then(setStats).catch(() => {
     });
   }, []);
   const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
@@ -239,7 +263,7 @@ function WikiSidebar(props) {
       }
     );
   }
-  const filtered = docs.filter((d) => {
+  const filtered = searchResults ?? docs.filter((d) => {
     const matchQ = d.title.toLowerCase().includes(q.trim().toLowerCase());
     const matchStatus = statusFilter === "all" || d.status === statusFilter;
     return matchQ && matchStatus;
@@ -626,7 +650,9 @@ function WikiSidebar(props) {
                   "button",
                   {
                     title: t ? t("wiki.refresh") : "\u5237\u65B0",
-                    onClick: () => {
+                    onClick: async () => {
+                      const list = await apiList();
+                      setDocs(list);
                     },
                     style: {
                       width: 24,
@@ -667,7 +693,16 @@ function WikiSidebar(props) {
           "input",
           {
             value: q,
-            onChange: (e) => setQ(e.target.value),
+            onChange: (e) => {
+              setQ(e.target.value);
+              if (!e.target.value.trim()) setSearchResults(null);
+            },
+            onKeyDown: async (e) => {
+              if (e.key === "Enter" && q.trim()) {
+                const results = await apiSearch(q.trim());
+                setSearchResults(results);
+              }
+            },
             placeholder,
             style: {
               height: 32,
@@ -870,9 +905,9 @@ function WikiSidebar(props) {
             },
             children: [
               "\u5171 ",
-              docs.length,
+              stats.total || docs.length,
               " \u6761 \xB7 \u5DF2\u7D22\u5F15 ",
-              docs.filter((d) => d.status === "ready").length
+              stats.ready || docs.filter((d) => d.status === "ready").length
             ]
           }
         )

@@ -118,10 +118,13 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
+  const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
+  const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
 
-  // 挂载时拉真实文档列表
+  // 挂载时拉真实文档列表 + 统计
   useEffect(() => {
     apiList().then(setDocs).catch(() => {});
+    fetch(`${API_BASE}/stats`).then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 
   // 设置表单状态（从 localStorage 加载）
@@ -239,7 +242,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
-  const filtered = docs.filter((d) => {
+  const filtered = searchResults ?? docs.filter((d) => {
     const matchQ = d.title.toLowerCase().includes(q.trim().toLowerCase());
     const matchStatus = statusFilter === "all" || d.status === statusFilter;
     return matchQ && matchStatus;
@@ -578,7 +581,10 @@ function WikiSidebar(props: WikiSidebarProps) {
           </button>
           <button
             title={t ? t("wiki.refresh") : "刷新"}
-            onClick={() => {}}
+            onClick={async () => {
+              const list = await apiList();
+              setDocs(list);
+            }}
             style={{
               width: 24, height: 24, border: "none", borderRadius: 6,
               background: "transparent", cursor: "pointer",
@@ -604,7 +610,16 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* 搜索框 */}
       <input
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          if (!e.target.value.trim()) setSearchResults(null);
+        }}
+        onKeyDown={async (e) => {
+          if (e.key === "Enter" && q.trim()) {
+            const results = await apiSearch(q.trim());
+            setSearchResults(results);
+          }
+        }}
         placeholder={placeholder}
         style={{
           height: 32,
@@ -795,7 +810,7 @@ function WikiSidebar(props: WikiSidebarProps) {
           color: "var(--dsw-alias-label-tertiary)",
         }}
       >
-        共 {docs.length} 条 · 已索引 {docs.filter((d) => d.status === "ready").length}
+        共 {stats.total || docs.length} 条 · 已索引 {stats.ready || docs.filter((d) => d.status === "ready").length}
       </div>
     </div>
   );
