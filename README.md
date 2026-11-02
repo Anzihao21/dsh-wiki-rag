@@ -20,12 +20,24 @@ DeepSeek Harness（DSH）Wiki 风格知识库 RAG 插件。
 
 TypeScript + React + Electron + TailwindCSS + Vite + SQLite
 
+## UI 与 DSH 官方一致
+
+渲染层 UI 复刻自 DeepSeek Harness 官方 UI 体系（MIT 开源），保证插件在宿主内观感与原生一致：
+
+- **设计令牌**：消费官方 `--dsw-alias-*` / `--dsw-specific-*` / `--dsw-static-*` CSS 变量（`src/renderer/styles/`），明暗主题由宿主 `body[data-ds-dark-theme]` 级联自动切换，无 hex 字面量、无 JS 主题切换
+- **官方图标**：复刻官方产品图标集（`Icon*OutlineRegular/Medium`），继承 `currentColor`
+- **官方组件**：Button / Tabs / InputField / SearchField / DropdownSelect / Switch / Modal / ConfirmModal，几何对齐 OmniMux 工作台（控件 32px、页头 `20px/600/28px`、基础圆角 8px、Dialog 16px）
+- 图标 artwork 与令牌 CSS 源自官方 `deepseek-ai/deepseek-harness`（MIT License）
+
 ## 目录结构
 
 ```
 dsh-wiki-rag/
 ├── src/main/          # 主进程：db / file / rag / network / snapshot / ipc
-├── src/renderer/      # 渲染进程：组件与页面
+├── src/renderer/      # 渲染进程：组件、官方 UI kit、官方图标与设计令牌
+│   ├── ui-kit.tsx     # 官方一致 UI 组件库
+│   ├── assets/icons/  # 官方产品图标集 + sprite
+│   └── styles/        # 官方设计令牌 CSS
 ├── assets/icon.svg    # 侧边栏图标
 └── test/test-case.ts  # 单元测试脚本
 ```
