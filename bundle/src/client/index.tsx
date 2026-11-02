@@ -13,7 +13,7 @@
 import { useState, useEffect, useRef, useCallback, Component, Fragment } from "react";
 
 /** cordis 插件依赖的服务名（运行时由客户端 runtime 注入到 ctx）。 */
-export const inject = ["slots", "locale", "workspaces"];
+export const inject = ["slots", "locale"];
 
 const NS = "wiki";
 const API_BASE = "http://localhost:3081/api/wiki";

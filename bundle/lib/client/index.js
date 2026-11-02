@@ -30,7 +30,7 @@ __export(client_exports, {
 module.exports = __toCommonJS(client_exports);
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
-var inject = ["slots", "locale", "workspaces"];
+var inject = ["slots", "locale"];
 var NS = "wiki";
 var API_BASE = "http://localhost:3081/api/wiki";
 var SAMPLE_DOCS = [
