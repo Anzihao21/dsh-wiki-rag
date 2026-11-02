@@ -754,7 +754,7 @@ function WikiSidebar(props) {
         )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4F8}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8, color: "var(--dsw-alias-label-tertiary)" }, children: "[]" }),
         "\u6682\u65E0\u5FEB\u7167"
       ] }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -798,7 +798,7 @@ function WikiSidebar(props) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 60 } })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: logs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4CB}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8, color: "var(--dsw-alias-label-tertiary)" }, children: "--" }),
         "\u6682\u65E0\u65E5\u5FD7"
       ] }) : logs.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "6px 10px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)", fontSize: 11 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "var(--dsw-alias-label-tertiary)" }, children: l.time }),
@@ -870,7 +870,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "\u270F\uFE0F"
+                    children: "+"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -909,7 +909,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "\u{1F4F8}"
+                    children: "Snap"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -927,7 +927,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "\u{1F4CB}"
+                    children: "Logs"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -945,7 +945,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "\u2699\uFE0F"
+                    children: "Set"
                   }
                 )
               ] })
@@ -1097,7 +1097,7 @@ function WikiSidebar(props) {
                 gap: 4
               },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: expandedDirs.has("/") ? "\u{1F4C2}" : "\u{1F4C1}" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: expandedDirs.has("/") ? "\u25BC" : "\u25B6" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u6839\u76EE\u5F55" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }, children: filtered.length })
               ]
@@ -1288,7 +1288,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "\u270F\uFE0F \u91CD\u547D\u540D"
+                      children: "Rename"
                     }
                   ),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1301,7 +1301,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "\u{1F504} \u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0"
+                      children: "Update from source"
                     }
                   ),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1314,7 +1314,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "\u{1F5D1} \u5220\u9664\u6587\u6863"
+                      children: "Delete"
                     }
                   )
                 ]

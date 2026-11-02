@@ -675,7 +675,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
           {snapshots.length === 0 ? (
             <div style={{ padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📸</div>
+              <div style={{ fontSize: 24, marginBottom: 8, color: "var(--dsw-alias-label-tertiary)" }}>[]</div>
               暂无快照
             </div>
           ) : (
@@ -726,7 +726,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
           {logs.length === 0 ? (
             <div style={{ padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+              <div style={{ fontSize: 24, marginBottom: 8, color: "var(--dsw-alias-label-tertiary)" }}>--</div>
               暂无日志
             </div>
           ) : (
@@ -787,7 +787,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            ✏️
+            +
           </button>
           <button
             title={t ? t("wiki.refresh") : "刷新"}
@@ -812,7 +812,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            📸
+            Snap
           </button>
           <button
             title="日志"
@@ -823,7 +823,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            📋
+            Logs
           </button>
           <button
             title={t ? t("wiki.settings") : "设置"}
@@ -834,7 +834,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            ⚙️
+            Set
           </button>
         </div>
       </div>
@@ -985,7 +985,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               display: "flex", alignItems: "center", gap: 4,
             }}
           >
-            <span>{expandedDirs.has("/") ? "📂" : "📁"}</span>
+            <span>{expandedDirs.has("/") ? "▼" : "▶"}</span>
             <span>根目录</span>
             <span style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }}>{filtered.length}</span>
           </div>
@@ -1139,7 +1139,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              ✏️ 重命名
+              Rename
             </div>
             <div
               onClick={async () => {
@@ -1150,7 +1150,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              🔄 从源目录更新
+              Update from source
             </div>
             <div
               onClick={() => { doDelete(contextMenu.docId); setContextMenu(null); }}
@@ -1158,7 +1158,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              🗑 删除文档
+              Delete
             </div>
           </div>
         </div>
