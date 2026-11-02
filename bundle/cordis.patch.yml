@@ -10,3 +10,22 @@
         chunkOverlap: 80
         webMode: 'external'
         webTimeout: 15000
+        # ---- Embedding 配置 ----
+        # provider: local（本地模型目录）/ openai（OpenAI 兼容 API）/ fallback（哈希降级，默认）
+        embeddingProvider: 'fallback'
+        # local 模式：填本地模型目录路径（ONNX 格式），如 /models/bge-small-zh-v1.5
+        embeddingModelPath: ''
+        # openai 模式：OpenAI 兼容 API 配置
+        embeddingOpenAIBaseURL: 'https://api.openai.com/v1'
+        embeddingOpenAIAPIKey: ''
+        embeddingOpenAIModel: 'text-embedding-3-small'
+        # ---- Rerank 配置 ----
+        # provider: local（本地 cross-encoder）/ openai（OpenAI 兼容 rerank API）/ none（不重排，默认）
+        rerankProvider: 'none'
+        # local 模式：填本地 cross-encoder 模型目录路径
+        rerankModelPath: ''
+        # openai 模式：rerank API 配置
+        rerankOpenAIBaseURL: 'https://api.openai.com/v1'
+        rerankOpenAIAPIKey: ''
+        rerankOpenAIModel: 'rerank-multilingual-v3'
+        rerankTopK: 5

@@ -54,6 +54,19 @@ export interface PluginSettings {
   chunkSize: number;
   chunkOverlap: number;
   autoSnapshot: boolean;
+  // ---- Embedding 配置 ----
+  embeddingProvider: 'local' | 'openai' | 'fallback';
+  embeddingModelPath: string;      // local provider：本地模型目录路径
+  embeddingOpenAIBaseURL: string;  // openai provider：API 地址
+  embeddingOpenAIAPIKey: string;  // openai provider：API Key
+  embeddingOpenAIModel: string;   // openai provider：模型名（如 text-embedding-3-small）
+  // ---- Rerank 配置 ----
+  rerankProvider: 'local' | 'openai' | 'none';
+  rerankModelPath: string;         // local provider：本地 cross-encoder 模型目录
+  rerankOpenAIBaseURL: string;     // openai provider：rerank API 地址
+  rerankOpenAIAPIKey: string;
+  rerankOpenAIModel: string;       // 如 rerank-multilingual-v3
+  rerankTopK: number;              // rerank 后返回条数
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -63,5 +76,16 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   webTimeout: 30000,
   chunkSize: 800,
   chunkOverlap: 120,
-  autoSnapshot: false
+  autoSnapshot: false,
+  embeddingProvider: 'fallback',
+  embeddingModelPath: '',
+  embeddingOpenAIBaseURL: 'https://api.openai.com/v1',
+  embeddingOpenAIAPIKey: '',
+  embeddingOpenAIModel: 'text-embedding-3-small',
+  rerankProvider: 'none',
+  rerankModelPath: '',
+  rerankOpenAIBaseURL: 'https://api.openai.com/v1',
+  rerankOpenAIAPIKey: '',
+  rerankOpenAIModel: 'rerank-multilingual-v3',
+  rerankTopK: 5,
 };

@@ -17,6 +17,8 @@ import { initDatabase, getDbPath } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
 import { ragSearch } from '../../../src/main/rag/rag-search';
+import { initEmbedding } from '../../../src/main/rag/embedding';
+import { initRerank } from '../../../src/main/rag/rerank';
 import { writeLog } from '../../../src/main/db/log-db';
 import {
   listKnowledgeFiles,
@@ -40,6 +42,19 @@ export const Config = z.object({
   webMode: z.union(['intranet', 'extranet', 'external']).default('extranet'),
   webTimeout: z.number().default(30000),
   autoSnapshot: z.boolean().default(false),
+  // ---- Embedding ----
+  embeddingProvider: z.union(['local', 'openai', 'fallback']).default('fallback'),
+  embeddingModelPath: z.string().default(''),
+  embeddingOpenAIBaseURL: z.string().default('https://api.openai.com/v1'),
+  embeddingOpenAIAPIKey: z.string().default(''),
+  embeddingOpenAIModel: z.string().default('text-embedding-3-small'),
+  // ---- Rerank ----
+  rerankProvider: z.union(['local', 'openai', 'none']).default('none'),
+  rerankModelPath: z.string().default(''),
+  rerankOpenAIBaseURL: z.string().default('https://api.openai.com/v1'),
+  rerankOpenAIAPIKey: z.string().default(''),
+  rerankOpenAIModel: z.string().default('rerank-multilingual-v3'),
+  rerankTopK: z.number().default(5),
 });
 
 export function apply(ctx: Context, config: z.infer<typeof Config>) {
@@ -54,7 +69,24 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     webMode: config.webMode,
     webTimeout: config.webTimeout,
     autoSnapshot: config.autoSnapshot,
+    embeddingProvider: config.embeddingProvider,
+    embeddingModelPath: config.embeddingModelPath,
+    embeddingOpenAIBaseURL: config.embeddingOpenAIBaseURL,
+    embeddingOpenAIAPIKey: config.embeddingOpenAIAPIKey,
+    embeddingOpenAIModel: config.embeddingOpenAIModel,
+    rerankProvider: config.rerankProvider,
+    rerankModelPath: config.rerankModelPath,
+    rerankOpenAIBaseURL: config.rerankOpenAIBaseURL,
+    rerankOpenAIAPIKey: config.rerankOpenAIAPIKey,
+    rerankOpenAIModel: config.rerankOpenAIModel,
+    rerankTopK: config.rerankTopK,
   };
+
+  // 初始化 embedding + rerank 模型
+  ctx.effect(async () => {
+    await initEmbedding(settings);
+    await initRerank(settings);
+  }, 'wiki: init embedding & rerank');
 
   const importer = new FileImporter({
     mdDir: settings.mdStoragePath,

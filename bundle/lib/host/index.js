@@ -30631,7 +30631,62 @@ function chunkText(text, chunkSize, overlap) {
 
 // ../src/main/rag/embedding.ts
 import { createHash } from "crypto";
-function embedText(text, dim = 256) {
+var settings = null;
+var localEmbedder = null;
+var embedDim = 256;
+async function initEmbedding(s) {
+  settings = s;
+  if (s.embeddingProvider === "local" && s.embeddingModelPath) {
+    try {
+      const { pipeline } = await import("@xenova/transformers");
+      localEmbedder = await pipeline(
+        "feature-extraction",
+        s.embeddingModelPath,
+        { quantized: true }
+      );
+      console.log("[dsh-wiki-rag] local embedding model loaded:", s.embeddingModelPath);
+    } catch (e) {
+      console.warn("[dsh-wiki-rag] local embedding failed, fallback to hash:", e);
+      localEmbedder = null;
+    }
+  }
+}
+async function embedText(text) {
+  const provider = settings?.embeddingProvider ?? "fallback";
+  if (provider === "openai" && settings?.embeddingOpenAIAPIKey) {
+    return embedOpenAI(text);
+  }
+  if (provider === "local" && localEmbedder) {
+    return embedLocal(text);
+  }
+  return embedHash(text, embedDim);
+}
+async function embedOpenAI(text) {
+  const baseURL = settings.embeddingOpenAIBaseURL.replace(/\/+$/, "");
+  const resp = await fetch(`${baseURL}/embeddings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${settings.embeddingOpenAIAPIKey}`
+    },
+    body: JSON.stringify({
+      model: settings.embeddingOpenAIModel,
+      input: text
+    })
+  });
+  if (!resp.ok) {
+    throw new Error(`OpenAI embedding failed: ${resp.status} ${resp.statusText}`);
+  }
+  const data = await resp.json();
+  const vec = data.data[0].embedding;
+  return Buffer.from(new Float32Array(vec).buffer);
+}
+async function embedLocal(text) {
+  const output = await localEmbedder(text, { pooling: "mean", normalize: true });
+  const arr = output.data;
+  return Buffer.from(arr.buffer);
+}
+function embedHash(text, dim) {
   const vector = new Float32Array(dim);
   const grams = ngrams(text, 3);
   for (const g of grams) {
@@ -30642,37 +30697,25 @@ function embedText(text, dim = 256) {
     }
   }
   let norm = 0;
-  for (let i = 0; i < dim; i++) {
-    norm += vector[i] * vector[i];
-  }
+  for (let i = 0; i < dim; i++) norm += vector[i] * vector[i];
   norm = Math.sqrt(norm);
   if (norm > 0) {
-    for (let i = 0; i < dim; i++) {
-      vector[i] /= norm;
-    }
+    for (let i = 0; i < dim; i++) vector[i] /= norm;
   }
   return Buffer.from(vector.buffer);
 }
 function ngrams(text, n) {
   const out = [];
   const cleaned = text.replace(/\s+/g, " ").toLowerCase();
-  if (cleaned.length < n) {
-    return cleaned ? [cleaned] : [];
-  }
-  for (let i = 0; i <= cleaned.length - n; i++) {
-    out.push(cleaned.slice(i, i + n));
-  }
+  if (cleaned.length < n) return cleaned ? [cleaned] : [];
+  for (let i = 0; i <= cleaned.length - n; i++) out.push(cleaned.slice(i, i + n));
   return out;
 }
 function cosineSimilarity(a, b) {
   const va = new Float32Array(a.buffer, a.byteOffset, a.byteLength / 4);
   const vb = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
-  if (va.length !== vb.length) {
-    return 0;
-  }
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
+  if (va.length !== vb.length) return 0;
+  let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < va.length; i++) {
     dot += va[i] * vb[i];
     na += va[i] * va[i];
@@ -30951,13 +30994,95 @@ var FileWatcher = class {
   }
 };
 
+// ../src/main/rag/rerank.ts
+var settings2 = null;
+var localReranker = null;
+async function initRerank(s) {
+  settings2 = s;
+  if (s.rerankProvider === "local" && s.rerankModelPath) {
+    try {
+      const { pipeline } = await import("@xenova/transformers");
+      localReranker = await pipeline(
+        "text-classification",
+        s.rerankModelPath,
+        { quantized: true }
+      );
+      console.log("[dsh-wiki-rag] local rerank model loaded:", s.rerankModelPath);
+    } catch (e) {
+      console.warn("[dsh-wiki-rag] local rerank failed, disabled:", e);
+      localReranker = null;
+    }
+  }
+}
+async function rerank(query, results) {
+  const provider = settings2?.rerankProvider ?? "none";
+  if (provider === "none" || results.length === 0) {
+    return results.slice(0, settings2?.rerankTopK ?? 5);
+  }
+  if (provider === "openai" && settings2?.rerankOpenAIAPIKey) {
+    return rerankOpenAI(query, results);
+  }
+  if (provider === "local" && localReranker) {
+    return rerankLocal(query, results);
+  }
+  return results.slice(0, settings2?.rerankTopK ?? 5);
+}
+async function rerankOpenAI(query, results) {
+  const baseURL = settings2.rerankOpenAIBaseURL.replace(/\/+$/, "");
+  const documents = results.map((r) => r.chunk_text);
+  const resp = await fetch(`${baseURL}/rerank`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${settings2.rerankOpenAIAPIKey}`
+    },
+    body: JSON.stringify({
+      model: settings2.rerankOpenAIModel,
+      query,
+      documents,
+      top_n: settings2.rerankTopK
+    })
+  });
+  if (!resp.ok) {
+    console.warn(`[dsh-wiki-rag] rerank API failed: ${resp.status}, returning original results`);
+    return results.slice(0, settings2.rerankTopK);
+  }
+  const data = await resp.json();
+  const reranked = [];
+  for (const r of data.results) {
+    const original = results[r.index];
+    if (original) {
+      reranked.push({ ...original, score: r.relevance_score });
+    }
+  }
+  return reranked;
+}
+async function rerankLocal(query, results) {
+  const scored = [];
+  for (const r of results) {
+    try {
+      const output = await localReranker(
+        `${query} [SEP] ${r.chunk_text}`,
+        { topk: 1 }
+      );
+      const score = output[0]?.score ?? 0;
+      scored.push({ result: r, score });
+    } catch (e) {
+      scored.push({ result: r, score: r.score });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, settings2?.rerankTopK ?? 5).map((s) => ({ ...s.result, score: s.score }));
+}
+
 // ../src/main/rag/rag-search.ts
 async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
-  const qVec = embedText(query);
+  const qVec = await embedText(query);
   const chunks = await getAllChunks();
   if (chunks.length === 0) {
     return [];
   }
+  const candidateCount = Math.max(topK * 3, 10);
   const kw = query.split(/\s+/).filter((w) => w.length > 0);
   const scored = [];
   for (const c of chunks) {
@@ -30967,9 +31092,9 @@ async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
     scored.push({ fileId: c.file_id, text: c.chunk_text, score });
   }
   scored.sort((a, b) => b.score - a.score);
-  const top = scored.slice(0, Math.max(1, topK));
-  const results = [];
-  for (const s of top) {
+  const candidates = scored.slice(0, candidateCount);
+  let results = [];
+  for (const s of candidates) {
     const file = await getKnowledgeFileById(s.fileId);
     results.push({
       file_id: s.fileId,
@@ -30979,6 +31104,8 @@ async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
       score: s.score
     });
   }
+  results = await rerank(query, results);
+  results = results.slice(0, topK);
   await writeLog("rag-search", `query="${query}" hits=${results.length}`);
   return results;
 }
@@ -31447,7 +31574,18 @@ var DEFAULT_SETTINGS = {
   webTimeout: 3e4,
   chunkSize: 800,
   chunkOverlap: 120,
-  autoSnapshot: false
+  autoSnapshot: false,
+  embeddingProvider: "fallback",
+  embeddingModelPath: "",
+  embeddingOpenAIBaseURL: "https://api.openai.com/v1",
+  embeddingOpenAIAPIKey: "",
+  embeddingOpenAIModel: "text-embedding-3-small",
+  rerankProvider: "none",
+  rerankModelPath: "",
+  rerankOpenAIBaseURL: "https://api.openai.com/v1",
+  rerankOpenAIAPIKey: "",
+  rerankOpenAIModel: "rerank-multilingual-v3",
+  rerankTopK: 5
 };
 
 // src/host/index.ts
@@ -31461,12 +31599,25 @@ var Config = z.object({
   chunkOverlap: z.number().default(120),
   webMode: z.union(["intranet", "extranet", "external"]).default("extranet"),
   webTimeout: z.number().default(3e4),
-  autoSnapshot: z.boolean().default(false)
+  autoSnapshot: z.boolean().default(false),
+  // ---- Embedding ----
+  embeddingProvider: z.union(["local", "openai", "fallback"]).default("fallback"),
+  embeddingModelPath: z.string().default(""),
+  embeddingOpenAIBaseURL: z.string().default("https://api.openai.com/v1"),
+  embeddingOpenAIAPIKey: z.string().default(""),
+  embeddingOpenAIModel: z.string().default("text-embedding-3-small"),
+  // ---- Rerank ----
+  rerankProvider: z.union(["local", "openai", "none"]).default("none"),
+  rerankModelPath: z.string().default(""),
+  rerankOpenAIBaseURL: z.string().default("https://api.openai.com/v1"),
+  rerankOpenAIAPIKey: z.string().default(""),
+  rerankOpenAIModel: z.string().default("rerank-multilingual-v3"),
+  rerankTopK: z.number().default(5)
 });
 function apply(ctx, config) {
   const dataDir = path8.join(process.cwd(), ".dsh-wiki-rag");
   const snapshotStoragePath = path8.resolve(config.snapshotStoragePath);
-  const settings = {
+  const settings3 = {
     ...DEFAULT_SETTINGS,
     mdStoragePath: path8.resolve(config.mdStoragePath),
     zipStoragePath: path8.resolve(config.zipStoragePath),
@@ -31474,14 +31625,29 @@ function apply(ctx, config) {
     chunkOverlap: config.chunkOverlap,
     webMode: config.webMode,
     webTimeout: config.webTimeout,
-    autoSnapshot: config.autoSnapshot
+    autoSnapshot: config.autoSnapshot,
+    embeddingProvider: config.embeddingProvider,
+    embeddingModelPath: config.embeddingModelPath,
+    embeddingOpenAIBaseURL: config.embeddingOpenAIBaseURL,
+    embeddingOpenAIAPIKey: config.embeddingOpenAIAPIKey,
+    embeddingOpenAIModel: config.embeddingOpenAIModel,
+    rerankProvider: config.rerankProvider,
+    rerankModelPath: config.rerankModelPath,
+    rerankOpenAIBaseURL: config.rerankOpenAIBaseURL,
+    rerankOpenAIAPIKey: config.rerankOpenAIAPIKey,
+    rerankOpenAIModel: config.rerankOpenAIModel,
+    rerankTopK: config.rerankTopK
   };
+  ctx.effect(async () => {
+    await initEmbedding(settings3);
+    await initRerank(settings3);
+  }, "wiki: init embedding & rerank");
   const importer = new FileImporter({
-    mdDir: settings.mdStoragePath,
-    zipDir: settings.zipStoragePath,
-    chunkSize: settings.chunkSize,
-    chunkOverlap: settings.chunkOverlap,
-    webTimeout: settings.webTimeout
+    mdDir: settings3.mdStoragePath,
+    zipDir: settings3.zipStoragePath,
+    chunkSize: settings3.chunkSize,
+    chunkOverlap: settings3.chunkOverlap,
+    webTimeout: settings3.webTimeout
   });
   const watcher = new FileWatcher();
   ctx.effect(async () => {
@@ -31604,7 +31770,7 @@ function apply(ctx, config) {
       render: (_a, v) => [{ type: "text", text: JSON.stringify(v, null, 2) }]
     },
     async execute() {
-      const out = await createSnapshot(settings.mdStoragePath, settings.zipStoragePath, snapshotStoragePath);
+      const out = await createSnapshot(settings3.mdStoragePath, settings3.zipStoragePath, snapshotStoragePath);
       return { status: "created", path: out };
     }
   }));
@@ -31629,7 +31795,7 @@ function apply(ctx, config) {
       render: (_a, v) => [{ type: "text", text: JSON.stringify(v, null, 2) }]
     },
     async execute() {
-      return { byType: await countByType(), settings };
+      return { byType: await countByType(), settings: settings3 };
     }
   }));
   ctx.effect(() => {
