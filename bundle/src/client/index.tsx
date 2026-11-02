@@ -68,6 +68,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
 
   // 设置表单状态（从 localStorage 加载）
   const [embeddingProvider, setEmbeddingProvider] = useState<"local" | "openai" | "fallback">(() => {
@@ -138,6 +139,16 @@ function WikiSidebar(props: WikiSidebarProps) {
     setDocs(docs.filter((d) => d.id !== id));
   };
 
+  // 保存编辑内容
+  const saveEdit = () => {
+    setDocs(docs.map((d) =>
+      d.id === activeId
+        ? { ...d, summary: mdContent.split("\n").filter((l) => l.trim())[0]?.replace(/^#+\s*/, "").slice(0, 40) || d.summary }
+        : d
+    ));
+    setView("list");
+  };
+
   const title = t ? t("wiki.title") : "知识库";
   const placeholder = t ? t("wiki.search") : "搜索文档…";
 
@@ -175,7 +186,11 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
-  const filtered = docs.filter((d) => d.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const filtered = docs.filter((d) => {
+    const matchQ = d.title.toLowerCase().includes(q.trim().toLowerCase());
+    const matchStatus = statusFilter === "all" || d.status === statusFilter;
+    return matchQ && matchStatus;
+  });
   const activeDoc = docs.find((d) => d.id === activeId);
 
   // ---------- 编辑器视图 ----------
@@ -209,7 +224,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             {activeDoc.title}
           </span>
           <button
-            onClick={() => {}}
+            onClick={saveEdit}
             style={{
               height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
@@ -580,18 +595,56 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       )}
 
+      {/* 状态筛选 tab */}
+      <div style={{ display: "flex", gap: 2 }}>
+        {([
+          ["all", "全部"],
+          ["ready", "已索引"],
+          ["stale", "待同步"],
+          ["error", "异常"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setStatusFilter(key)}
+            style={{
+              flex: 1, padding: "3px 0", border: "none", cursor: "pointer",
+              borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
+              background: statusFilter === key
+                ? "var(--dsw-specific-sidebar-nav-item-active)"
+                : "transparent",
+              color: statusFilter === key
+                ? "var(--dsw-alias-state-business-primary)"
+                : "var(--dsw-alias-label-secondary)",
+              fontWeight: statusFilter === key ? 600 : 400,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* 文档列表 */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
         {filtered.length === 0 ? (
           <div
             style={{
-              padding: "16px 8px",
+              padding: "24px 8px",
               textAlign: "center",
               color: "var(--dsw-alias-label-tertiary)",
               fontSize: 12,
             }}
           >
-            无匹配文档
+            {docs.length === 0 ? (
+              <>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>📚</div>
+                <div>知识库为空</div>
+                <div style={{ marginTop: 4, fontSize: 11 }}>
+                  点右上角 + 导入第一个文档
+                </div>
+              </>
+            ) : (
+              "无匹配文档"
+            )}
           </div>
         ) : (
           filtered.map((d) => {

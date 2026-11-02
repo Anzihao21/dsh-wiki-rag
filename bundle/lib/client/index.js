@@ -61,6 +61,7 @@ function WikiSidebar(props) {
   const [mdContent, setMdContent] = (0, import_react.useState)(SAMPLE_MD["1"] ?? "");
   const [showImport, setShowImport] = (0, import_react.useState)(false);
   const [importPath, setImportPath] = (0, import_react.useState)("");
+  const [statusFilter, setStatusFilter] = (0, import_react.useState)("all");
   const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
     try {
       return localStorage.getItem("wiki_embeddingProvider") || "fallback";
@@ -163,6 +164,12 @@ function WikiSidebar(props) {
   const doDelete = (id) => {
     setDocs(docs.filter((d) => d.id !== id));
   };
+  const saveEdit = () => {
+    setDocs(docs.map(
+      (d) => d.id === activeId ? { ...d, summary: mdContent.split("\n").filter((l) => l.trim())[0]?.replace(/^#+\s*/, "").slice(0, 40) || d.summary } : d
+    ));
+    setView("list");
+  };
   const title = t ? t("wiki.title") : "\u77E5\u8BC6\u5E93";
   const placeholder = t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026";
   if (!wide) {
@@ -199,7 +206,11 @@ function WikiSidebar(props) {
       }
     );
   }
-  const filtered = docs.filter((d) => d.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const filtered = docs.filter((d) => {
+    const matchQ = d.title.toLowerCase().includes(q.trim().toLowerCase());
+    const matchStatus = statusFilter === "all" || d.status === statusFilter;
+    return matchQ && matchStatus;
+  });
   const activeDoc = docs.find((d) => d.id === activeId);
   if (view === "editor" && activeDoc) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -237,8 +248,7 @@ function WikiSidebar(props) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => {
-                },
+                onClick: saveEdit,
                 style: {
                   height: 26,
                   padding: "0 10px",
@@ -678,16 +688,44 @@ function WikiSidebar(props) {
             }
           )
         ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [
+          ["all", "\u5168\u90E8"],
+          ["ready", "\u5DF2\u7D22\u5F15"],
+          ["stale", "\u5F85\u540C\u6B65"],
+          ["error", "\u5F02\u5E38"]
+        ].map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => setStatusFilter(key),
+            style: {
+              flex: 1,
+              padding: "3px 0",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "var(--dsw-radius-sm)",
+              fontSize: 11,
+              background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+              color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+              fontWeight: statusFilter === key ? 600 : 400
+            },
+            children: label
+          },
+          key
+        )) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }, children: filtered.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "div",
           {
             style: {
-              padding: "16px 8px",
+              padding: "24px 8px",
               textAlign: "center",
               color: "var(--dsw-alias-label-tertiary)",
               fontSize: 12
             },
-            children: "\u65E0\u5339\u914D\u6587\u6863"
+            children: docs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, marginBottom: 8 }, children: "\u{1F4DA}" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: "\u77E5\u8BC6\u5E93\u4E3A\u7A7A" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginTop: 4, fontSize: 11 }, children: "\u70B9\u53F3\u4E0A\u89D2 + \u5BFC\u5165\u7B2C\u4E00\u4E2A\u6587\u6863" })
+            ] }) : "\u65E0\u5339\u914D\u6587\u6863"
           }
         ) : filtered.map((d) => {
           const st = statusStyle(d.status);
