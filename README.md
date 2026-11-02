@@ -18,7 +18,7 @@ DeepSeek Harness（DSH）Wiki 风格知识库 RAG 插件。
 
 ## 技术栈
 
-TypeScript + React + Electron + TailwindCSS + Vite + SQLite
+TypeScript + React + Cordis (DSH Bundle) + SQLite + esbuild
 
 ## UI 与 DSH 官方一致
 
@@ -33,21 +33,27 @@ TypeScript + React + Electron + TailwindCSS + Vite + SQLite
 
 ```
 dsh-wiki-rag/
-├── src/main/          # 主进程：db / file / rag / network / snapshot / ipc
-├── src/renderer/      # 渲染进程：组件、官方 UI kit、官方图标与设计令牌
-│   ├── ui-kit.tsx     # 官方一致 UI 组件库
-│   ├── assets/icons/  # 官方产品图标集 + sprite
-│   └── styles/        # 官方设计令牌 CSS
-├── assets/icon.svg    # 侧边栏图标
-└── test/test-case.ts  # 单元测试脚本
+├── bundle/
+│   ├── src/host/       # 宿主端：Cordis 插件入口、8 个工具、SQLite、RAG 检索
+│   ├── src/client/     # 客户端：React UI（DSH sidebar.workspaces slots 面板）
+│   ├── lib/           # esbuild 构建产物
+│   ├── cordis.patch.yml # DSH bundle 配置
+│   └── package.json   # npm 发布包
+├── assets/icon.svg     # 侧边栏图标
+└── test/              # 单元测试
 ```
 
 ## 开发
 
 ```bash
 pnpm install
-pnpm build
-pnpm test
+cd bundle && npm run build   # esbuild 构建宿主 + 客户端
+```
+
+## 安装
+
+```bash
+dsh plugin --profile web add dsh-wiki-rag
 ```
 
 ## 许可
