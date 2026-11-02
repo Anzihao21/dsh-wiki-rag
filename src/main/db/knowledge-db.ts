@@ -1,5 +1,5 @@
 import { all, get, lastInsertId, run } from './sqlite-init';
-import type { KnowledgeFile, FileType } from '../types';
+import type { KnowledgeFile, KnowledgeFolder, FileType } from '../types';
 
 /** 新增知识文件记录，返回自增 id */
 export async function insertKnowledgeFile(record: Omit<KnowledgeFile, 'id'>): Promise<number> {
@@ -68,4 +68,69 @@ export async function countByType(): Promise<Record<string, number>> {
     result[r.file_type] = r.cnt;
   }
   return result;
+}
+
+/** 更新 zip 归档路径（用于自定义存储目录迁移） */
+export async function updateZipPath(id: number, zipPath: string): Promise<void> {
+  await run('UPDATE knowledge_files SET zip_archive_path = ? WHERE id = ?', [zipPath, id]);
+}
+
+/** 按文件夹过滤文档（folderId 为 null 表示根目录） */
+export async function listKnowledgeFilesByFolder(folderId: number | null): Promise<KnowledgeFile[]> {
+  if (folderId === null) {
+    return all<KnowledgeFile>(
+      'SELECT * FROM knowledge_files WHERE folder_id IS NULL ORDER BY create_time DESC'
+    );
+  }
+  return all<KnowledgeFile>(
+    'SELECT * FROM knowledge_files WHERE folder_id = ? ORDER BY create_time DESC',
+    [folderId]
+  );
+}
+
+// ---------- 文件夹 ----------
+
+/** 列出全部文件夹 */
+export async function listFolders(): Promise<KnowledgeFolder[]> {
+  return all<KnowledgeFolder>('SELECT * FROM folders ORDER BY parent_id, id');
+}
+
+/** 按 id 查询文件夹 */
+export async function getFolderById(id: number): Promise<KnowledgeFolder | undefined> {
+  return get<KnowledgeFolder>('SELECT * FROM folders WHERE id = ?', [id]);
+}
+
+/** 新建文件夹，返回自增 id */
+export async function createFolder(name: string, parentId: number | null = null): Promise<number> {
+  await run('INSERT INTO folders (name, parent_id, create_time) VALUES (?, ?, ?)', [
+    name,
+    parentId,
+    Date.now()
+  ]);
+  return lastInsertId();
+}
+
+/** 重命名文件夹 */
+export async function renameFolder(id: number, name: string): Promise<void> {
+  await run('UPDATE folders SET name = ? WHERE id = ?', [name, id]);
+}
+
+/** 移动文件夹到新父目录 */
+export async function moveFolder(id: number, parentId: number | null): Promise<void> {
+  await run('UPDATE folders SET parent_id = ? WHERE id = ?', [parentId, id]);
+}
+
+/**
+ * 删除文件夹：其下文档 folder_id 置 NULL（移入根，不删文档），
+ * 其子文件夹 parent_id 置 NULL（移入根）。
+ */
+export async function deleteFolder(id: number): Promise<void> {
+  await run('UPDATE knowledge_files SET folder_id = NULL WHERE folder_id = ?', [id]);
+  await run('UPDATE folders SET parent_id = NULL WHERE parent_id = ?', [id]);
+  await run('DELETE FROM folders WHERE id = ?', [id]);
+}
+
+/** 把文档移动到某文件夹（folderId 为 null 表示根目录） */
+export async function moveFileToFolder(fileId: number, folderId: number | null): Promise<void> {
+  await run('UPDATE knowledge_files SET folder_id = ? WHERE id = ?', [folderId, fileId]);
 }

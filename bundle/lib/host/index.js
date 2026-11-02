@@ -7228,7 +7228,7 @@ var require_abort_controller = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var eventTargetShim = require_event_target_shim();
-    var AbortSignal = class extends eventTargetShim.EventTarget {
+    var AbortSignal2 = class extends eventTargetShim.EventTarget {
       /**
        * AbortSignal cannot be constructed directly.
        */
@@ -7247,9 +7247,9 @@ var require_abort_controller = __commonJS({
         return aborted;
       }
     };
-    eventTargetShim.defineEventAttribute(AbortSignal.prototype, "abort");
+    eventTargetShim.defineEventAttribute(AbortSignal2.prototype, "abort");
     function createAbortSignal() {
-      const signal = Object.create(AbortSignal.prototype);
+      const signal = Object.create(AbortSignal2.prototype);
       eventTargetShim.EventTarget.call(signal);
       abortedFlags.set(signal, false);
       return signal;
@@ -7262,11 +7262,11 @@ var require_abort_controller = __commonJS({
       signal.dispatchEvent({ type: "abort" });
     }
     var abortedFlags = /* @__PURE__ */ new WeakMap();
-    Object.defineProperties(AbortSignal.prototype, {
+    Object.defineProperties(AbortSignal2.prototype, {
       aborted: { enumerable: true }
     });
     if (typeof Symbol === "function" && typeof Symbol.toStringTag === "symbol") {
-      Object.defineProperty(AbortSignal.prototype, Symbol.toStringTag, {
+      Object.defineProperty(AbortSignal2.prototype, Symbol.toStringTag, {
         configurable: true,
         value: "AbortSignal"
       });
@@ -7310,11 +7310,11 @@ var require_abort_controller = __commonJS({
       });
     }
     exports.AbortController = AbortController;
-    exports.AbortSignal = AbortSignal;
+    exports.AbortSignal = AbortSignal2;
     exports.default = AbortController;
     module.exports = AbortController;
     module.exports.AbortController = module.exports["default"] = AbortController;
-    module.exports.AbortSignal = AbortSignal;
+    module.exports.AbortSignal = AbortSignal2;
   }
 });
 
@@ -7328,7 +7328,7 @@ var require_util2 = __commonJS({
       codes: { ERR_INVALID_ARG_TYPE }
     } = require_errors();
     var { kResistStopPropagation, AggregateError, SymbolDispose } = require_primordials();
-    var AbortSignal = globalThis.AbortSignal || require_abort_controller().AbortSignal;
+    var AbortSignal2 = globalThis.AbortSignal || require_abort_controller().AbortSignal;
     var AbortController = globalThis.AbortController || require_abort_controller().AbortController;
     var AsyncFunction = Object.getPrototypeOf(async function() {
     }).constructor;
@@ -7429,7 +7429,7 @@ var require_util2 = __commonJS({
           }
         };
       },
-      AbortSignalAny: AbortSignal.any || function AbortSignalAny(signals) {
+      AbortSignalAny: AbortSignal2.any || function AbortSignalAny(signals) {
         if (signals.length === 1) {
           return signals[0];
         }
@@ -32774,8 +32774,9 @@ var require_extract_zip = __commonJS({
 
 // src/host/index.ts
 import path8 from "node:path";
-import { promises as fs7 } from "node:fs";
+import { promises as fs7, readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { randomUUID as randomUUID2 } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
@@ -32794,7 +32795,15 @@ CREATE TABLE IF NOT EXISTS knowledge_files (
     zip_archive_path TEXT NOT NULL,
     file_type TEXT NOT NULL,
     create_time INTEGER NOT NULL,
-    last_sync_time INTEGER NOT NULL DEFAULT 0
+    last_sync_time INTEGER NOT NULL DEFAULT 0,
+    folder_id INTEGER DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER,
+    create_time INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS vector_chunks (
@@ -32832,6 +32841,13 @@ function runSchema() {
   const statements = SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean);
   for (const stmt of statements) {
     run(stmt);
+  }
+  migrate();
+}
+function migrate() {
+  try {
+    db.prepare("ALTER TABLE knowledge_files ADD COLUMN folder_id INTEGER DEFAULT NULL").run();
+  } catch {
   }
 }
 function getDb() {
@@ -32913,6 +32929,37 @@ async function countByType() {
   }
   return result;
 }
+async function updateZipPath(id, zipPath) {
+  await run("UPDATE knowledge_files SET zip_archive_path = ? WHERE id = ?", [zipPath, id]);
+}
+async function listFolders() {
+  return all("SELECT * FROM folders ORDER BY parent_id, id");
+}
+async function getFolderById(id) {
+  return get("SELECT * FROM folders WHERE id = ?", [id]);
+}
+async function createFolder(name2, parentId = null) {
+  await run("INSERT INTO folders (name, parent_id, create_time) VALUES (?, ?, ?)", [
+    name2,
+    parentId,
+    Date.now()
+  ]);
+  return lastInsertId();
+}
+async function renameFolder(id, name2) {
+  await run("UPDATE folders SET name = ? WHERE id = ?", [name2, id]);
+}
+async function moveFolder(id, parentId) {
+  await run("UPDATE folders SET parent_id = ? WHERE id = ?", [parentId, id]);
+}
+async function deleteFolder(id) {
+  await run("UPDATE knowledge_files SET folder_id = NULL WHERE folder_id = ?", [id]);
+  await run("UPDATE folders SET parent_id = NULL WHERE parent_id = ?", [id]);
+  await run("DELETE FROM folders WHERE id = ?", [id]);
+}
+async function moveFileToFolder(fileId, folderId) {
+  await run("UPDATE knowledge_files SET folder_id = ? WHERE id = ?", [folderId, fileId]);
+}
 
 // ../src/main/db/log-db.ts
 async function writeLog(action, detail) {
@@ -32938,6 +32985,13 @@ async function deleteChunksByFileId(fileId) {
 }
 async function getAllChunks() {
   return all("SELECT * FROM vector_chunks");
+}
+async function getChunkOrdinal(fileId, chunkId) {
+  const row = await get(
+    "SELECT COUNT(*) AS n FROM vector_chunks WHERE file_id = ? AND id < ?",
+    [fileId, chunkId]
+  );
+  return row ? row.n : 0;
 }
 
 // ../src/main/rag/text-chunk.ts
@@ -33430,7 +33484,7 @@ async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
     const vecScore = cosineSimilarity(qVec, c.vector_blob);
     const kwScore = kw.length ? kw.filter((w) => c.chunk_text.toLowerCase().includes(w.toLowerCase())).length / kw.length : 0;
     const score = (1 - keywordWeight) * vecScore + keywordWeight * kwScore;
-    scored.push({ fileId: c.file_id, text: c.chunk_text, score });
+    scored.push({ fileId: c.file_id, chunkId: c.id, text: c.chunk_text, score });
   }
   scored.sort((a, b) => b.score - a.score);
   const candidates = scored.slice(0, candidateCount);
@@ -33442,7 +33496,10 @@ async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
       file_name: file?.file_name ?? "(\u5DF2\u5220\u9664)",
       source_path: file?.source_path ?? "",
       chunk_text: s.text,
-      score: s.score
+      score: s.score,
+      md_path: file?.md_path ?? "",
+      chunk_id: s.chunkId,
+      chunk_index: await getChunkOrdinal(s.fileId, s.chunkId)
     });
   }
   results = await rerank(query, results);
@@ -33965,7 +34022,7 @@ var Config = z.object({
 });
 function apply(ctx, config) {
   const dataDir = path8.join(process.cwd(), ".dsh-wiki-rag");
-  const snapshotStoragePath = path8.resolve(config.snapshotStoragePath);
+  let snapshotStoragePath = path8.resolve(config.snapshotStoragePath);
   const settings3 = {
     ...DEFAULT_SETTINGS,
     mdStoragePath: path8.resolve(config.mdStoragePath),
@@ -33991,7 +34048,7 @@ function apply(ctx, config) {
     await initEmbedding(settings3);
     await initRerank(settings3);
   }, "wiki: init embedding & rerank");
-  const importer = new FileImporter({
+  let importer = new FileImporter({
     mdDir: settings3.mdStoragePath,
     zipDir: settings3.zipStoragePath,
     chunkSize: settings3.chunkSize,
@@ -34000,6 +34057,16 @@ function apply(ctx, config) {
   });
   const watcher = new FileWatcher();
   const pendingChanges = [];
+  const jobs = /* @__PURE__ */ new Map();
+  const inProgress = /* @__PURE__ */ new Set();
+  function acquire(key) {
+    if (inProgress.has(key)) return false;
+    inProgress.add(key);
+    return true;
+  }
+  function release(key) {
+    inProgress.delete(key);
+  }
   ctx.effect(async () => {
     await initDatabase(path8.join(dataDir, "dsh-wiki-rag.db"));
     await writeLog("plugin-activate", `wiki-rag-host DB=${getDbPath()}`);
@@ -34077,6 +34144,203 @@ function apply(ctx, config) {
       }
     }
   }
+  async function walkParseableFiles(dir) {
+    const out = [];
+    const walk = async (d) => {
+      const entries = await fs7.readdir(d, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path8.join(d, e.name);
+        if (e.isDirectory()) await walk(full);
+        else if (/\.(pdf|docx|md|txt)$/i.test(e.name)) out.push(full);
+      }
+    };
+    await walk(dir);
+    return out;
+  }
+  async function runImportJob(body, job) {
+    const source = (body.source || "").trim();
+    if (!source) throw new Error("\u7F3A\u5C11\u5BFC\u5165\u6765\u6E90 source");
+    let kind = body.kind || "";
+    if (!kind) {
+      kind = /^https?:\/\//i.test(source) ? "url" : "file";
+    }
+    const importFolderProgressive = async (folderPath) => {
+      const files = await walkParseableFiles(folderPath);
+      job.total = files.length;
+      job.done = 0;
+      const results = [];
+      for (const f of files) {
+        job.message = `(${job.done + 1}/${files.length}) ${path8.basename(f)}`;
+        try {
+          results.push(await importer.importLocalFile(f));
+        } catch (e) {
+          results.push({
+            fileId: 0,
+            fileName: path8.basename(f),
+            mdPath: "",
+            skipped: true,
+            reason: e.message
+          });
+        }
+        job.done++;
+      }
+      return { summary: importer.summarize(results) };
+    };
+    if (kind === "folder") {
+      return importFolderProgressive(source);
+    }
+    if (kind === "url") {
+      await guardUrlImport(source);
+      job.total = 1;
+      job.done = 0;
+      job.message = `\u6293\u53D6\u7F51\u9875 ${source}`;
+      const r2 = await importer.importUrl(source, !!body.intranet);
+      job.done = 1;
+      return r2;
+    }
+    if (kind === "note") {
+      job.total = 1;
+      job.done = 0;
+      job.message = `\u65B0\u5EFA\u7B14\u8BB0 ${source}`;
+      const r2 = await importer.importNote(source, body.noteText ?? "");
+      job.done = 1;
+      return r2;
+    }
+    try {
+      const st = await fs7.stat(source);
+      if (st.isDirectory()) return importFolderProgressive(source);
+    } catch {
+    }
+    job.total = 1;
+    job.done = 0;
+    job.message = `\u5BFC\u5165 ${source}`;
+    const r = await importer.importLocalFile(source);
+    job.done = 1;
+    return r;
+  }
+  async function buildTree() {
+    const folders = await listFolders();
+    const files = await listKnowledgeFiles();
+    const byParent = /* @__PURE__ */ new Map();
+    const push = (key, node) => {
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(node);
+    };
+    for (const f of folders) {
+      push(f.parent_id ?? null, { type: "folder", id: f.id, name: f.name, children: [] });
+    }
+    for (const file of files) {
+      push(file.folder_id ?? null, {
+        type: "doc",
+        fileId: file.id,
+        title: file.file_name,
+        kind: file.file_type,
+        status: "ready",
+        folderId: file.folder_id ?? null
+      });
+    }
+    const nest = (parentId) => {
+      const nodes = byParent.get(parentId) || [];
+      const folderNodes = nodes.filter((n) => n.type === "folder");
+      const docNodes = nodes.filter((n) => n.type === "doc");
+      for (const fn of folderNodes) fn.children = nest(fn.id);
+      return [...folderNodes, ...docNodes];
+    };
+    return nest(null);
+  }
+  function publicSettings() {
+    return {
+      mdStoragePath: settings3.mdStoragePath,
+      zipStoragePath: settings3.zipStoragePath,
+      snapshotStoragePath,
+      chunkSize: settings3.chunkSize,
+      chunkOverlap: settings3.chunkOverlap,
+      webMode: settings3.webMode,
+      webTimeout: settings3.webTimeout,
+      autoSnapshot: settings3.autoSnapshot,
+      embeddingProvider: settings3.embeddingProvider,
+      rerankProvider: settings3.rerankProvider,
+      rerankTopK: settings3.rerankTopK
+    };
+  }
+  async function applySettingsPatch(patch) {
+    const oldMd = settings3.mdStoragePath;
+    const oldZip = settings3.zipStoragePath;
+    const oldSnap = snapshotStoragePath;
+    if (typeof patch.mdStoragePath === "string" && patch.mdStoragePath.trim()) {
+      settings3.mdStoragePath = path8.resolve(patch.mdStoragePath);
+    }
+    if (typeof patch.zipStoragePath === "string" && patch.zipStoragePath.trim()) {
+      settings3.zipStoragePath = path8.resolve(patch.zipStoragePath);
+    }
+    if (typeof patch.snapshotStoragePath === "string" && patch.snapshotStoragePath.trim()) {
+      snapshotStoragePath = path8.resolve(patch.snapshotStoragePath);
+    }
+    if (typeof patch.chunkSize === "number") settings3.chunkSize = patch.chunkSize;
+    if (typeof patch.chunkOverlap === "number") settings3.chunkOverlap = patch.chunkOverlap;
+    if (typeof patch.webTimeout === "number") settings3.webTimeout = patch.webTimeout;
+    if (typeof patch.autoSnapshot === "boolean") settings3.autoSnapshot = patch.autoSnapshot;
+    if (typeof patch.rerankTopK === "number") settings3.rerankTopK = patch.rerankTopK;
+    if (patch.webMode === "intranet" || patch.webMode === "extranet") settings3.webMode = patch.webMode;
+    if (patch.embeddingProvider === "local" || patch.embeddingProvider === "openai" || patch.embeddingProvider === "fallback") {
+      settings3.embeddingProvider = patch.embeddingProvider;
+    }
+    if (patch.rerankProvider === "local" || patch.rerankProvider === "openai" || patch.rerankProvider === "none") {
+      settings3.rerankProvider = patch.rerankProvider;
+    }
+    if (settings3.mdStoragePath !== oldMd) {
+      await fs7.mkdir(settings3.mdStoragePath, { recursive: true });
+      for (const f of await listKnowledgeFiles()) {
+        const newMd = path8.join(settings3.mdStoragePath, f.file_name);
+        try {
+          await fs7.rename(f.md_path, newMd);
+        } catch {
+        }
+        await updateMdPath(f.id, f.file_name, newMd);
+      }
+    }
+    if (settings3.zipStoragePath !== oldZip) {
+      await fs7.mkdir(settings3.zipStoragePath, { recursive: true });
+      for (const f of await listKnowledgeFiles()) {
+        if (!f.zip_archive_path) continue;
+        const newZip = path8.join(settings3.zipStoragePath, path8.basename(f.zip_archive_path));
+        try {
+          await fs7.rename(f.zip_archive_path, newZip);
+        } catch {
+        }
+        await updateZipPath(f.id, newZip);
+      }
+    }
+    if (snapshotStoragePath !== oldSnap) {
+      await fs7.mkdir(snapshotStoragePath, { recursive: true });
+      try {
+        for (const n of await fs7.readdir(oldSnap)) {
+          try {
+            await fs7.rename(path8.join(oldSnap, n), path8.join(snapshotStoragePath, n));
+          } catch {
+          }
+        }
+      } catch {
+      }
+    }
+    importer = new FileImporter({
+      mdDir: settings3.mdStoragePath,
+      zipDir: settings3.zipStoragePath,
+      chunkSize: settings3.chunkSize,
+      chunkOverlap: settings3.chunkOverlap,
+      webTimeout: settings3.webTimeout
+    });
+  }
+  function readCurrentVersion() {
+    try {
+      const pkg = JSON.parse(
+        readFileSync(new URL("../../package.json", import.meta.url), "utf-8")
+      );
+      return pkg.version || "0.0.0";
+    } catch {
+      return "0.0.0";
+    }
+  }
   ctx.effect(() => {
     const server = createServer(async (req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -34109,16 +34373,74 @@ function apply(ctx, config) {
           })));
         }
         if (req.method === "POST" && pathname === "/api/wiki/import") {
-          const result = await dispatchImport(JSON.parse(body || "{}"));
-          return json(200, result);
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          if (typeof parsed !== "object" || parsed === null) return json(400, { error: "\u8BF7\u6C42\u4F53\u5FC5\u987B\u662F\u5BF9\u8C61" });
+          const source = typeof parsed.source === "string" ? parsed.source.trim() : "";
+          if (!source) return json(400, { error: "\u7F3A\u5C11\u5BFC\u5165\u6765\u6E90 source" });
+          const opKey = `import:${source}`;
+          if (!acquire(opKey)) return json(409, { error: "operation-in-progress" });
+          if (!parsed.async) {
+            try {
+              const result = await dispatchImport(parsed);
+              return json(200, result);
+            } finally {
+              release(opKey);
+            }
+          }
+          const jobId = randomUUID2();
+          const job = {
+            jobId,
+            phase: "prepare",
+            done: 0,
+            total: 1,
+            message: "\u4EFB\u52A1\u5DF2\u521B\u5EFA",
+            status: "running",
+            startedAt: Date.now()
+          };
+          jobs.set(jobId, job);
+          (async () => {
+            try {
+              job.result = await runImportJob(parsed, job);
+              job.status = "done";
+              job.message = "\u5BFC\u5165\u5B8C\u6210";
+              await writeLog("import-async", `job=${jobId} done`);
+            } catch (e) {
+              job.status = "error";
+              job.error = e.message;
+              job.message = "\u5BFC\u5165\u5931\u8D25";
+              await writeLog("import-async-error", `${jobId}: ${e.message}`);
+            } finally {
+              release(opKey);
+            }
+          })();
+          return json(200, { jobId });
         }
         if (req.method === "POST" && pathname === "/api/wiki/search") {
-          const { query, topK } = JSON.parse(body || "{}");
-          const results = await ragSearch(query, topK || 5);
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          if (typeof parsed?.query !== "string" || !parsed.query.trim()) {
+            return json(400, { error: "\u7F3A\u5C11 query" });
+          }
+          const topK = typeof parsed.topK === "number" ? parsed.topK : 5;
+          const results = await ragSearch(parsed.query, topK);
           return json(200, results.map((r) => ({
             ...r,
             title: r.file_name,
-            content: r.chunk_text
+            content: r.chunk_text,
+            fileId: r.file_id,
+            fileName: r.file_name,
+            sourcePath: r.md_path || r.source_path,
+            score: r.score,
+            chunkIndex: r.chunk_index ?? 0
           })));
         }
         if (req.method === "GET" && pathname === "/api/wiki/logs") {
@@ -34153,25 +34475,164 @@ function apply(ctx, config) {
           const restored = await restoreSnapshot(zipPath, path8.dirname(settings3.mdStoragePath));
           return json(200, { status: "restored", files: restored });
         }
+        if (req.method === "GET" && pathname === "/api/wiki/tree") {
+          return json(200, await buildTree());
+        }
+        if (req.method === "POST" && pathname === "/api/wiki/folders") {
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          const name2 = typeof parsed?.name === "string" ? parsed.name.trim() : "";
+          if (!name2) return json(400, { error: "\u7F3A\u5C11 name" });
+          let parentId = null;
+          if (parsed.parentId !== void 0 && parsed.parentId !== null) {
+            if (typeof parsed.parentId !== "number") return json(400, { error: "parentId \u5FC5\u987B\u662F\u6570\u5B57\u6216 null" });
+            parentId = parsed.parentId;
+          }
+          const id = await createFolder(name2, parentId);
+          await writeLog("folder-create", `id=${id} name=${name2} parent=${parentId}`);
+          return json(200, { id, name: name2, parentId });
+        }
+        if (req.method === "POST" && seg.length === 5 && seg[2] === "folders" && (seg[4] === "rename" || seg[4] === "move")) {
+          const fid = parseInt(seg[3] || "");
+          if (Number.isNaN(fid)) return json(400, { error: "\u975E\u6CD5\u6587\u4EF6\u5939 id" });
+          const target = await getFolderById(fid);
+          if (!target) return json(404, { error: "\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          if (seg[4] === "rename") {
+            const name2 = typeof parsed?.name === "string" ? parsed.name.trim() : "";
+            if (!name2) return json(400, { error: "\u7F3A\u5C11 name" });
+            await renameFolder(fid, name2);
+            await writeLog("folder-rename", `id=${fid} -> ${name2}`);
+            return json(200, { id: fid, name: name2 });
+          }
+          let parentId = null;
+          if (parsed.parentId !== void 0 && parsed.parentId !== null) {
+            if (typeof parsed.parentId !== "number") return json(400, { error: "parentId \u5FC5\u987B\u662F\u6570\u5B57\u6216 null" });
+            parentId = parsed.parentId;
+          }
+          if (parentId === fid) return json(400, { error: "\u4E0D\u80FD\u79FB\u52A8\u5230\u81EA\u8EAB" });
+          await moveFolder(fid, parentId);
+          await writeLog("folder-move", `id=${fid} parent=${parentId}`);
+          return json(200, { id: fid, parentId });
+        }
+        if (req.method === "DELETE" && seg.length === 4 && seg[2] === "folders") {
+          const fid = parseInt(seg[3] || "");
+          if (Number.isNaN(fid)) return json(400, { error: "\u975E\u6CD5\u6587\u4EF6\u5939 id" });
+          const target = await getFolderById(fid);
+          if (!target) return json(404, { error: "\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+          await deleteFolder(fid);
+          await writeLog("folder-delete", `id=${fid}\uFF08\u6587\u6863/\u5B50\u6587\u4EF6\u5939\u79FB\u5165\u6839\uFF09`);
+          return json(200, { status: "deleted" });
+        }
+        if (req.method === "POST" && seg.length === 5 && seg[2] === "files" && seg[4] === "move") {
+          const fileId = parseInt(seg[3] || "");
+          if (Number.isNaN(fileId)) return json(400, { error: "\u975E\u6CD5 fileId" });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          let folderId = null;
+          if (parsed.folderId !== void 0 && parsed.folderId !== null) {
+            if (typeof parsed.folderId !== "number") return json(400, { error: "folderId \u5FC5\u987B\u662F\u6570\u5B57\u6216 null" });
+            folderId = parsed.folderId;
+          }
+          if (folderId !== null && !await getFolderById(folderId)) {
+            return json(404, { error: "\u76EE\u6807\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+          }
+          await moveFileToFolder(fileId, folderId);
+          await writeLog("file-move", `fileId=${fileId} -> folder=${folderId}`);
+          return json(200, { fileId, folderId });
+        }
+        if (req.method === "GET" && pathname === "/api/wiki/settings") {
+          return json(200, publicSettings());
+        }
+        if (req.method === "POST" && pathname === "/api/wiki/settings") {
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          if (typeof parsed !== "object" || parsed === null) return json(400, { error: "\u8BF7\u6C42\u4F53\u5FC5\u987B\u662F\u5BF9\u8C61" });
+          await applySettingsPatch(parsed);
+          await writeLog("settings-update", "\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+          return json(200, { status: "saved", settings: publicSettings() });
+        }
+        if (req.method === "GET" && pathname === "/api/wiki/jobs") {
+          const list = [...jobs.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
+          return json(200, list.map((j) => {
+            const { startedAt: _s, ...rest } = j;
+            return rest;
+          }));
+        }
+        if (req.method === "GET" && seg.length === 4 && seg[2] === "jobs") {
+          const job = jobs.get(seg[3] || "");
+          if (!job) return json(404, { error: "\u4EFB\u52A1\u4E0D\u5B58\u5728" });
+          const { startedAt: _s, ...rest } = job;
+          return json(200, rest);
+        }
+        if (req.method === "GET" && pathname === "/api/wiki/update-check") {
+          const currentVersion = readCurrentVersion();
+          try {
+            const resp = await fetch("https://registry.npmjs.org/dsh-wiki-rag/latest", {
+              signal: AbortSignal.timeout(8e3)
+            });
+            if (!resp.ok) throw new Error(`http ${resp.status}`);
+            const data = await resp.json();
+            const latestVersion = data.version || currentVersion;
+            return json(200, {
+              currentVersion,
+              latestVersion,
+              hasUpdate: latestVersion !== currentVersion,
+              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`
+            });
+          } catch {
+            return json(200, {
+              currentVersion,
+              latestVersion: currentVersion,
+              hasUpdate: false,
+              packageUrl: ""
+            });
+          }
+        }
         if (seg[1] === "wiki" && seg[2]) {
           const id = parseInt(seg[2]);
           const action = seg[3];
           const record = await getKnowledgeFileById(id);
           if (req.method === "DELETE" && !action) {
-            if (record) {
-              try {
-                await fs7.unlink(record.md_path);
-              } catch {
+            const opKey = `delete:${id}`;
+            if (!acquire(opKey)) return json(409, { error: "operation-in-progress" });
+            try {
+              if (record) {
+                try {
+                  await fs7.unlink(record.md_path);
+                } catch {
+                }
+                try {
+                  if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
+                } catch {
+                }
               }
-              try {
-                if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
-              } catch {
-              }
+              await deleteKnowledgeFile(id);
+              pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
+              await writeLog("delete", `\u5220\u9664 fileId=${id}`);
+              return json(200, { status: "deleted", id });
+            } finally {
+              release(opKey);
             }
-            await deleteKnowledgeFile(id);
-            pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
-            await writeLog("delete", `\u5220\u9664 fileId=${id}`);
-            return json(200, { status: "deleted", id });
           }
           if (req.method === "POST" && action === "sync") {
             if (!record) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
@@ -34180,7 +34641,13 @@ function apply(ctx, config) {
           }
           if (req.method === "POST" && action === "accept-update") {
             if (!record) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
-            const { newText } = JSON.parse(body || "{}");
+            let parsed;
+            try {
+              parsed = JSON.parse(body || "{}");
+            } catch {
+              return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+            }
+            const newText = parsed?.newText;
             if (typeof newText !== "string") return json(400, { error: "\u7F3A\u5C11 newText" });
             if (settings3.autoSnapshot) {
               try {
@@ -34202,8 +34669,13 @@ function apply(ctx, config) {
           }
           if (req.method === "POST" && action === "rename") {
             if (!record) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
-            const { newName } = JSON.parse(body || "{}");
-            const clean = (newName || "").trim();
+            let parsed;
+            try {
+              parsed = JSON.parse(body || "{}");
+            } catch {
+              return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+            }
+            const clean = (parsed?.newName || "").trim();
             if (!clean) return json(400, { error: "\u7F3A\u5C11 newName" });
             const desired = clean.endsWith(".md") ? clean : `${clean}.md`;
             const mdDir = path8.dirname(record.md_path);

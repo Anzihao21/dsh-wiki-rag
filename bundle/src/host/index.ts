@@ -8,8 +8,9 @@
  * 初始化 DB、加载设置、把操作注册成 defineTool。资源清理交给 ctx.effect。
  */
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
@@ -26,7 +27,15 @@ import {
   getKnowledgeFileById,
   deleteKnowledgeFile,
   updateMdPath,
-  countByType
+  updateZipPath,
+  countByType,
+  listFolders,
+  getFolderById,
+  createFolder,
+  renameFolder,
+  moveFolder,
+  deleteFolder,
+  moveFileToFolder
 } from '../../../src/main/db/knowledge-db';
 import { triggerSourceSync, applySourceUpdate } from '../../../src/main/file/source-sync';
 import { resolveUniqueFileName } from '../../../src/main/file/name-auto-rename';
@@ -62,7 +71,7 @@ export const Config = z.object({
 
 export function apply(ctx: Context, config: z.infer<typeof Config>) {
   const dataDir = path.join(process.cwd(), '.dsh-wiki-rag');
-  const snapshotStoragePath = path.resolve(config.snapshotStoragePath);
+  let snapshotStoragePath = path.resolve(config.snapshotStoragePath);
   const settings: PluginSettings = {
     ...DEFAULT_SETTINGS,
     mdStoragePath: path.resolve(config.mdStoragePath),
@@ -91,7 +100,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     await initRerank(settings);
   }, 'wiki: init embedding & rerank');
 
-  const importer = new FileImporter({
+  let importer = new FileImporter({
     mdDir: settings.mdStoragePath,
     zipDir: settings.zipStoragePath,
     chunkSize: settings.chunkSize,
@@ -108,6 +117,31 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     sourcePath: string;
     time: number;
   }> = [];
+
+  // ---- 批量任务进度（内存态）----
+  interface Job {
+    jobId: string;
+    phase: string;
+    done: number;
+    total: number;
+    message: string;
+    status: 'running' | 'done' | 'error';
+    result?: any;
+    error?: string;
+    startedAt: number;
+  }
+  const jobs = new Map<string, Job>();
+
+  // ---- 并发去重：同一路径/同一文件的进行中操作 ----
+  const inProgress = new Set<string>();
+  function acquire(key: string): boolean {
+    if (inProgress.has(key)) return false;
+    inProgress.add(key);
+    return true;
+  }
+  function release(key: string): void {
+    inProgress.delete(key);
+  }
 
   // 初始化 DB（业务依赖本地 sqlite；ctx.fs 面向沙箱文本文件，此处保留业务自身 DB 语义）
   ctx.effect(async () => {
@@ -192,6 +226,208 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
   }
 
+  // 递归扫描可解析文档（与 FileImporter 内部一致，用于批量导入进度统计）
+  async function walkParseableFiles(dir: string): Promise<string[]> {
+    const out: string[] = [];
+    const walk = async (d: string): Promise<void> => {
+      const entries = await fs.readdir(d, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) await walk(full);
+        else if (/\.(pdf|docx|md|txt)$/i.test(e.name)) out.push(full);
+      }
+    };
+    await walk(dir);
+    return out;
+  }
+
+  // 异步导入：带进度回调，实时写 job.done/total/message
+  async function runImportJob(body: {
+    source?: string; kind?: string; noteText?: string; intranet?: boolean;
+  }, job: Job): Promise<any> {
+    const source = (body.source || '').trim();
+    if (!source) throw new Error('缺少导入来源 source');
+    let kind = body.kind || '';
+    if (!kind) {
+      kind = /^https?:\/\//i.test(source) ? 'url' : 'file';
+    }
+
+    // 文件夹批量：逐文件更新进度
+    const importFolderProgressive = async (folderPath: string) => {
+      const files = await walkParseableFiles(folderPath);
+      job.total = files.length;
+      job.done = 0;
+      const results: any[] = [];
+      for (const f of files) {
+        job.message = `(${job.done + 1}/${files.length}) ${path.basename(f)}`;
+        try {
+          results.push(await importer.importLocalFile(f));
+        } catch (e) {
+          results.push({
+            fileId: 0, fileName: path.basename(f), mdPath: '', skipped: true,
+            reason: (e as Error).message
+          });
+        }
+        job.done++;
+      }
+      return { summary: importer.summarize(results) };
+    };
+
+    if (kind === 'folder') {
+      return importFolderProgressive(source);
+    }
+    if (kind === 'url') {
+      await guardUrlImport(source);
+      job.total = 1; job.done = 0; job.message = `抓取网页 ${source}`;
+      const r = await importer.importUrl(source, !!body.intranet);
+      job.done = 1;
+      return r;
+    }
+    if (kind === 'note') {
+      job.total = 1; job.done = 0; job.message = `新建笔记 ${source}`;
+      const r = await importer.importNote(source, body.noteText ?? '');
+      job.done = 1;
+      return r;
+    }
+    // file / 默认
+    try {
+      const st = await fs.stat(source);
+      if (st.isDirectory()) return importFolderProgressive(source);
+    } catch { /* 交给 importLocalFile 报错 */ }
+    job.total = 1; job.done = 0; job.message = `导入 ${source}`;
+    const r = await importer.importLocalFile(source);
+    job.done = 1;
+    return r;
+  }
+
+  // 组装递归树形 TreeNode
+  async function buildTree(): Promise<any[]> {
+    const folders = await listFolders();
+    const files = await listKnowledgeFiles();
+    const byParent = new Map<any, any[]>();
+    const push = (key: any, node: any) => {
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(node);
+    };
+    for (const f of folders) {
+      push(f.parent_id ?? null, { type: 'folder', id: f.id, name: f.name, children: [] });
+    }
+    for (const file of files) {
+      push(file.folder_id ?? null, {
+        type: 'doc',
+        fileId: file.id,
+        title: file.file_name,
+        kind: file.file_type,
+        status: 'ready',
+        folderId: file.folder_id ?? null,
+      });
+    }
+    const nest = (parentId: any): any[] => {
+      const nodes = byParent.get(parentId) || [];
+      const folderNodes = nodes.filter((n) => n.type === 'folder');
+      const docNodes = nodes.filter((n) => n.type === 'doc');
+      for (const fn of folderNodes) fn.children = nest(fn.id);
+      return [...folderNodes, ...docNodes];
+    };
+    return nest(null);
+  }
+
+  // 序列化给前端的 Settings（严格按契约字段）
+  function publicSettings() {
+    return {
+      mdStoragePath: settings.mdStoragePath,
+      zipStoragePath: settings.zipStoragePath,
+      snapshotStoragePath,
+      chunkSize: settings.chunkSize,
+      chunkOverlap: settings.chunkOverlap,
+      webMode: settings.webMode,
+      webTimeout: settings.webTimeout,
+      autoSnapshot: settings.autoSnapshot,
+      embeddingProvider: settings.embeddingProvider,
+      rerankProvider: settings.rerankProvider,
+      rerankTopK: settings.rerankTopK,
+    };
+  }
+
+  // 应用设置修改：移动已有文件到新目录并更新 DB，重建 importer
+  async function applySettingsPatch(patch: Record<string, any>): Promise<void> {
+    const oldMd = settings.mdStoragePath;
+    const oldZip = settings.zipStoragePath;
+    const oldSnap = snapshotStoragePath;
+
+    if (typeof patch.mdStoragePath === 'string' && patch.mdStoragePath.trim()) {
+      settings.mdStoragePath = path.resolve(patch.mdStoragePath);
+    }
+    if (typeof patch.zipStoragePath === 'string' && patch.zipStoragePath.trim()) {
+      settings.zipStoragePath = path.resolve(patch.zipStoragePath);
+    }
+    if (typeof patch.snapshotStoragePath === 'string' && patch.snapshotStoragePath.trim()) {
+      snapshotStoragePath = path.resolve(patch.snapshotStoragePath);
+    }
+    if (typeof patch.chunkSize === 'number') settings.chunkSize = patch.chunkSize;
+    if (typeof patch.chunkOverlap === 'number') settings.chunkOverlap = patch.chunkOverlap;
+    if (typeof patch.webTimeout === 'number') settings.webTimeout = patch.webTimeout;
+    if (typeof patch.autoSnapshot === 'boolean') settings.autoSnapshot = patch.autoSnapshot;
+    if (typeof patch.rerankTopK === 'number') settings.rerankTopK = patch.rerankTopK;
+    if (patch.webMode === 'intranet' || patch.webMode === 'extranet') settings.webMode = patch.webMode;
+    if (patch.embeddingProvider === 'local' || patch.embeddingProvider === 'openai' || patch.embeddingProvider === 'fallback') {
+      settings.embeddingProvider = patch.embeddingProvider;
+    }
+    if (patch.rerankProvider === 'local' || patch.rerankProvider === 'openai' || patch.rerankProvider === 'none') {
+      settings.rerankProvider = patch.rerankProvider;
+    }
+
+    // 移动 md 文件并更新 DB md_path
+    if (settings.mdStoragePath !== oldMd) {
+      await fs.mkdir(settings.mdStoragePath, { recursive: true });
+      for (const f of await listKnowledgeFiles()) {
+        const newMd = path.join(settings.mdStoragePath, f.file_name);
+        try { await fs.rename(f.md_path, newMd); } catch { /* 原文件已失也更新记录 */ }
+        await updateMdPath(f.id, f.file_name, newMd);
+      }
+    }
+    // 移动 zip 归档并更新 DB zip_archive_path
+    if (settings.zipStoragePath !== oldZip) {
+      await fs.mkdir(settings.zipStoragePath, { recursive: true });
+      for (const f of await listKnowledgeFiles()) {
+        if (!f.zip_archive_path) continue;
+        const newZip = path.join(settings.zipStoragePath, path.basename(f.zip_archive_path));
+        try { await fs.rename(f.zip_archive_path, newZip); } catch { /* ignore */ }
+        await updateZipPath(f.id, newZip);
+      }
+    }
+    // 移动快照文件
+    if (snapshotStoragePath !== oldSnap) {
+      await fs.mkdir(snapshotStoragePath, { recursive: true });
+      try {
+        for (const n of await fs.readdir(oldSnap)) {
+          try { await fs.rename(path.join(oldSnap, n), path.join(snapshotStoragePath, n)); } catch { /* ignore */ }
+        }
+      } catch { /* 旧快照目录不存在 */ }
+    }
+
+    // 用新配置重建 importer
+    importer = new FileImporter({
+      mdDir: settings.mdStoragePath,
+      zipDir: settings.zipStoragePath,
+      chunkSize: settings.chunkSize,
+      chunkOverlap: settings.chunkOverlap,
+      webTimeout: settings.webTimeout,
+    });
+  }
+
+  // 读取 bundle/package.json 当前版本（供检查更新）
+  function readCurrentVersion(): string {
+    try {
+      const pkg = JSON.parse(
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
+      );
+      return pkg.version || '0.0.0';
+    } catch {
+      return '0.0.0';
+    }
+  }
+
   // 启动 HTTP API server（供客户端 UI 调用）
   ctx.effect(() => {
     const server = createServer(async (req, res) => {
@@ -224,18 +460,75 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           })));
         }
 
-        // ---- 导入（六大来源分发）----
+        // ---- 导入（六大来源分发；async:true 走后台任务）----
         if (req.method === 'POST' && pathname === '/api/wiki/import') {
-          const result = await dispatchImport(JSON.parse(body || '{}'));
-          return json(200, result);
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
+          const source = typeof parsed.source === 'string' ? parsed.source.trim() : '';
+          if (!source) return json(400, { error: '缺少导入来源 source' });
+
+          // 并发去重：同一路径导入进行中 → 409
+          const opKey = `import:${source}`;
+          if (!acquire(opKey)) return json(409, { error: 'operation-in-progress' });
+
+          // 同步模式（保持原行为）
+          if (!parsed.async) {
+            try {
+              const result = await dispatchImport(parsed);
+              return json(200, result);
+            } finally {
+              release(opKey);
+            }
+          }
+
+          // 异步模式：立刻返回 jobId，后台跑 FileImporter 并实时更新进度
+          const jobId = randomUUID();
+          const job: Job = {
+            jobId, phase: 'prepare', done: 0, total: 1,
+            message: '任务已创建', status: 'running', startedAt: Date.now(),
+          };
+          jobs.set(jobId, job);
+          (async () => {
+            try {
+              job.result = await runImportJob(parsed, job);
+              job.status = 'done';
+              job.message = '导入完成';
+              await writeLog('import-async', `job=${jobId} done`);
+            } catch (e: any) {
+              job.status = 'error';
+              job.error = e.message;
+              job.message = '导入失败';
+              await writeLog('import-async-error', `${jobId}: ${e.message}`);
+            } finally {
+              release(opKey);
+            }
+          })();
+          return json(200, { jobId });
         }
 
-        // ---- 检索（补 title/content 字段对齐前端渲染）----
+        // ---- 检索（补 title/content + 溯源字段 fileId/fileName/sourcePath/score/chunkIndex）----
         if (req.method === 'POST' && pathname === '/api/wiki/search') {
-          const { query, topK } = JSON.parse(body || '{}');
-          const results = await ragSearch(query, topK || 5);
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          if (typeof parsed?.query !== 'string' || !parsed.query.trim()) {
+            return json(400, { error: '缺少 query' });
+          }
+          const topK = typeof parsed.topK === 'number' ? parsed.topK : 5;
+          const results = await ragSearch(parsed.query, topK);
           return json(200, results.map((r) => ({
-            ...r, title: r.file_name, content: r.chunk_text,
+            ...r,
+            title: r.file_name,
+            content: r.chunk_text,
+            fileId: r.file_id,
+            fileName: r.file_name,
+            sourcePath: r.md_path || r.source_path,
+            score: r.score,
+            chunkIndex: r.chunk_index ?? 0,
           })));
         }
 
@@ -281,6 +574,156 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           return json(200, { status: 'restored', files: restored });
         }
 
+        // ============ 新增端点（冻结契约） ============
+
+        // ---- 树形：GET /tree ----
+        if (req.method === 'GET' && pathname === '/api/wiki/tree') {
+          return json(200, await buildTree());
+        }
+
+        // ---- 新建文件夹：POST /folders ----
+        if (req.method === 'POST' && pathname === '/api/wiki/folders') {
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+          if (!name) return json(400, { error: '缺少 name' });
+          let parentId: number | null = null;
+          if (parsed.parentId !== undefined && parsed.parentId !== null) {
+            if (typeof parsed.parentId !== 'number') return json(400, { error: 'parentId 必须是数字或 null' });
+            parentId = parsed.parentId;
+          }
+          const id = await createFolder(name, parentId);
+          await writeLog('folder-create', `id=${id} name=${name} parent=${parentId}`);
+          return json(200, { id, name, parentId });
+        }
+
+        // ---- 文件夹动作：POST /folders/:id/rename | /move ----
+        if (req.method === 'POST' && seg.length === 5 && seg[2] === 'folders' &&
+            (seg[4] === 'rename' || seg[4] === 'move')) {
+          const fid = parseInt(seg[3] || '');
+          if (Number.isNaN(fid)) return json(400, { error: '非法文件夹 id' });
+          const target = await getFolderById(fid);
+          if (!target) return json(404, { error: '文件夹不存在' });
+
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+
+          if (seg[4] === 'rename') {
+            const name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+            if (!name) return json(400, { error: '缺少 name' });
+            await renameFolder(fid, name);
+            await writeLog('folder-rename', `id=${fid} -> ${name}`);
+            return json(200, { id: fid, name });
+          }
+          // move
+          let parentId: number | null = null;
+          if (parsed.parentId !== undefined && parsed.parentId !== null) {
+            if (typeof parsed.parentId !== 'number') return json(400, { error: 'parentId 必须是数字或 null' });
+            parentId = parsed.parentId;
+          }
+          if (parentId === fid) return json(400, { error: '不能移动到自身' });
+          await moveFolder(fid, parentId);
+          await writeLog('folder-move', `id=${fid} parent=${parentId}`);
+          return json(200, { id: fid, parentId });
+        }
+
+        // ---- 删除文件夹：DELETE /folders/:id ----
+        if (req.method === 'DELETE' && seg.length === 4 && seg[2] === 'folders') {
+          const fid = parseInt(seg[3] || '');
+          if (Number.isNaN(fid)) return json(400, { error: '非法文件夹 id' });
+          const target = await getFolderById(fid);
+          if (!target) return json(404, { error: '文件夹不存在' });
+          await deleteFolder(fid);
+          await writeLog('folder-delete', `id=${fid}（文档/子文件夹移入根）`);
+          return json(200, { status: 'deleted' });
+        }
+
+        // ---- 文件移动：POST /files/:id/move ----
+        if (req.method === 'POST' && seg.length === 5 && seg[2] === 'files' && seg[4] === 'move') {
+          const fileId = parseInt(seg[3] || '');
+          if (Number.isNaN(fileId)) return json(400, { error: '非法 fileId' });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: '条目不存在' });
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          let folderId: number | null = null;
+          if (parsed.folderId !== undefined && parsed.folderId !== null) {
+            if (typeof parsed.folderId !== 'number') return json(400, { error: 'folderId 必须是数字或 null' });
+            folderId = parsed.folderId;
+          }
+          if (folderId !== null && !(await getFolderById(folderId))) {
+            return json(404, { error: '目标文件夹不存在' });
+          }
+          await moveFileToFolder(fileId, folderId);
+          await writeLog('file-move', `fileId=${fileId} -> folder=${folderId}`);
+          return json(200, { fileId, folderId });
+        }
+
+        // ---- 设置：GET /settings ----
+        if (req.method === 'GET' && pathname === '/api/wiki/settings') {
+          return json(200, publicSettings());
+        }
+        // ---- 设置：POST /settings（修改存储目录时迁移文件并更新 DB）----
+        if (req.method === 'POST' && pathname === '/api/wiki/settings') {
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
+          await applySettingsPatch(parsed);
+          await writeLog('settings-update', '设置已保存');
+          return json(200, { status: 'saved', settings: publicSettings() });
+        }
+
+        // ---- 批量任务：GET /jobs（最近 20，最新在前）----
+        if (req.method === 'GET' && pathname === '/api/wiki/jobs') {
+          const list = [...jobs.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
+          return json(200, list.map((j) => {
+            const { startedAt: _s, ...rest } = j;
+            return rest;
+          }));
+        }
+        // ---- 批量任务：GET /jobs/:jobId ----
+        if (req.method === 'GET' && seg.length === 4 && seg[2] === 'jobs') {
+          const job = jobs.get(seg[3] || '');
+          if (!job) return json(404, { error: '任务不存在' });
+          const { startedAt: _s, ...rest } = job;
+          return json(200, rest);
+        }
+
+        // ---- 检查更新：GET /update-check ----
+        if (req.method === 'GET' && pathname === '/api/wiki/update-check') {
+          const currentVersion = readCurrentVersion();
+          try {
+            const resp = await fetch('https://registry.npmjs.org/dsh-wiki-rag/latest', {
+              signal: AbortSignal.timeout(8000),
+            });
+            if (!resp.ok) throw new Error(`http ${resp.status}`);
+            const data = await resp.json() as { version?: string };
+            const latestVersion = data.version || currentVersion;
+            return json(200, {
+              currentVersion,
+              latestVersion,
+              hasUpdate: latestVersion !== currentVersion,
+              packageUrl: `https://www.npmjs.com/package/dsh-wiki-rag/v/${latestVersion}`,
+            });
+          } catch {
+            // 任何异常都不抛 5xx，统一 hasUpdate:false
+            return json(200, {
+              currentVersion,
+              latestVersion: currentVersion,
+              hasUpdate: false,
+              packageUrl: '',
+            });
+          }
+        }
+
         // ---- 单条目操作：/api/wiki/:id[/action] ----
         if (seg[1] === 'wiki' && seg[2]) {
           const id = parseInt(seg[2]);
@@ -288,14 +731,21 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           const record = await getKnowledgeFileById(id);
 
           if (req.method === 'DELETE' && !action) {
-            if (record) {
-              try { await fs.unlink(record.md_path); } catch { /* ignore */ }
-              try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
+            // 并发去重：同一文件删除进行中 → 409
+            const opKey = `delete:${id}`;
+            if (!acquire(opKey)) return json(409, { error: 'operation-in-progress' });
+            try {
+              if (record) {
+                try { await fs.unlink(record.md_path); } catch { /* ignore */ }
+                try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
+              }
+              await deleteKnowledgeFile(id);
+              pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
+              await writeLog('delete', `删除 fileId=${id}`);
+              return json(200, { status: 'deleted', id });
+            } finally {
+              release(opKey);
             }
-            await deleteKnowledgeFile(id);
-            pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
-            await writeLog('delete', `删除 fileId=${id}`);
-            return json(200, { status: 'deleted', id });
           }
 
           if (req.method === 'POST' && action === 'sync') {
@@ -306,7 +756,11 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
           if (req.method === 'POST' && action === 'accept-update') {
             if (!record) return json(404, { error: '条目不存在' });
-            const { newText } = JSON.parse(body || '{}');
+            let parsed: any;
+            try { parsed = JSON.parse(body || '{}'); } catch {
+              return json(400, { error: '请求体不是合法 JSON' });
+            }
+            const newText = parsed?.newText;
             if (typeof newText !== 'string') return json(400, { error: '缺少 newText' });
             // 覆盖前自动快照备份（最多保留 3 份）
             if (settings.autoSnapshot) {
@@ -329,8 +783,11 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
           if (req.method === 'POST' && action === 'rename') {
             if (!record) return json(404, { error: '条目不存在' });
-            const { newName } = JSON.parse(body || '{}');
-            const clean = (newName || '').trim();
+            let parsed: any;
+            try { parsed = JSON.parse(body || '{}'); } catch {
+              return json(400, { error: '请求体不是合法 JSON' });
+            }
+            const clean = (parsed?.newName || '').trim();
             if (!clean) return json(400, { error: '缺少 newName' });
             const desired = clean.endsWith('.md') ? clean : `${clean}.md`;
             const mdDir = path.dirname(record.md_path);

@@ -10,6 +10,15 @@ export interface KnowledgeFile {
   file_type: FileType;
   create_time: number;
   last_sync_time: number;
+  folder_id?: number | null;
+}
+
+/** 知识库树形文件夹 */
+export interface KnowledgeFolder {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  create_time: number;
 }
 
 export interface VectorChunk {
@@ -32,6 +41,10 @@ export interface RagSearchResult {
   source_path: string;
   chunk_text: string;
   score: number;
+  // 以下为检索溯源补充字段（可选，向后兼容）
+  md_path?: string;
+  chunk_id?: number;
+  chunk_index?: number;
 }
 
 export interface DiffResult {

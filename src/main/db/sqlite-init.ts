@@ -5,7 +5,7 @@ import path from 'path';
 let db: Database.Database | null = null;
 let dbPath = '';
 
-// 建表 SQL：知识库主表、向量切片表、操作日志表
+// 建表 SQL：知识库主表、文件夹表、向量切片表、操作日志表
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS knowledge_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS knowledge_files (
     zip_archive_path TEXT NOT NULL,
     file_type TEXT NOT NULL,
     create_time INTEGER NOT NULL,
-    last_sync_time INTEGER NOT NULL DEFAULT 0
+    last_sync_time INTEGER NOT NULL DEFAULT 0,
+    folder_id INTEGER DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER,
+    create_time INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS vector_chunks (
@@ -64,6 +72,20 @@ function runSchema(): void {
   const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
   for (const stmt of statements) {
     run(stmt);
+  }
+  migrate();
+}
+
+/**
+ * 幂等迁移：对已存在的旧库补列。
+ * - knowledge_files.folder_id：CREATE TABLE IF NOT EXISTS 不会给老表补列，
+ *   这里用 ALTER TABLE ADD COLUMN，包 try/catch（列已存在则忽略）。
+ */
+function migrate(): void {
+  try {
+    db!.prepare('ALTER TABLE knowledge_files ADD COLUMN folder_id INTEGER DEFAULT NULL').run();
+  } catch {
+    // 列已存在（新库建表时已带 folder_id），忽略
   }
 }
 

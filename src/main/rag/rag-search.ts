@@ -1,4 +1,4 @@
-import { getAllChunks } from '../db/vector-db';
+import { getAllChunks, getChunkOrdinal } from '../db/vector-db';
 import { getKnowledgeFileById } from '../db/knowledge-db';
 import { embedText, cosineSimilarity } from './embedding';
 import { rerank } from './rerank';
@@ -32,14 +32,14 @@ export async function ragSearch(
   const candidateCount = Math.max(topK * 3, 10);
 
   const kw = query.split(/\s+/).filter((w) => w.length > 0);
-  const scored: Array<{ fileId: number; text: string; score: number }> = [];
+  const scored: Array<{ fileId: number; chunkId: number; text: string; score: number }> = [];
   for (const c of chunks) {
     const vecScore = cosineSimilarity(qVec, c.vector_blob);
     const kwScore = kw.length
       ? kw.filter((w) => c.chunk_text.toLowerCase().includes(w.toLowerCase())).length / kw.length
       : 0;
     const score = (1 - keywordWeight) * vecScore + keywordWeight * kwScore;
-    scored.push({ fileId: c.file_id, text: c.chunk_text, score });
+    scored.push({ fileId: c.file_id, chunkId: c.id, text: c.chunk_text, score });
   }
 
   scored.sort((a, b) => b.score - a.score);
@@ -54,7 +54,10 @@ export async function ragSearch(
       file_name: file?.file_name ?? '(已删除)',
       source_path: file?.source_path ?? '',
       chunk_text: s.text,
-      score: s.score
+      score: s.score,
+      md_path: file?.md_path ?? '',
+      chunk_id: s.chunkId,
+      chunk_index: await getChunkOrdinal(s.fileId, s.chunkId)
     });
   }
 

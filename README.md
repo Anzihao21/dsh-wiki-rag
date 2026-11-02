@@ -3,113 +3,123 @@
 [![npm version](https://img.shields.io/npm/v/dsh-wiki-rag.svg)](https://www.npmjs.com/package/dsh-wiki-rag)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.5-blue.svg)](https://github.com/deepseek-ai/deepseek-harness)
+[![CI](https://github.com/<your-org>/dsh-wiki-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-org>/dsh-wiki-rag/actions/workflows/ci.yml)
 
-DeepSeek Harness（DSH）Wiki 风格知识库 RAG 插件。
+DeepSeek Harness（DSH）Wiki 风格知识库 RAG 插件。本地优先的 Markdown Wiki 知识库 + 混合检索（向量 + 关键词 + 重排），把本地文件、网页、笔记统一抽取为 Markdown 归档入库，供 Agent 通过 `wiki_rag_search` 工具检索。
 
-本地优先的 Markdown Wiki 知识库 + 混合检索（向量 + 关键词 + 重排）。将本地/网页/笔记中的文档统一抽取为 MD，归档原始文件，建立向量索引，供 Agent 通过工具检索。
+## 功能清单
 
-## 特性
+- **六大导入源**
+  - 本地单文件（PDF / DOCX / MD / TXT）
+  - 文件夹批量导入
+  - 网页 URL 抓取（内置超时与内网/外网模式）
+  - 笔记文本粘贴入库
+  - 源目录监听（chokidar）增量同步
+  - 局域网 UNC 共享路径
+- **混合检索**：向量召回（多 provider embedding）+ 关键词 + cross-encoder rerank，结果带相关度评分
+- **快照备份**：手动一键打包全部 MD + 归档 zip；可选自动快照开关；恢复前 Diff 二次确认
+- **树形文件夹**：知识库侧栏按目录树分组浏览，支持新建文件夹、拖拽移动
+- **Diff 确认**：源文件变更时行级三色 Diff（增/删/改），接受或拒绝后再写回
+- **设置面板**：存储目录、切片参数、embedding/rerank provider、网络模式全部可视化配置
+- **工程体验**：操作 Toast 反馈、加载骨架屏、虚拟列表长列表渲染、错误边界兜底、SVG 图标体系、快捷键
 
-- **5 种导入来源**：本地单文件、文件夹批量、网页 URL 抓取、笔记文本
-- **同名自动重命名**：与资源管理器一致，冲突自动追加 `(1)(2)`
-- **源文件 Zip 归档**：每个知识条目独立归档原始文件，MD 编辑不触碰原始凭证
-- **文件监听 + Diff 更新确认**：chokidar 监听源目录，外部改动弹出 diff，接受/拒绝
-- **从源目录更新**：哈希比对 → 无改动跳过 / 有改动 diff 确认
-- **Wiki MD 可视化编辑器**：侧栏内编辑/预览双视图，编辑后自动刷新向量索引
-- **多 Provider Embedding**：本地 ONNX 模型 / OpenAI 兼容 API / 哈希降级
-- **多 Provider Rerank**：本地 cross-encoder / OpenAI 兼容 rerank API / 不重排
-- **RAG 切片 / 向量 / 检索**：chunk 大小与重叠可配置，Agent 工具 `wiki_rag_search`
-- **快照备份**：手动一键打包，自动快照开关（默认关闭）
-- **异常容错**：超大文件拦截、断网降级、源文件丢失提示、DB 异常日志
-
-## 安装
+## 安装（DSH bundle 形态）
 
 ```bash
 dsh plugin --profile web add dsh-wiki-rag
 ```
 
-重启 DSH 后，左侧栏会出现「知识库」面板。
+或从 npm 安装指定版本：
 
-## 配置
-
-在 DSH 的插件配置（`cordis.patch.yml` 或侧栏 ⚙️ 设置面板）中调整：
-
-### Embedding 嵌入模型
-
-| 配置项 | 说明 | 默认值 |
-|---|---|---|
-| `embeddingProvider` | `local` / `openai` / `fallback` | `fallback` |
-| `embeddingModelPath` | local 模式：本地 ONNX 模型目录路径 | 空 |
-| `embeddingOpenAIBaseURL` | openai 模式：API 地址 | `https://api.openai.com/v1` |
-| `embeddingOpenAIAPIKey` | openai 模式：API Key | 空 |
-| `embeddingOpenAIModel` | openai 模式：模型名 | `text-embedding-3-small` |
-
-**本地模型示例**（如 bge-small-zh-v1.5）：
-```yaml
-embeddingProvider: 'local'
-embeddingModelPath: '/models/bge-small-zh-v1.5'
+```bash
+dsh plugin --profile web add dsh-wiki-rag@1.9.2
 ```
 
-**OpenAI 兼容示例**（vLLM / Ollama / 任何兼容服务）：
-```yaml
-embeddingProvider: 'openai'
-embeddingOpenAIBaseURL: 'http://localhost:8000/v1'
-embeddingOpenAIAPIKey: 'sk-xxx'
-embeddingOpenAIModel: 'bge-m3'
+## 开发构建
+
+仓库根目录为插件源码与宿主/客户端双端工程；可发布产物在 `bundle/` 下：
+
+```bash
+# 安装依赖（根目录使用 pnpm）
+pnpm install
+
+# 跑单元测试
+npx vitest run
+
+# 构建可发布 bundle（产物输出到 bundle/lib/）
+cd bundle && npm install && npm run build
+
+# 打 tarball
+cd bundle && npm pack
 ```
-
-### Rerank 重排模型
-
-| 配置项 | 说明 | 默认值 |
-|---|---|---|
-| `rerankProvider` | `local` / `openai` / `none` | `none` |
-| `rerankModelPath` | local 模式：本地 cross-encoder 模型目录 | 空 |
-| `rerankOpenAIBaseURL` | openai 模式：rerank API 地址 | `https://api.openai.com/v1` |
-| `rerankOpenAIAPIKey` | openai 模式：API Key | 空 |
-| `rerankOpenAIModel` | openai 模式：模型名 | `rerank-multilingual-v3` |
-| `rerankTopK` | 重排后返回条数 | `5` |
-
-## Agent 工具
-
-插件注册了 8 个 Agent 可调工具：
-
-| 工具名 | 说明 |
-|---|---|
-| `wiki_rag_search` | 语义检索知识库（向量 + 关键词 + rerank） |
-| `wiki_list_files` | 列出所有知识库条目 |
-| `wiki_import_file` | 导入文件/文件夹/URL/笔记 |
-| `wiki_sync_source` | 从源目录同步更新（diff 确认） |
-| `wiki_delete_file` | 删除知识库条目 |
-| `wiki_snapshot` | 创建快照备份 |
-| `wiki_list_snapshots` | 列出所有快照 |
-| `wiki_stats` | 知识库统计信息 |
-
-## 技术栈
-
-TypeScript + React + Cordis (DSH Bundle) + SQLite + esbuild
 
 ## 目录结构
 
 ```
 dsh-wiki-rag/
-├── bundle/
-│   ├── src/host/       # 宿主端：Cordis 插件入口、工具、SQLite、RAG
-│   ├── src/client/     # 客户端：React UI（侧栏面板 + 编辑器 + 设置）
-│   ├── lib/           # esbuild 构建产物
-│   ├── cordis.patch.yml # DSH bundle 配置
-│   └── package.json   # npm 发布包
-├── src/main/          # 纯业务逻辑模块（DB / 文件 / RAG / 快照）
-├── assets/icon.svg     # 侧边栏图标
-└── test/              # 单元测试
+├── src/main/                # 宿主侧纯 TypeScript 模块（Node 侧）
+│   ├── db/                  # better-sqlite3 单例：知识库 / 向量 / 操作日志
+│   │   ├── sqlite-init.ts
+│   │   ├── knowledge-db.ts
+│   │   ├── log-db.ts
+│   │   └── vector-db.ts
+│   ├── file/                # 导入 / Diff / 监听 / 重名 / zip 归档
+│   │   ├── file-importer.ts
+│   │   ├── diff-compare.ts
+│   │   ├── file-watcher.ts
+│   │   ├── name-auto-rename.ts
+│   │   ├── file-utils.ts
+│   │   ├── source-sync.ts
+│   │   └── zip-archive.ts
+│   ├── rag/                 # 切片 / embedding / 检索 / 重排
+│   │   ├── text-chunk.ts
+│   │   ├── embedding.ts
+│   │   ├── rag-search.ts
+│   │   └── rerank.ts
+│   ├── snapshot/            # 快照打包 / 恢复
+│   │   └── snapshot-backup.ts
+│   ├── network/             # 网页抓取
+│   └── types.ts
+├── src/renderer/            # 客户端 UI（React + Tailwind）
+├── bundle/                  # 可发布 DSH bundle
+│   ├── src/{host,client}/   # bundle 入口
+│   ├── scripts/build-bundle.cjs
+│   └── cordis.patch.yml     # cordis 插件行 patch
+├── .github/workflows/       # CI / Release
+├── docs/                    # 配置示例等文档
+└── vitest.config.ts
 ```
 
-## 开发
+## 配置项说明
 
-```bash
-pnpm install
-cd bundle && npm run build   # esbuild 构建宿主 + 客户端
-```
+配置写在 DSH 的 `cordis.patch.yml`（bundle 内置一份默认值），完整示例见
+[docs/example.config.md](./docs/example.config.md)。常用项：
 
-## 许可
+| 配置项 | 说明 | 默认值 |
+| --- | --- | --- |
+| `mdStoragePath` | 知识库 Markdown 存储目录 | `.dsh-wiki-rag/md` |
+| `zipStoragePath` | 原始文件 zip 归档目录 | `.dsh-wiki-rag/zip` |
+| `chunkSize` | 切片大小（字符） | 500 |
+| `chunkOverlap` | 切片重叠长度 | 80 |
+| `webMode` | 网页抓取模式 `intranet` / `extranet` | `extranet` |
+| `webTimeout` | 网页抓取超时（ms） | 15000 |
+| `autoSnapshot` | 是否自动快照 | `false` |
+| `embeddingProvider` | `local` / `openai` / `fallback` | `fallback` |
+| `embeddingModelPath` | local 模式本地 ONNX 模型目录 | `''` |
+| `embeddingOpenAIBaseURL` | openai 模式 embedding API 地址 | `https://api.openai.com/v1` |
+| `embeddingOpenAIModel` | openai 模式 embedding 模型名 | `text-embedding-3-small` |
+| `rerankProvider` | `local` / `openai` / `none` | `none` |
+| `rerankTopK` | rerank 后返回条数 | 5 |
 
-[MIT](./LICENSE)
+## 截图位置
+
+> 以下截图暂未随仓库附带，发布前请替换为实际截图：
+
+- `docs/screenshot-sidebar.png`：知识库树形侧栏 + 文档列表
+- `docs/screenshot-diff.png`：源文件更新后的三色 Diff 确认弹窗
+- `docs/screenshot-settings.png`：设置面板（存储目录 / 切片 / embedding provider）
+- `docs/screenshot-snapshot.png`：快照管理与恢复入口
+
+## License
+
+MIT
