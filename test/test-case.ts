@@ -231,6 +231,27 @@ async function main() {
     assert(existing.length === 1, '同名文件在同一目录只能存在一个（资源管理器行为）');
   }
 
+  // ===== 13b. 文件夹批量导入统计 (v1.0.0.3) =====
+  console.log('\n[用例13b/15] 文件夹批量导入与统计汇总');
+  {
+    const { FileImporter } = await import('../src/main/file/file-importer');
+    const folder = path.join(tmp, 'batch-import');
+    await fs.mkdir(folder, { recursive: true });
+    await fs.writeFile(path.join(folder, 'a.md'), '# A', 'utf-8');
+    await fs.writeFile(path.join(folder, 'b.md'), '# B', 'utf-8');
+    const importer = new FileImporter({
+      mdDir: path.join(tmp, 'md2'),
+      zipDir: path.join(tmp, 'zip2'),
+      chunkSize: 800,
+      chunkOverlap: 120,
+      webTimeout: 30000
+    });
+    const results = await importer.importFolder(folder);
+    assert(results.length === 2, '批量导入2个文件');
+    const sum = importer.summarize(results);
+    assert(sum.ok === 2 && sum.failed === 0, '统计: 成功2失败0');
+  }
+
   // ===== 14. 设置与 IPC 通道存在性 =====
   console.log('\n[用例14/15] IPC 通道注册完整性');
   {

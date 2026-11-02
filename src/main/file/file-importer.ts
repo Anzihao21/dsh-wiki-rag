@@ -56,7 +56,7 @@ export class FileImporter {
     return this.commitImport(resolved, fileName, mdText, type as FileType);
   }
 
-  /** 文件夹批量导入：遍历目录下可解析文档 */
+  /** 文件夹批量导入：遍历目录下可解析文档，返回带统计的汇总结果 */
   async importFolder(folderPath: string): Promise<ImportResult[]> {
     const results: ImportResult[] = [];
     const files = await this.scanParseableFiles(folderPath);
@@ -65,9 +65,28 @@ export class FileImporter {
         results.push(await this.importLocalFile(f));
       } catch (e) {
         await writeLog('import-folder-error', `${f}: ${(e as Error).message}`);
+        results.push({
+          fileId: 0,
+          fileName: path.basename(f),
+          mdPath: '',
+          skipped: true,
+          reason: (e as Error).message
+        });
       }
     }
     return results;
+  }
+
+  /** 汇总批量导入统计：成功/失败/跳过 */
+  summarize(results: ImportResult[]): {
+    total: number;
+    ok: number;
+    skipped: number;
+    failed: number;
+  } {
+    const ok = results.filter((r) => r.fileId > 0 && !r.skipped).length;
+    const skipped = results.filter((r) => r.skipped).length;
+    return { total: results.length, ok, skipped, failed: results.length - ok - skipped };
   }
 
   /** 网页 URL 抓取导入（调用 network/web-crawler） */
@@ -107,13 +126,18 @@ export class FileImporter {
     await fs.writeFile(mdPath, mdText, 'utf-8');
 
     // 归档原始文件（网页/笔记无本地源文件时，归档 MD 本身作凭证）
+    // 归档失败时降级：不中断知识入库，仅记日志（容错设计）
     const baseName = finalMdName.replace(/\.md$/i, '');
     const isLocalRef = sourceRef.startsWith('/') || isUncPath(sourceRef);
-    let zipPath: string;
-    if (isLocalRef) {
-      zipPath = await archiveSourceFile(sourceRef, this.ctx.zipDir, `${baseName}-src`);
-    } else {
-      zipPath = await archiveSourceFile(mdPath, this.ctx.zipDir, `${baseName}-meta`);
+    let zipPath = '';
+    try {
+      if (isLocalRef) {
+        zipPath = await archiveSourceFile(sourceRef, this.ctx.zipDir, `${baseName}-src`);
+      } else {
+        zipPath = await archiveSourceFile(mdPath, this.ctx.zipDir, `${baseName}-meta`);
+      }
+    } catch (e) {
+      await writeLog('archive-degraded', `${finalMdName}: ${(e as Error).message}`);
     }
 
     const fileId = await insertKnowledgeFile({
