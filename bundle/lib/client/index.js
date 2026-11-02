@@ -870,7 +870,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "+"
+                    children: t ? t("wiki.new") : "+"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -909,7 +909,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "Snap"
+                    children: t ? t("wiki.snapshots") : "Snap"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -927,7 +927,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "Logs"
+                    children: t ? t("wiki.logs") : "Logs"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -945,7 +945,7 @@ function WikiSidebar(props) {
                       color: "var(--dsw-alias-label-secondary)",
                       fontSize: 13
                     },
-                    children: "Set"
+                    children: t ? t("wiki.settings") : "Set"
                   }
                 )
               ] })
@@ -1098,7 +1098,7 @@ function WikiSidebar(props) {
               },
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: expandedDirs.has("/") ? "\u25BC" : "\u25B6" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u6839\u76EE\u5F55" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: t ? t("wiki.root") : "Root" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }, children: filtered.length })
               ]
             }
@@ -1288,7 +1288,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "Rename"
+                      children: t ? t("wiki.rename") : "Rename"
                     }
                   ),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1301,7 +1301,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4 },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "Update from source"
+                      children: t ? t("wiki.update") : "Update from source"
                     }
                   ),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1314,7 +1314,7 @@ function WikiSidebar(props) {
                       style: { padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, color: "#ef4444" },
                       onMouseEnter: (e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)",
                       onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
-                      children: "Delete"
+                      children: t ? t("wiki.delete") : "Delete"
                     }
                   )
                 ]
@@ -1367,13 +1367,31 @@ function apply(ctx) {
         "wiki.title": "\u77E5\u8BC6\u5E93",
         "wiki.search": "\u641C\u7D22\u6587\u6863\u2026",
         "wiki.refresh": "\u5237\u65B0",
-        "wiki.settings": "\u8BBE\u7F6E"
+        "wiki.settings": "\u8BBE\u7F6E",
+        "wiki.new": "\u65B0\u5EFA",
+        "wiki.snapshots": "\u5FEB\u7167",
+        "wiki.logs": "\u65E5\u5FD7",
+        "wiki.rename": "\u91CD\u547D\u540D",
+        "wiki.update": "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0",
+        "wiki.delete": "\u5220\u9664",
+        "wiki.root": "\u6839\u76EE\u5F55",
+        "wiki.empty": "\u6682\u65E0\u6587\u6863",
+        "wiki.noLogs": "\u6682\u65E0\u65E5\u5FD7"
       },
       en: {
         "wiki.title": "Wiki",
         "wiki.search": "Search docs\u2026",
         "wiki.refresh": "Refresh",
-        "wiki.settings": "Settings"
+        "wiki.settings": "Settings",
+        "wiki.new": "New",
+        "wiki.snapshots": "Snapshots",
+        "wiki.logs": "Logs",
+        "wiki.rename": "Rename",
+        "wiki.update": "Update from source",
+        "wiki.delete": "Delete",
+        "wiki.root": "Root",
+        "wiki.empty": "No documents",
+        "wiki.noLogs": "No logs"
       }
     }),
     "wiki: dictionaries"

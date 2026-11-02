@@ -787,7 +787,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            +
+            {t ? t("wiki.new") : "+"}
           </button>
           <button
             title={t ? t("wiki.refresh") : "刷新"}
@@ -812,7 +812,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            Snap
+            {t ? t("wiki.snapshots") : "Snap"}
           </button>
           <button
             title="日志"
@@ -823,7 +823,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            Logs
+            {t ? t("wiki.logs") : "Logs"}
           </button>
           <button
             title={t ? t("wiki.settings") : "设置"}
@@ -834,7 +834,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               color: "var(--dsw-alias-label-secondary)", fontSize: 13,
             }}
           >
-            Set
+            {t ? t("wiki.settings") : "Set"}
           </button>
         </div>
       </div>
@@ -986,7 +986,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             }}
           >
             <span>{expandedDirs.has("/") ? "▼" : "▶"}</span>
-            <span>根目录</span>
+            <span>{t ? t("wiki.root") : "Root"}</span>
             <span style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)", marginLeft: "auto" }}>{filtered.length}</span>
           </div>
           {/* 文档列表 */}
@@ -1139,7 +1139,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              Rename
+              {t ? t("wiki.rename") : "Rename"}
             </div>
             <div
               onClick={async () => {
@@ -1150,7 +1150,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              Update from source
+              {t ? t("wiki.update") : "Update from source"}
             </div>
             <div
               onClick={() => { doDelete(contextMenu.docId); setContextMenu(null); }}
@@ -1158,7 +1158,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--dsw-alias-interactive-bg-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
-              Delete
+              {t ? t("wiki.delete") : "Delete"}
             </div>
           </div>
         </div>
@@ -1207,12 +1207,30 @@ function apply(ctx: any): void {
         "wiki.search": "搜索文档…",
         "wiki.refresh": "刷新",
         "wiki.settings": "设置",
+        "wiki.new": "新建",
+        "wiki.snapshots": "快照",
+        "wiki.logs": "日志",
+        "wiki.rename": "重命名",
+        "wiki.update": "从源目录更新",
+        "wiki.delete": "删除",
+        "wiki.root": "根目录",
+        "wiki.empty": "暂无文档",
+        "wiki.noLogs": "暂无日志",
       },
       en: {
         "wiki.title": "Wiki",
         "wiki.search": "Search docs…",
         "wiki.refresh": "Refresh",
         "wiki.settings": "Settings",
+        "wiki.new": "New",
+        "wiki.snapshots": "Snapshots",
+        "wiki.logs": "Logs",
+        "wiki.rename": "Rename",
+        "wiki.update": "Update from source",
+        "wiki.delete": "Delete",
+        "wiki.root": "Root",
+        "wiki.empty": "No documents",
+        "wiki.noLogs": "No logs",
       },
     }),
     "wiki: dictionaries"
