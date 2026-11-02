@@ -116,6 +116,15 @@ function WikiSidebar(props) {
   const [stats, setStats] = (0, import_react.useState)({ total: 0, ready: 0, stale: 0 });
   const [snapshots, setSnapshots] = (0, import_react.useState)([]);
   const [logs, setLogs] = (0, import_react.useState)([]);
+  const [expandedFolders, setExpandedFolders] = (0, import_react.useState)(/* @__PURE__ */ new Set(["/"]));
+  const [diffModal, setDiffModal] = (0, import_react.useState)(null);
+  const [externalNetEnabled, setExternalNetEnabled] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_externalNet") === "true";
+    } catch {
+      return false;
+    }
+  });
   (0, import_react.useEffect)(() => {
     apiList().then(setDocs).catch(() => {
     });
@@ -632,6 +641,45 @@ function WikiSidebar(props) {
               ] })
             ] })
           ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--dsw-alias-border-l4)" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 500 }, children: "\u5916\u7F51\u7F51\u9875\u6293\u53D6" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }, children: "\u5141\u8BB8\u5BFC\u5165\u5916\u7F51 URL\uFF08\u5173\u95ED\u540E\u4EC5\u5141\u8BB8\u5185\u7F51\uFF09" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => {
+                  const v = !externalNetEnabled;
+                  setExternalNetEnabled(v);
+                  try {
+                    localStorage.setItem("wiki_externalNet", String(v));
+                  } catch {
+                  }
+                },
+                style: {
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  border: "none",
+                  cursor: "pointer",
+                  background: externalNetEnabled ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-bg-layer-2)",
+                  position: "relative",
+                  transition: "background 0.2s"
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: "#fff",
+                  position: "absolute",
+                  top: 2,
+                  left: externalNetEnabled ? 18 : 2,
+                  transition: "left 0.2s"
+                } })
+              }
+            )
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: "\u4FDD\u5B58\u540E\u9700\u91CD\u542F DSH \u751F\u6548" })
         ]
       }
@@ -1086,7 +1134,41 @@ function WikiSidebar(props) {
               stats.ready || docs.filter((d) => d.status === "ready").length
             ]
           }
-        )
+        ),
+        diffModal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 999
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          width: "90%",
+          maxWidth: 500,
+          maxHeight: "80vh",
+          background: "var(--dsw-alias-bg-layer-1)",
+          borderRadius: "var(--dsw-radius-lg)",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 600, fontSize: 14 }, children: [
+            "\u53D8\u66F4\u786E\u8BA4\uFF1A",
+            diffModal.title
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "monospace" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#ef4444", marginBottom: 4 }, children: "\u2212 \u65E7\u7248\u672C" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { style: { margin: "0 0 12px 0", whiteSpace: "pre-wrap" }, children: diffModal.old }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#22c55e", marginBottom: 4 }, children: "+ \u65B0\u7248\u672C" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { style: { margin: 0, whiteSpace: "pre-wrap" }, children: diffModal.new })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }, children: "\u62D2\u7EDD" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDiffModal(null), style: { height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 12, cursor: "pointer" }, children: "\u63A5\u53D7" })
+          ] })
+        ] }) })
       ]
     }
   );

@@ -125,6 +125,11 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
   const [snapshots, setSnapshots] = useState<{ id: number; created_at: string; note: string }[]>([]);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["/"]));
+  const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string } | null>(null);
+  const [externalNetEnabled, setExternalNetEnabled] = useState(() => {
+    try { return localStorage.getItem("wiki_externalNet") === "true"; } catch { return false; }
+  });
 
   // 挂载时拉真实文档列表 + 统计 + 快照 + 日志
   useEffect(() => {
@@ -569,6 +574,35 @@ function WikiSidebar(props: WikiSidebarProps) {
           )}
         </div>
 
+        {/* 外网抓取开关 */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--dsw-alias-border-l4)" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>外网网页抓取</div>
+            <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>
+              允许导入外网 URL（关闭后仅允许内网）
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              const v = !externalNetEnabled;
+              setExternalNetEnabled(v);
+              try { localStorage.setItem("wiki_externalNet", String(v)); } catch {}
+            }}
+            style={{
+              width: 36, height: 20, borderRadius: 10, border: "none", cursor: "pointer",
+              background: externalNetEnabled ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-bg-layer-2)",
+              position: "relative", transition: "background 0.2s",
+            }}
+          >
+            <div style={{
+              width: 16, height: 16, borderRadius: 8, background: "#fff",
+              position: "absolute", top: 2,
+              left: externalNetEnabled ? 18 : 2,
+              transition: "left 0.2s",
+            }} />
+          </button>
+        </div>
+
         {/* 底部提示 */}
         <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
           保存后需重启 DSH 生效
@@ -977,6 +1011,36 @@ function WikiSidebar(props: WikiSidebarProps) {
       >
         共 {stats.total || docs.length} 条 · 已索引 {stats.ready || docs.filter((d) => d.status === "ready").length}
       </div>
+
+      {/* Diff 确认弹窗 */}
+      {diffModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999,
+        }}>
+          <div style={{
+            width: "90%", maxWidth: 500, maxHeight: "80vh",
+            background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)",
+            padding: 16, display: "flex", flexDirection: "column", gap: 12,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>变更确认：{diffModal.title}</div>
+            <div style={{ flex: 1, overflow: "auto", fontSize: 12, fontFamily: "monospace" }}>
+              <div style={{ color: "#ef4444", marginBottom: 4 }}>− 旧版本</div>
+              <pre style={{ margin: "0 0 12px 0", whiteSpace: "pre-wrap" }}>{diffModal.old}</pre>
+              <div style={{ color: "#22c55e", marginBottom: 4 }}>+ 新版本</div>
+              <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{diffModal.new}</pre>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)", background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 12, cursor: "pointer" }}>
+                拒绝
+              </button>
+              <button onClick={() => setDiffModal(null)} style={{ height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)", border: "none", background: "var(--dsw-alias-state-business-primary)", color: "#fff", fontSize: 12, cursor: "pointer" }}>
+                接受
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
