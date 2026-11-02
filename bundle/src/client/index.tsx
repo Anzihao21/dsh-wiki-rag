@@ -35,6 +35,13 @@ const SAMPLE_DOCS: WikiDoc[] = [
   { id: "5", title: "常见问题 FAQ", type: "MD", status: "error", summary: "最近一次同步失败" },
 ];
 
+/** 示例 MD 内容（编辑器用）。 */
+const SAMPLE_MD: Record<string, string> = {
+  "1": "# 项目总览\n\n## 定位\n\nDeepSeek Harness 知识库插件，本地优先的 Wiki 风格 RAG 系统。\n\n## 核心能力\n\n- 多来源文档导入\n- 向量 + 关键词混合检索\n- MD 可视化编辑\n- 快照备份\n",
+  "2": "# 接入指南\n\n## 第一步\n\n安装插件：\n\n```bash\ndsh plugin add dsh-wiki-rag\n```\n\n## 第二步\n\n重启 DSH，左侧栏出现「知识库」面板。\n",
+  "3": "# API 参考\n\n### wiki_rag_search\n\n检索知识库，返回相关文档片段。\n\n| 参数 | 类型 | 说明 |\n|------|------|------|\n| query | string | 检索词 |\n| topK | number | 返回条数 |\n",
+};
+
 interface WikiSidebarProps {
   wide: boolean; // owner：侧栏是否展开（否则 56px 图标 rail）
   expandSidebar: () => void; // owner：收起态请求展开
@@ -56,6 +63,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [q, setQ] = useState("");
   const [docs] = useState<WikiDoc[]>(SAMPLE_DOCS);
   const [activeId, setActiveId] = useState<string>("1");
+  const [view, setView] = useState<"list" | "editor">("list");
+  const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
+  const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
 
   const title = t ? t("wiki.title") : "知识库";
   const placeholder = t ? t("wiki.search") : "搜索文档…";
@@ -95,6 +105,117 @@ function WikiSidebar(props: WikiSidebarProps) {
   }
 
   const filtered = docs.filter((d) => d.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const activeDoc = docs.find((d) => d.id === activeId);
+
+  // ---------- 编辑器视图 ----------
+  if (view === "editor" && activeDoc) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: "6px 10px",
+          color: "var(--dsw-alias-label-primary)",
+          fontSize: 14,
+          fontFamily: "var(--dsw-font-family)",
+        }}
+      >
+        {/* 头部：返回 + 标题 + 保存 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={() => setView("list")}
+            style={{
+              border: "none", background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 16, padding: 2,
+            }}
+          >
+            ←
+          </button>
+          <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {activeDoc.title}
+          </span>
+          <button
+            onClick={() => {}}
+            style={{
+              height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
+              border: "none", background: "var(--dsw-alias-state-business-primary)",
+              color: "#fff", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            保存
+          </button>
+        </div>
+
+        {/* Tab 切换：编辑 / 预览 */}
+        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }}>
+          {(["edit", "preview"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setEditTab(tab)}
+              style={{
+                padding: "6px 12px", border: "none", background: "transparent", cursor: "pointer",
+                fontSize: 12, color: editTab === tab
+                  ? "var(--dsw-alias-state-business-primary)"
+                  : "var(--dsw-alias-label-secondary)",
+                borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+                fontWeight: editTab === tab ? 600 : 400,
+              }}
+            >
+              {tab === "edit" ? "编辑" : "预览"}
+            </button>
+          ))}
+        </div>
+
+        {/* 编辑区 */}
+        {editTab === "edit" ? (
+          <textarea
+            value={mdContent}
+            onChange={(e) => setMdContent(e.target.value)}
+            style={{
+              flex: 1, width: "100%", boxSizing: "border-box", resize: "none",
+              padding: 10, borderRadius: "var(--dsw-radius-md)",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              background: "var(--dsw-alias-bg-layer-1)",
+              color: "var(--dsw-alias-label-primary)",
+              fontFamily: "var(--dsw-font-family-mono, monospace)",
+              fontSize: 12, lineHeight: 1.6, outline: "none",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              flex: 1, overflowY: "auto", padding: 10,
+              borderRadius: "var(--dsw-radius-md)",
+              background: "var(--dsw-alias-bg-layer-1)",
+              fontSize: 13, lineHeight: 1.7,
+            }}
+            dangerouslySetInnerHTML={{
+              __html: mdContent
+                .replace(/^### (.*)$/gm, '<h4 style="margin:12px 0 4px;font-size:13px;font-weight:600">$1</h4>')
+                .replace(/^## (.*)$/gm, '<h3 style="margin:14px 0 6px;font-size:14px;font-weight:600">$1</h3>')
+                .replace(/^# (.*)$/gm, '<h2 style="margin:16px 0 8px;font-size:16px;font-weight:700">$1</h2>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`([^`]+)`/g, '<code style="background:var(--dsw-alias-bg-module-platform);padding:1px 4px;border-radius:3px;font-size:11px">$1</code>')
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:var(--dsw-alias-bg-module-platform);padding:8px;border-radius:4px;overflow-x:auto;font-size:11px"><code>$2</code></pre>')
+                .replace(/\| (.*?) \|/g, '<div style="padding:2px 0">$1</div>')
+                .replace(/^- (.*)$/gm, '<div style="padding:1px 0">• $1</div>')
+                .replace(/\n/g, '<br/>'),
+            }}
+          />
+        )}
+
+        {/* 底部提示 */}
+        <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
+          编辑后自动刷新向量索引
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- 列表视图 ----------
 
   return (
     <div
@@ -176,7 +297,11 @@ function WikiSidebar(props: WikiSidebarProps) {
             return (
               <div
                 key={d.id}
-                onClick={() => setActiveId(d.id)}
+                onClick={() => {
+                  setActiveId(d.id);
+                  setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n暂无内容\n");
+                  setView("editor");
+                }}
                 style={{
                   padding: "8px 10px",
                   borderRadius: "var(--dsw-radius-md)",

@@ -37,6 +37,11 @@ var SAMPLE_DOCS = [
   { id: "4", title: "\u90E8\u7F72\u624B\u518C", type: "PDF", status: "ready", summary: "\u751F\u4EA7\u73AF\u5883\u90E8\u7F72\u6E05\u5355" },
   { id: "5", title: "\u5E38\u89C1\u95EE\u9898 FAQ", type: "MD", status: "error", summary: "\u6700\u8FD1\u4E00\u6B21\u540C\u6B65\u5931\u8D25" }
 ];
+var SAMPLE_MD = {
+  "1": "# \u9879\u76EE\u603B\u89C8\n\n## \u5B9A\u4F4D\n\nDeepSeek Harness \u77E5\u8BC6\u5E93\u63D2\u4EF6\uFF0C\u672C\u5730\u4F18\u5148\u7684 Wiki \u98CE\u683C RAG \u7CFB\u7EDF\u3002\n\n## \u6838\u5FC3\u80FD\u529B\n\n- \u591A\u6765\u6E90\u6587\u6863\u5BFC\u5165\n- \u5411\u91CF + \u5173\u952E\u8BCD\u6DF7\u5408\u68C0\u7D22\n- MD \u53EF\u89C6\u5316\u7F16\u8F91\n- \u5FEB\u7167\u5907\u4EFD\n",
+  "2": "# \u63A5\u5165\u6307\u5357\n\n## \u7B2C\u4E00\u6B65\n\n\u5B89\u88C5\u63D2\u4EF6\uFF1A\n\n```bash\ndsh plugin add dsh-wiki-rag\n```\n\n## \u7B2C\u4E8C\u6B65\n\n\u91CD\u542F DSH\uFF0C\u5DE6\u4FA7\u680F\u51FA\u73B0\u300C\u77E5\u8BC6\u5E93\u300D\u9762\u677F\u3002\n",
+  "3": "# API \u53C2\u8003\n\n### wiki_rag_search\n\n\u68C0\u7D22\u77E5\u8BC6\u5E93\uFF0C\u8FD4\u56DE\u76F8\u5173\u6587\u6863\u7247\u6BB5\u3002\n\n| \u53C2\u6570 | \u7C7B\u578B | \u8BF4\u660E |\n|------|------|------|\n| query | string | \u68C0\u7D22\u8BCD |\n| topK | number | \u8FD4\u56DE\u6761\u6570 |\n"
+};
 function statusStyle(status) {
   if (status === "error") {
     return { label: "\u5F02\u5E38", color: "var(--dsw-alias-state-error-primary)" };
@@ -51,6 +56,9 @@ function WikiSidebar(props) {
   const [q, setQ] = (0, import_react.useState)("");
   const [docs] = (0, import_react.useState)(SAMPLE_DOCS);
   const [activeId, setActiveId] = (0, import_react.useState)("1");
+  const [view, setView] = (0, import_react.useState)("list");
+  const [editTab, setEditTab] = (0, import_react.useState)("edit");
+  const [mdContent, setMdContent] = (0, import_react.useState)(SAMPLE_MD["1"] ?? "");
   const title = t ? t("wiki.title") : "\u77E5\u8BC6\u5E93";
   const placeholder = t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026";
   if (!wide) {
@@ -88,6 +96,120 @@ function WikiSidebar(props) {
     );
   }
   const filtered = docs.filter((d) => d.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const activeDoc = docs.find((d) => d.id === activeId);
+  if (view === "editor" && activeDoc) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "div",
+      {
+        style: {
+          height: "100%",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: "6px 10px",
+          color: "var(--dsw-alias-label-primary)",
+          fontSize: 14,
+          fontFamily: "var(--dsw-font-family)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setView("list"),
+                style: {
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  color: "var(--dsw-alias-label-secondary)",
+                  fontSize: 16,
+                  padding: 2
+                },
+                children: "\u2190"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: activeDoc.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => {
+                },
+                style: {
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: "var(--dsw-radius-sm)",
+                  border: "none",
+                  background: "var(--dsw-alias-state-business-primary)",
+                  color: "#fff",
+                  fontSize: 12,
+                  cursor: "pointer"
+                },
+                children: "\u4FDD\u5B58"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }, children: ["edit", "preview"].map((tab) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => setEditTab(tab),
+              style: {
+                padding: "6px 12px",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 12,
+                color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+                borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+                fontWeight: editTab === tab ? 600 : 400
+              },
+              children: tab === "edit" ? "\u7F16\u8F91" : "\u9884\u89C8"
+            },
+            tab
+          )) }),
+          editTab === "edit" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "textarea",
+            {
+              value: mdContent,
+              onChange: (e) => setMdContent(e.target.value),
+              style: {
+                flex: 1,
+                width: "100%",
+                boxSizing: "border-box",
+                resize: "none",
+                padding: 10,
+                borderRadius: "var(--dsw-radius-md)",
+                border: "1px solid var(--dsw-alias-border-l4)",
+                background: "var(--dsw-alias-bg-layer-1)",
+                color: "var(--dsw-alias-label-primary)",
+                fontFamily: "var(--dsw-font-family-mono, monospace)",
+                fontSize: 12,
+                lineHeight: 1.6,
+                outline: "none"
+              }
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              style: {
+                flex: 1,
+                overflowY: "auto",
+                padding: 10,
+                borderRadius: "var(--dsw-radius-md)",
+                background: "var(--dsw-alias-bg-layer-1)",
+                fontSize: 13,
+                lineHeight: 1.7
+              },
+              dangerouslySetInnerHTML: {
+                __html: mdContent.replace(/^### (.*)$/gm, '<h4 style="margin:12px 0 4px;font-size:13px;font-weight:600">$1</h4>').replace(/^## (.*)$/gm, '<h3 style="margin:14px 0 6px;font-size:14px;font-weight:600">$1</h3>').replace(/^# (.*)$/gm, '<h2 style="margin:16px 0 8px;font-size:16px;font-weight:700">$1</h2>').replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, '<code style="background:var(--dsw-alias-bg-module-platform);padding:1px 4px;border-radius:3px;font-size:11px">$1</code>').replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:var(--dsw-alias-bg-module-platform);padding:8px;border-radius:4px;overflow-x:auto;font-size:11px"><code>$2</code></pre>').replace(/\| (.*?) \|/g, '<div style="padding:2px 0">$1</div>').replace(/^- (.*)$/gm, '<div style="padding:1px 0">\u2022 $1</div>').replace(/\n/g, "<br/>")
+              }
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: "\u7F16\u8F91\u540E\u81EA\u52A8\u5237\u65B0\u5411\u91CF\u7D22\u5F15" })
+        ]
+      }
+    );
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "div",
     {
@@ -172,7 +294,11 @@ function WikiSidebar(props) {
           return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "div",
             {
-              onClick: () => setActiveId(d.id),
+              onClick: () => {
+                setActiveId(d.id);
+                setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
+                setView("editor");
+              },
               style: {
                 padding: "8px 10px",
                 borderRadius: "var(--dsw-radius-md)",
