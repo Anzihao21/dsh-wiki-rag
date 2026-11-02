@@ -32858,6 +32858,9 @@ async function initDatabase(filePath) {
   await fs.mkdir(dir, { recursive: true });
   db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("wal_autocheckpoint = 1000");
+  db.pragma("foreign_keys = ON");
   runSchema();
 }
 function runSchema() {
@@ -32891,6 +32894,27 @@ function all(sql, params = []) {
 function lastInsertId() {
   const row = get("SELECT last_insert_rowid() AS id");
   return row?.id ?? 0;
+}
+function walCheckpoint(mode = "TRUNCATE") {
+  if (!db) return;
+  try {
+    db.pragma(`wal_checkpoint(${mode})`);
+  } catch {
+  }
+}
+function closeDatabase() {
+  if (!db) {
+    return;
+  }
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+  }
+  try {
+    db.close();
+  } catch {
+  }
+  db = null;
 }
 
 // ../src/main/file/file-importer.ts
@@ -34926,10 +34950,21 @@ function apply(ctx, config) {
   }));
   ctx.effect(() => {
     let closed = false;
+    const checkpointTimer = setInterval(() => {
+      try {
+        walCheckpoint("PASSIVE");
+      } catch {
+      }
+    }, 5 * 60 * 1e3);
     const cleanup = () => {
       if (!closed) {
         closed = true;
+        clearInterval(checkpointTimer);
         void watcher.stop();
+        try {
+          closeDatabase();
+        } catch {
+        }
       }
     };
     process.on("exit", cleanup);

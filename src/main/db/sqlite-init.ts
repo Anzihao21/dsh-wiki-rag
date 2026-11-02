@@ -63,6 +63,10 @@ export async function initDatabase(filePath?: string): Promise<void> {
 
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  // WAL 下 synchronous=NORMAL 兼顾安全与吞吐；wal_autocheckpoint 让 SQLite 每 ~1000 页自动回收
+  db.pragma('synchronous = NORMAL');
+  db.pragma('wal_autocheckpoint = 1000');
+  db.pragma('foreign_keys = ON');
 
   runSchema();
 }
@@ -117,11 +121,39 @@ export function lastInsertId(): number {
   return row?.id ?? 0;
 }
 
-/** 关闭数据库连接（同步） */
+/**
+ * 手动触发 WAL checkpoint（TRUNCATE 模式把 -wal 文件归零并截断）。
+ * 长运行进程可定期调用，避免 -wal 无限增长；关闭数据库前也会自动调用一次。
+ */
+export function walCheckpoint(mode: 'PASSIVE' | 'FULL' | 'TRUNCATE' = 'TRUNCATE'): void {
+  if (!db) return;
+  try {
+    db.pragma(`wal_checkpoint(${mode})`);
+  } catch {
+    // 非 WAL 模式或库已关闭时忽略
+  }
+}
+
+/** 是否已初始化（便于测试 / 重复 init 幂等判断） */
+export function isDbInitialized(): boolean {
+  return db !== null;
+}
+
+/** 关闭数据库连接（同步）：先 checkpoint 再 close，避免 -wal 残留 */
 export function closeDatabase(): void {
   if (!db) {
     return;
   }
-  db.close();
+  try {
+    // 关闭前把 WAL 落盘并截断，防止进程退出后 -wal 文件保留
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  } catch {
+    // ignore
+  }
+  try {
+    db.close();
+  } catch {
+    // ignore
+  }
   db = null;
 }

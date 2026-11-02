@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 
-import { initDatabase, getDbPath } from '../../../src/main/db/sqlite-init';
+import { initDatabase, getDbPath, closeDatabase, walCheckpoint } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
 import { ragSearch, normalizeSearchInput } from '../../../src/main/rag/rag-search';
@@ -966,10 +966,16 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   // ---------- 资源清理 ----------
   ctx.effect(() => {
     let closed = false;
+    // 长运行下定期 WAL checkpoint，避免 -wal 文件无限增长
+    const checkpointTimer = setInterval(() => {
+      try { walCheckpoint('PASSIVE'); } catch { /* ignore */ }
+    }, 5 * 60 * 1000);
     const cleanup = () => {
       if (!closed) {
         closed = true;
+        clearInterval(checkpointTimer);
         void watcher.stop();
+        try { closeDatabase(); } catch { /* ignore */ }
       }
     };
     process.on('exit', cleanup);

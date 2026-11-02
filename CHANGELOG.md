@@ -2,6 +2,14 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.4] - 2026-11-03
+
+### Fixed
+- `sqlite-init`：开启 WAL 同时设置 `synchronous=NORMAL` / `wal_autocheckpoint=1000` / `foreign_keys=ON`
+- 新增 `walCheckpoint(mode)` 与 `isDbInitialized()`；`closeDatabase` 关闭前自动执行 `wal_checkpoint(TRUNCATE)`，避免进程退出后 `-wal` 文件残留
+- 宿主 dispose 钩子新增每 5 分钟一次的 `PASSIVE` checkpoint 定时器，并在插件卸载时清理定时器 + 关闭 DB
+- 新增 4 例 sqlite-init 单元测试
+
 ## [2.0.3] - 2026-11-03
 
 ### Fixed
