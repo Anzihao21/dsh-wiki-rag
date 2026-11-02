@@ -61,22 +61,82 @@ function statusStyle(status: WikiDoc["status"]): { label: string; color: string 
 function WikiSidebar(props: WikiSidebarProps) {
   const { wide, expandSidebar, t } = props;
   const [q, setQ] = useState("");
-  const [docs] = useState<WikiDoc[]>(SAMPLE_DOCS);
+  const [docs, setDocs] = useState<WikiDoc[]>(SAMPLE_DOCS);
   const [activeId, setActiveId] = useState<string>("1");
   const [view, setView] = useState<"list" | "editor" | "settings">("list");
   const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
   const [mdContent, setMdContent] = useState<string>(SAMPLE_MD["1"] ?? "");
-  // 设置表单状态
-  const [embeddingProvider, setEmbeddingProvider] = useState<"local" | "openai" | "fallback">("fallback");
-  const [embeddingModelPath, setEmbeddingModelPath] = useState("");
-  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = useState("https://api.openai.com/v1");
-  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = useState("");
-  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = useState("text-embedding-3-small");
-  const [rerankProvider, setRerankProvider] = useState<"local" | "openai" | "none">("none");
-  const [rerankModelPath, setRerankModelPath] = useState("");
-  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = useState("https://api.openai.com/v1");
-  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = useState("");
-  const [rerankOpenAIModel, setRerankOpenAIModel] = useState("rerank-multilingual-v3");
+  const [showImport, setShowImport] = useState(false);
+  const [importPath, setImportPath] = useState("");
+
+  // 设置表单状态（从 localStorage 加载）
+  const [embeddingProvider, setEmbeddingProvider] = useState<"local" | "openai" | "fallback">(() => {
+    try { return (localStorage.getItem("wiki_embeddingProvider") as any) || "fallback"; } catch { return "fallback"; }
+  });
+  const [embeddingModelPath, setEmbeddingModelPath] = useState(() => {
+    try { return localStorage.getItem("wiki_embeddingModelPath") || ""; } catch { return ""; }
+  });
+  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = useState(() => {
+    try { return localStorage.getItem("wiki_embeddingOpenAIBaseURL") || "https://api.openai.com/v1"; } catch { return "https://api.openai.com/v1"; }
+  });
+  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = useState(() => {
+    try { return localStorage.getItem("wiki_embeddingOpenAIAPIKey") || ""; } catch { return ""; }
+  });
+  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = useState(() => {
+    try { return localStorage.getItem("wiki_embeddingOpenAIModel") || "text-embedding-3-small"; } catch { return "text-embedding-3-small"; }
+  });
+  const [rerankProvider, setRerankProvider] = useState<"local" | "openai" | "none">(() => {
+    try { return (localStorage.getItem("wiki_rerankProvider") as any) || "none"; } catch { return "none"; }
+  });
+  const [rerankModelPath, setRerankModelPath] = useState(() => {
+    try { return localStorage.getItem("wiki_rerankModelPath") || ""; } catch { return ""; }
+  });
+  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = useState(() => {
+    try { return localStorage.getItem("wiki_rerankOpenAIBaseURL") || "https://api.openai.com/v1"; } catch { return "https://api.openai.com/v1"; }
+  });
+  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = useState(() => {
+    try { return localStorage.getItem("wiki_rerankOpenAIAPIKey") || ""; } catch { return ""; }
+  });
+  const [rerankOpenAIModel, setRerankOpenAIModel] = useState(() => {
+    try { return localStorage.getItem("wiki_rerankOpenAIModel") || "rerank-multilingual-v3"; } catch { return "rerank-multilingual-v3"; }
+  });
+
+  // 保存设置到 localStorage
+  const saveSettings = () => {
+    try {
+      localStorage.setItem("wiki_embeddingProvider", embeddingProvider);
+      localStorage.setItem("wiki_embeddingModelPath", embeddingModelPath);
+      localStorage.setItem("wiki_embeddingOpenAIBaseURL", embeddingOpenAIBaseURL);
+      localStorage.setItem("wiki_embeddingOpenAIAPIKey", embeddingOpenAIAPIKey);
+      localStorage.setItem("wiki_embeddingOpenAIModel", embeddingOpenAIModel);
+      localStorage.setItem("wiki_rerankProvider", rerankProvider);
+      localStorage.setItem("wiki_rerankModelPath", rerankModelPath);
+      localStorage.setItem("wiki_rerankOpenAIBaseURL", rerankOpenAIBaseURL);
+      localStorage.setItem("wiki_rerankOpenAIAPIKey", rerankOpenAIAPIKey);
+      localStorage.setItem("wiki_rerankOpenAIModel", rerankOpenAIModel);
+    } catch { /* ignore */ }
+    setView("list");
+  };
+
+  // 导入新文档
+  const doImport = () => {
+    if (!importPath.trim()) return;
+    const newDoc: WikiDoc = {
+      id: String(Date.now()),
+      title: importPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "新文档",
+      type: importPath.endsWith(".pdf") ? "PDF" : "MD",
+      status: "ready",
+      summary: "新导入",
+    };
+    setDocs([newDoc, ...docs]);
+    setShowImport(false);
+    setImportPath("");
+  };
+
+  // 删除文档
+  const doDelete = (id: string) => {
+    setDocs(docs.filter((d) => d.id !== id));
+  };
 
   const title = t ? t("wiki.title") : "知识库";
   const placeholder = t ? t("wiki.search") : "搜索文档…";
@@ -267,7 +327,7 @@ function WikiSidebar(props: WikiSidebarProps) {
           </button>
           <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>设置</span>
           <button
-            onClick={() => setView("list")}
+            onClick={saveSettings}
             style={{
               height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
@@ -438,6 +498,17 @@ function WikiSidebar(props: WikiSidebarProps) {
         <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
         <div style={{ display: "flex", gap: 2 }}>
           <button
+            title="导入"
+            onClick={() => setShowImport(!showImport)}
+            style={{
+              width: 24, height: 24, border: "none", borderRadius: 6,
+              background: "transparent", cursor: "pointer",
+              color: "var(--dsw-alias-label-secondary)", fontSize: 13,
+            }}
+          >
+            +
+          </button>
+          <button
             title={t ? t("wiki.refresh") : "刷新"}
             onClick={() => {}}
             style={{
@@ -479,6 +550,35 @@ function WikiSidebar(props: WikiSidebarProps) {
           fontSize: 13,
         }}
       />
+
+      {/* 导入输入框（点 + 展开） */}
+      {showImport && (
+        <div style={{ display: "flex", gap: 4 }}>
+          <input
+            value={importPath}
+            onChange={(e) => setImportPath(e.target.value)}
+            placeholder="输入文件路径或 URL…"
+            style={{
+              flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box",
+              borderRadius: "var(--dsw-radius-sm)",
+              border: "1px solid var(--dsw-alias-border-l4)",
+              background: "var(--dsw-alias-bg-layer-1)",
+              color: "var(--dsw-alias-label-primary)",
+              outline: "none", fontSize: 12,
+            }}
+          />
+          <button
+            onClick={doImport}
+            style={{
+              height: 28, padding: "0 8px", borderRadius: "var(--dsw-radius-sm)",
+              border: "none", background: "var(--dsw-alias-state-business-primary)",
+              color: "#fff", fontSize: 11, cursor: "pointer",
+            }}
+          >
+            导入
+          </button>
+        </div>
+      )}
 
       {/* 文档列表 */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
@@ -562,8 +662,17 @@ function WikiSidebar(props: WikiSidebarProps) {
                 >
                   {d.summary}
                 </div>
-                <div style={{ marginTop: 4, fontSize: 11, color: st.color }}>
-                  ● {st.label}
+                <div style={{ marginTop: 4, fontSize: 11, color: st.color, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>● {st.label}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); doDelete(d.id); }}
+                    style={{
+                      border: "none", background: "transparent", cursor: "pointer",
+                      color: "var(--dsw-alias-label-tertiary)", fontSize: 12, padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             );

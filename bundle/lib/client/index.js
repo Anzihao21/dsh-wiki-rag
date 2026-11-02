@@ -54,21 +54,115 @@ function statusStyle(status) {
 function WikiSidebar(props) {
   const { wide, expandSidebar, t } = props;
   const [q, setQ] = (0, import_react.useState)("");
-  const [docs] = (0, import_react.useState)(SAMPLE_DOCS);
+  const [docs, setDocs] = (0, import_react.useState)(SAMPLE_DOCS);
   const [activeId, setActiveId] = (0, import_react.useState)("1");
   const [view, setView] = (0, import_react.useState)("list");
   const [editTab, setEditTab] = (0, import_react.useState)("edit");
   const [mdContent, setMdContent] = (0, import_react.useState)(SAMPLE_MD["1"] ?? "");
-  const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)("fallback");
-  const [embeddingModelPath, setEmbeddingModelPath] = (0, import_react.useState)("");
-  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = (0, import_react.useState)("https://api.openai.com/v1");
-  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = (0, import_react.useState)("");
-  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = (0, import_react.useState)("text-embedding-3-small");
-  const [rerankProvider, setRerankProvider] = (0, import_react.useState)("none");
-  const [rerankModelPath, setRerankModelPath] = (0, import_react.useState)("");
-  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = (0, import_react.useState)("https://api.openai.com/v1");
-  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = (0, import_react.useState)("");
-  const [rerankOpenAIModel, setRerankOpenAIModel] = (0, import_react.useState)("rerank-multilingual-v3");
+  const [showImport, setShowImport] = (0, import_react.useState)(false);
+  const [importPath, setImportPath] = (0, import_react.useState)("");
+  const [embeddingProvider, setEmbeddingProvider] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_embeddingProvider") || "fallback";
+    } catch {
+      return "fallback";
+    }
+  });
+  const [embeddingModelPath, setEmbeddingModelPath] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_embeddingModelPath") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [embeddingOpenAIBaseURL, setEmbeddingOpenAIBaseURL] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_embeddingOpenAIBaseURL") || "https://api.openai.com/v1";
+    } catch {
+      return "https://api.openai.com/v1";
+    }
+  });
+  const [embeddingOpenAIAPIKey, setEmbeddingOpenAIAPIKey] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_embeddingOpenAIAPIKey") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [embeddingOpenAIModel, setEmbeddingOpenAIModel] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_embeddingOpenAIModel") || "text-embedding-3-small";
+    } catch {
+      return "text-embedding-3-small";
+    }
+  });
+  const [rerankProvider, setRerankProvider] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_rerankProvider") || "none";
+    } catch {
+      return "none";
+    }
+  });
+  const [rerankModelPath, setRerankModelPath] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_rerankModelPath") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [rerankOpenAIBaseURL, setRerankOpenAIBaseURL] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_rerankOpenAIBaseURL") || "https://api.openai.com/v1";
+    } catch {
+      return "https://api.openai.com/v1";
+    }
+  });
+  const [rerankOpenAIAPIKey, setRerankOpenAIAPIKey] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_rerankOpenAIAPIKey") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [rerankOpenAIModel, setRerankOpenAIModel] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem("wiki_rerankOpenAIModel") || "rerank-multilingual-v3";
+    } catch {
+      return "rerank-multilingual-v3";
+    }
+  });
+  const saveSettings = () => {
+    try {
+      localStorage.setItem("wiki_embeddingProvider", embeddingProvider);
+      localStorage.setItem("wiki_embeddingModelPath", embeddingModelPath);
+      localStorage.setItem("wiki_embeddingOpenAIBaseURL", embeddingOpenAIBaseURL);
+      localStorage.setItem("wiki_embeddingOpenAIAPIKey", embeddingOpenAIAPIKey);
+      localStorage.setItem("wiki_embeddingOpenAIModel", embeddingOpenAIModel);
+      localStorage.setItem("wiki_rerankProvider", rerankProvider);
+      localStorage.setItem("wiki_rerankModelPath", rerankModelPath);
+      localStorage.setItem("wiki_rerankOpenAIBaseURL", rerankOpenAIBaseURL);
+      localStorage.setItem("wiki_rerankOpenAIAPIKey", rerankOpenAIAPIKey);
+      localStorage.setItem("wiki_rerankOpenAIModel", rerankOpenAIModel);
+    } catch {
+    }
+    setView("list");
+  };
+  const doImport = () => {
+    if (!importPath.trim()) return;
+    const newDoc = {
+      id: String(Date.now()),
+      title: importPath.split("/").pop()?.replace(/\.[^.]+$/, "") || "\u65B0\u6587\u6863",
+      type: importPath.endsWith(".pdf") ? "PDF" : "MD",
+      status: "ready",
+      summary: "\u65B0\u5BFC\u5165"
+    };
+    setDocs([newDoc, ...docs]);
+    setShowImport(false);
+    setImportPath("");
+  };
+  const doDelete = (id) => {
+    setDocs(docs.filter((d) => d.id !== id));
+  };
   const title = t ? t("wiki.title") : "\u77E5\u8BC6\u5E93";
   const placeholder = t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026";
   if (!wide) {
@@ -282,7 +376,7 @@ function WikiSidebar(props) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => setView("list"),
+                onClick: saveSettings,
                 style: {
                   height: 26,
                   padding: "0 10px",
@@ -470,6 +564,24 @@ function WikiSidebar(props) {
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
+                    title: "\u5BFC\u5165",
+                    onClick: () => setShowImport(!showImport),
+                    style: {
+                      width: 24,
+                      height: 24,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-secondary)",
+                      fontSize: 13
+                    },
+                    children: "+"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
                     title: t ? t("wiki.refresh") : "\u5237\u65B0",
                     onClick: () => {
                     },
@@ -527,6 +639,45 @@ function WikiSidebar(props) {
             }
           }
         ),
+        showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              value: importPath,
+              onChange: (e) => setImportPath(e.target.value),
+              placeholder: "\u8F93\u5165\u6587\u4EF6\u8DEF\u5F84\u6216 URL\u2026",
+              style: {
+                flex: 1,
+                height: 28,
+                padding: "0 8px",
+                boxSizing: "border-box",
+                borderRadius: "var(--dsw-radius-sm)",
+                border: "1px solid var(--dsw-alias-border-l4)",
+                background: "var(--dsw-alias-bg-layer-1)",
+                color: "var(--dsw-alias-label-primary)",
+                outline: "none",
+                fontSize: 12
+              }
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: doImport,
+              style: {
+                height: 28,
+                padding: "0 8px",
+                borderRadius: "var(--dsw-radius-sm)",
+                border: "none",
+                background: "var(--dsw-alias-state-business-primary)",
+                color: "#fff",
+                fontSize: 11,
+                cursor: "pointer"
+              },
+              children: "\u5BFC\u5165"
+            }
+          )
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }, children: filtered.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "div",
           {
@@ -608,9 +759,29 @@ function WikiSidebar(props) {
                     children: d.summary
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 11, color: st.color }, children: [
-                  "\u25CF ",
-                  st.label
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 11, color: st.color, display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    "\u25CF ",
+                    st.label
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        doDelete(d.id);
+                      },
+                      style: {
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        color: "var(--dsw-alias-label-tertiary)",
+                        fontSize: 12,
+                        padding: 0
+                      },
+                      children: "\u2715"
+                    }
+                  )
                 ] })
               ]
             },
