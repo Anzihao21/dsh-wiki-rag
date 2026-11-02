@@ -25086,15 +25086,38 @@ var require_archiver = __commonJS({
 // ../src/main/network/web-crawler.ts
 var web_crawler_exports = {};
 __export(web_crawler_exports, {
+  assertSafeFetchUrl: () => assertSafeFetchUrl,
   fetchWebContent: () => fetchWebContent
 });
 import { get as get2 } from "https";
 import { get as getHttp } from "http";
 async function fetchWebContent(url, intranetMode, opts) {
+  assertSafeFetchUrl(url);
   const timeout = intranetMode ? Math.max(opts.timeout, 15e3) : opts.timeout;
   const ua = intranetMode ? "Mozilla/5.0 (DSH-Wiki-RAG/Intranet)" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
   const body = await rawFetch(url, { ua, timeout });
   return htmlToText(body);
+}
+function assertSafeFetchUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error(`\u975E\u6CD5 URL: ${url}`);
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`\u4EC5\u652F\u6301 http/https \u534F\u8BAE\uFF0C\u6536\u5230 ${u.protocol}`);
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (/^169\.254\./.test(host)) {
+    throw new Error(`\u7981\u6B62\u8BBF\u95EE link-local \u5730\u5740\uFF08\u7591\u4F3C\u4E91\u5143\u6570\u636E\uFF09: ${host}`);
+  }
+  if (host.startsWith("fe80")) {
+    throw new Error(`\u7981\u6B62\u8BBF\u95EE IPv6 link-local \u5730\u5740: ${host}`);
+  }
+  if (host === "0.0.0.0" || host === "::") {
+    throw new Error(`\u7981\u6B62\u8BBF\u95EE\u901A\u914D\u5730\u5740: ${host}`);
+  }
 }
 function rawFetch(url, opts) {
   return new Promise((resolve, reject) => {

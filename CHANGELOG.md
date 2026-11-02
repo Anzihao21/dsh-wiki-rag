@@ -2,6 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.0.2] - 2026-11-03
+
+### Security
+- `web-crawler` 新增 `assertSafeFetchUrl`：抓取前统一拦截非 http(s) scheme（file/ftp/gopher）、link-local 段 `169.254.0.0/16`（含 AWS/GCP/阿里云等云元数据 `169.254.169.254`）、IPv6 link-local `fe80::/10` 与通配地址 `0.0.0.0` / `::`
+- 内网模式下 `10.x` / `192.168.x` / `127.x` 仍按原语义放行（用户显式允许的内网访问范围）
+- 新增 6 例 SSRF 单元测试
+
 ## [2.0.1] - 2026-11-03
 
 ### Security

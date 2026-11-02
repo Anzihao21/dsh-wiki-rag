@@ -17,6 +17,9 @@ export async function fetchWebContent(
   intranetMode: boolean,
   opts: WebFetchOptions
 ): Promise<string> {
+  // SSRF 防护：无论内外网模式都拦截 cloud metadata / 非 http(s) scheme
+  assertSafeFetchUrl(url);
+
   const timeout = intranetMode ? Math.max(opts.timeout, 15000) : opts.timeout;
   const ua = intranetMode
     ? 'Mozilla/5.0 (DSH-Wiki-RAG/Intranet)'
@@ -26,6 +29,38 @@ export async function fetchWebContent(
 
   // 简单 HTML 转纯文本
   return htmlToText(body);
+}
+
+/**
+ * SSRF 入口校验：
+ * - 仅允许 http: / https: scheme
+ * - 拦截 link-local 段 169.254.0.0/16（含 AWS / GCP / 阿里云等云元数据 169.254.169.254）
+ * - 拦截 0.0.0.0 / [::] 等通配地址
+ * 注意：内网模式下 10.x / 192.168.x / 127.x 是用户显式允许的内网访问范围，不在此处拦截。
+ */
+export function assertSafeFetchUrl(url: string): void {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error(`非法 URL: ${url}`);
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(`仅支持 http/https 协议，收到 ${u.protocol}`);
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // link-local：云元数据
+  if (/^169\.254\./.test(host)) {
+    throw new Error(`禁止访问 link-local 地址（疑似云元数据）: ${host}`);
+  }
+  // IPv6 link-local fe80::/10
+  if (host.startsWith('fe80')) {
+    throw new Error(`禁止访问 IPv6 link-local 地址: ${host}`);
+  }
+  // 通配地址
+  if (host === '0.0.0.0' || host === '::') {
+    throw new Error(`禁止访问通配地址: ${host}`);
+  }
 }
 
 function rawFetch(
