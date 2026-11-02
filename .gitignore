@@ -8,3 +8,6 @@ test-data/
 *.db-journal
 *.db-wal
 .idea
+
+# DSH 本地宿主验证目录（不入库）
+.dsh-host/

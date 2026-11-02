@@ -1,0 +1,12 @@
+# dsh-wiki-rag bundle patch 层
+# 声明本 bundle 贡献的插件行：宿主工具插件（wiki-rag-host）
+- insert:
+    - id: wiki-rag-host
+      name: 'dsh-wiki-rag'
+      config:
+        mdStoragePath: '.dsh-wiki-rag/md'
+        zipStoragePath: '.dsh-wiki-rag/zip'
+        chunkSize: 500
+        chunkOverlap: 80
+        webMode: 'external'
+        webTimeout: 15000
