@@ -1,9 +1,18 @@
 {
   "name": "dsh-wiki-rag",
-  "version": "1.0.0.1",
+  "version": "1.0.1",
   "description": "DeepSeek Harness Wiki风格知识库RAG插件",
   "type": "module",
   "main": "dist/main/index.js",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anzihao21/dsh-wiki-rag.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.main.json && vite build",

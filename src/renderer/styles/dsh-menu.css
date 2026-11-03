@@ -1,0 +1,180 @@
+/* ===== Menu 浮层（复刻官方 ui-primitives MenuSurface + Menu） =====
+   全部消费官方设计令牌；明暗主题由 body[data-ds-dark-theme] 级联。 */
+
+.dsw-menu-root {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 触发器：复刻 .dsw-select 控制盒外观，点击展开浮层 */
+.dsw-menu-trigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background 120ms var(--ds-ease-in-out), border-color 120ms var(--ds-ease-in-out);
+}
+
+.dsw-menu-trigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsw-menu-trigger[aria-expanded="true"] {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.dsw-menu-trigger-label {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsw-menu-trigger-value {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.dsw-menu-caret {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms var(--ds-ease-in-out);
+}
+
+.dsw-menu-trigger[aria-expanded="true"] .dsw-menu-caret {
+  transform: rotate(180deg);
+}
+
+/* 浮层卡片：固定定位，portal 至 body，避免祖先 overflow 裁剪 */
+.dsw-menu-list {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-lg);
+  box-shadow: var(--dsw-elevation-prominent);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  /* 卡片作为浮层表面，滚动条取 l2 令牌 */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* 半透明材质层（官方 MenuSurface .material） */
+.dsw-menu-list::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dsw-menu-surface-fill);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  pointer-events: none;
+}
+
+.dsw-menu-viewport {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 144px;
+  max-width: 360px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+/* 菜单单元：紧凑文字 / 图标 / 选区间距 */
+.dsw-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+}
+
+/* 键盘与非键盘焦点统一用 hover 填充作为焦点指示，消除默认 ring 的重叠 */
+.dsw-menu-item:hover:not(:disabled),
+.dsw-menu-item:focus-visible:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.dsw-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dsw-menu-item-icon {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-menu-icon);
+}
+
+.dsw-menu-item-icon svg,
+.dsw-menu-check {
+  width: 14px;
+  height: 14px;
+}
+
+.dsw-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsw-menu-check {
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 危险行：错误色文字/图标 + 危险 hover 填充 */
+.dsw-menu-danger {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsw-menu-danger .dsw-menu-item-icon {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsw-menu-danger:hover:not(:disabled),
+.dsw-menu-danger:focus-visible:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+/* 分组标题：非交互小号灰字 */
+.dsw-menu-label {
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 分隔线 */
+.dsw-menu-separator {
+  height: 0.5px;
+  margin: 3px 2px;
+  background: var(--dsw-alias-border-l2);
+}

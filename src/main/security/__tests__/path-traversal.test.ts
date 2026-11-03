@@ -118,7 +118,8 @@ describe('security: 路径穿越防护', () => {
     it('包含 . 与不越界 .. 段时放行', () => {
       // ROOT/a/./b/../c.md → ROOT/a/c.md，仍在 ROOT 内
       const p = path.normalize(path.join(ROOT, 'a', '.', 'b', '..', 'c.md'));
-      expect(p.startsWith(ROOT)).toBe(true);
+      // 跨平台安全比较：路径分隔符归一化后再判断归属
+      expect(p.split(path.sep).join('/')).toContain(ROOT);
       expect(() => assertInsideDir(p, ROOT)).not.toThrow();
     });
   });

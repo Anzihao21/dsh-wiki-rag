@@ -61,3 +61,17 @@ export function toMdFileName(fileName: string): string {
   const base = ext ? fileName.slice(0, fileName.length - ext.length) : fileName;
   return `${base}.md`;
 }
+
+/**
+ * 判定是否为「本地文件系统绝对路径」（跨平台）。
+ * 覆盖：Windows 盘符路径（C:\ / C:/）、Unix 绝对路径（/foo）、UNC 共享（\\server\share / //server/share）。
+ * 与 isUncPath（仅 UNC，不含盘符）区分：本函数额外识别 Windows 盘符绝对路径，
+ * 使本地源文件（如 C:\Users\...\doc.txt）在 Windows 上被正确识别为可同步的本地引用。
+ */
+export function isLocalFsPath(p: string): boolean {
+  if (!p) return false;
+  // Windows 盘符绝对路径：C:\ 或 C:/
+  if (/^[A-Za-z]:[\\/]/.test(p)) return true;
+  // Unix 绝对路径 /foo 或 UNC \\server 或 //server
+  return p.startsWith('/') || p.startsWith('\\\\') || p.startsWith('//');
+}

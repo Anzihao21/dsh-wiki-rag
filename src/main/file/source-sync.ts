@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { getKnowledgeFileById, updateSyncTime } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
-import { sha256File, extractTextToMarkdown, sha256Text } from './file-utils';
+import { sha256File, extractTextToMarkdown, sha256Text, isLocalFsPath } from './file-utils';
 import { buildDiffResult } from './diff-compare';
 import type { DiffResult } from '../types';
 
@@ -29,7 +29,7 @@ export async function triggerSourceSync(
   }
 
   const sourcePath = record.source_path;
-  const isLocalRef = sourcePath.startsWith('/') || sourcePath.startsWith('\\\\') || sourcePath.startsWith('//');
+  const isLocalRef = isLocalFsPath(sourcePath);
 
   if (!isLocalRef) {
     // 网页/笔记条目无本地源文件，跳过

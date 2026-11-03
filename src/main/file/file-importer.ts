@@ -6,9 +6,9 @@ import { writeLog } from '../db/log-db';
 import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
 import { chunkTextSmart } from '../rag/text-chunk';
 import { embedText } from '../rag/embedding';
-import { resolveUniqueFileName, isUncPath } from './name-auto-rename';
+import { resolveUniqueFileName } from './name-auto-rename';
 import { archiveSourceFile } from './zip-archive';
-import { extractTextToMarkdown, isOversize, toMdFileName, detectFileType } from './file-utils';
+import { extractTextToMarkdown, isOversize, toMdFileName, detectFileType, isLocalFsPath } from './file-utils';
 import { sanitizeFileName, assertInsideDir } from './path-guard';
 import type { FileType } from '../types';
 
@@ -118,7 +118,7 @@ export class FileImporter {
     fileType: FileType
   ): Promise<ImportResult> {
     // 计算入库时实际写入的 source_path（与下方 insert 保持一致）
-    const isLocalRef = sourceRef.startsWith('/') || isUncPath(sourceRef);
+    const isLocalRef = isLocalFsPath(sourceRef);
     const storedSourcePath = isLocalRef ? sourceRef : `ref://${sourceRef}`;
 
     // 重复导入去重：同一 source_path 已存在时直接复用旧记录，不新建条目

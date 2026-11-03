@@ -2,15 +2,14 @@ import React, { useEffect, useState } from 'react';
 import type { PluginSettings } from '../../main/types';
 import { ipc } from '../ipc';
 import { t } from '../i18n';
-import { Button, InputField, Switch, DropdownSelect } from '../ui-kit';
+import { Button, InputField, Switch, DropdownSelect, useToast } from '../ui-kit';
 import { IconSaveOutlineRegular, IconArchiveOutlineRegular } from '../assets/icons/icons';
 
 /** 设置面板：存储路径、网页模式、RAG 切片参数、快照开关（官方一致 UI） */
 export default function SettingPanel() {
   const [settings, setSettings] = useState<PluginSettings | null>(null);
-  const [saved, setSaved] = useState(false);
   const [snapping, setSnapping] = useState(false);
-  const [snapMsg, setSnapMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     ipc<PluginSettings>('wiki:getSettings').then(setSettings);
@@ -22,21 +21,20 @@ export default function SettingPanel() {
 
   const set = (k: keyof PluginSettings, v: any) => {
     setSettings({ ...settings, [k]: v });
-    setSaved(false);
   };
 
   const handleSave = async () => {
     await ipc('wiki:saveSettings', settings);
-    setSaved(true);
+    toast({ text: t('settings.saved'), tone: 'success' });
   };
 
   const handleSnapshot = async () => {
     setSnapping(true);
     try {
       await ipc('wiki:createSnapshot');
-      setSnapMsg(t('settings.snapshotCreated'));
+      toast({ text: t('settings.snapshotCreated') });
     } catch (e) {
-      setSnapMsg(t('settings.snapshotFailed').replace('{msg}', (e as Error).message));
+      toast({ text: t('settings.snapshotFailed').replace('{msg}', (e as Error).message) });
     } finally {
       setSnapping(false);
     }
@@ -97,8 +95,6 @@ export default function SettingPanel() {
               {t('settings.snapshotButton')}
             </Button>
             <span className="dsw-toolbar-spacer" />
-            {saved && <span style={{ color: 'var(--dsw-alias-state-success-primary)', fontSize: 13 }}>{t('settings.saved')}</span>}
-            {snapMsg && <span style={{ color: 'var(--dsw-alias-state-warn-primary)', fontSize: 13 }}>{snapMsg}</span>}
           </div>
         </div>
       </div>

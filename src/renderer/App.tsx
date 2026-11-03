@@ -8,6 +8,7 @@ import ImportPanel from './components/ImportPanel';
 import SettingPanel from './components/SettingPanel';
 import DiffModal from './components/DiffModal';
 import { IconSprite } from './assets/icons/IconSprite';
+import { ToastProvider, Tooltip } from './ui-kit';
 import {
   IconListPenOutlineRegular,
   IconPlusOutlineRegular,
@@ -47,20 +48,24 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <ToastProvider>
+      <div className="flex h-screen w-screen overflow-hidden">
       <IconSprite />
       {/* 左侧主导航 */}
       <nav className="dsw-sidebar">
+        <Tooltip label="Wiki 知识库" side="right">
+          <div className="dsw-sidebar-brand dsw-brand">W</div>
+        </Tooltip>
         {NAV_ITEMS.map((it) => (
-          <button
-            key={it.view}
-            className="dsw-nav-item"
-            aria-current={view === it.view}
-            onClick={() => setView(it.view)}
-            title={it.label}
-          >
-            {it.icon}
-          </button>
+          <Tooltip key={it.view} label={it.label} side="right">
+            <button
+              className="dsw-nav-item"
+              aria-current={view === it.view}
+              onClick={() => setView(it.view)}
+            >
+              {it.icon}
+            </button>
+          </Tooltip>
         ))}
       </nav>
 
@@ -92,5 +97,6 @@ export default function App() {
         />
       )}
     </div>
+    </ToastProvider>
   );
 }

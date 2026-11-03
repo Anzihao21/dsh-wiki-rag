@@ -1,6 +1,16 @@
 /* 1) 官方设计令牌：字体/圆角/动效 + 明暗双主题语义色（消费官方 CSS 变量，无 hex 字面量） */
 @import './styles/dsh-base.css';
 @import './styles/dsh-design-platform.css';
+/* 官方质感层：super-ellipse 曲率 / 主题化滚动条 / 焦点环 / 高程阴影+字体阶梯 / 品牌字 */
+@import './styles/dsh-corner-shape.css';
+@import './styles/dsh-scrollbar.css';
+@import './styles/dsh-focus.css';
+@import './styles/dsh-gradient-shadow-text.css';
+@import './styles/dsh-brand-font.css';
+/* 官方一致组件样式：Menu 浮层 / Tooltip / Toast */
+@import './styles/dsh-menu.css';
+@import './styles/dsh-tooltip.css';
+@import './styles/dsh-toast.css';
 
 @tailwind base;
 @tailwind components;
@@ -144,6 +154,7 @@ body {
   line-height: 1;
   padding: 2px 6px;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-alias-bg-layer-3);
   color: var(--dsw-alias-label-secondary);
 }
@@ -258,6 +269,7 @@ body {
   padding: 2px;
   border: 0;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-alias-border-l3);
   cursor: pointer;
 }
@@ -277,6 +289,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
+  corner-shape: round;
   background: var(--dsw-alias-switch-thumb);
   transition: transform 120ms ease;
 }
@@ -314,7 +327,9 @@ body {
   border: 0;
   border-radius: var(--dsw-radius-panel);
   background: var(--dsw-alias-bg-layer-2);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--dsw-elevation-prominent);
+  /* 浮层圆角避免被全局 super-ellipse 曲率影响 */
+  corner-shape: round;
 }
 .dsw-modal-header {
   display: flex;
@@ -512,4 +527,90 @@ body {
   flex: 1;
   overflow: auto;
   padding: 20px;
+}
+
+/* ============ 4) 官方一致辅助类（消除散落的 Tailwind 原子类） ============ */
+
+/* 卡片 / 分区容器：分层背景 + 发丝描边 + 大圆角 */
+.dsw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* 代码字体（diff 视图等）：使用官方 code 字体栈，而非 Tailwind 默认等宽栈 */
+.dsw-code {
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  line-height: 1.6;
+  font-variant-ligatures: none;
+}
+
+/* 字号档（对齐官方 type scale，避免 text-sm / text-[13px] 等任意值） */
+.dsw-text-sm {
+  font-size: 14px;
+  line-height: 22px;
+}
+.dsw-text-13 {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* 内联操作反馈消息条（成功/错误），用语义色令牌染色 */
+.dsw-inline-message {
+  border-radius: var(--dsw-radius-md);
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.dsw-inline-message-ok {
+  background: var(--dsw-alias-state-success-tertiary);
+  color: var(--dsw-alias-state-success-primary);
+}
+.dsw-inline-message-err {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, var(--dsw-alias-bg-base));
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* 状态文字（保存成功 / 快照提示），用语义色令牌 */
+.dsw-status {
+  font-size: 13px;
+  line-height: 20px;
+}
+.dsw-status-ok {
+  color: var(--dsw-alias-state-success-primary);
+}
+.dsw-status-warn {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+/* 品牌字标：Montserrat，仅用于产品 wordmark / logo */
+.dsw-brand {
+  font-family: var(--dsw-font-family-brand);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* diff 行：官方小圆角 + 内边距 */
+.dsw-diff-line {
+  border-radius: var(--dsw-radius-sm);
+  padding: 0 8px;
+}
+
+/* 侧栏品牌字标容器 */
+.dsw-sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 4px;
+  border-radius: var(--dsw-radius-md);
+  font-size: 15px;
+  user-select: none;
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ipc } from '../ipc';
 import { t } from '../i18n';
-import { Button, InputField } from '../ui-kit';
+import { Button, InputField, useToast } from '../ui-kit';
 import { IconPlusOutlineRegular, IconLinkOutlineRegular, IconListPenOutlineRegular, IconFolderOpenOutlineRegular, IconGlobeOutlineRegular } from '../assets/icons/icons';
 
 interface Props {
@@ -20,6 +20,7 @@ export default function ImportPanel({ onImported }: Props) {
   const [noteText, setNoteText] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   const run = async (p: Promise<any>) => {
     setMsg(null);
@@ -27,10 +28,14 @@ export default function ImportPanel({ onImported }: Props) {
     try {
       const r = await p;
       const skipped = Array.isArray(r) ? r.some((x) => x.skipped) : r?.skipped;
-      setMsg({ ok: true, text: skipped ? t('import.skipped') : t('import.success') });
+      const text = skipped ? t('import.skipped') : t('import.success');
+      setMsg({ ok: true, text });
+      toast({ text, tone: 'success' });
       onImported();
     } catch (e) {
-      setMsg({ ok: false, text: t('import.failed').replace('{msg}', (e as Error).message) });
+      const text = t('import.failed').replace('{msg}', (e as Error).message);
+      setMsg({ ok: false, text });
+      toast({ text });
     } finally {
       setBusy(false);
     }
@@ -97,13 +102,7 @@ export default function ImportPanel({ onImported }: Props) {
           </Section>
 
           {msg && (
-            <div
-              className="rounded-md px-4 py-2 text-sm"
-              style={{
-                background: msg.ok ? 'var(--dsw-alias-state-success-tertiary)' : 'var(--dsw-alias-state-error-secondary)',
-                color: msg.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-label-primary-foreground)'
-              }}
-            >
+            <div className={"dsw-inline-message " + (msg.ok ? "dsw-inline-message-ok" : "dsw-inline-message-err")}>
               {msg.text}
             </div>
           )}
@@ -115,7 +114,7 @@ export default function ImportPanel({ onImported }: Props) {
 
 function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg p-4" style={{ border: '0.5px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)' }}>
+    <div className="dsw-card">
       <div className="flex items-center gap-2">
         {icon}
         <span className="dsw-list-item-title">{title}</span>

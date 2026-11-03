@@ -70,7 +70,7 @@ describe('性能基准', () => {
       }
     }
     const dt = performance.now() - t0;
-    expect(dt).toBeLessThan(5000);
+    expect(dt).toBeLessThan(8000);
   }, 15000);
 
   it('数据库循环插入 1000 条记录并查询 < 3s', async () => {

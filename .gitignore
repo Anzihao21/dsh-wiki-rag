@@ -15,3 +15,6 @@ test-data/
 # 研究/验证产物（不入库）
 artifacts/
 *.tgz
+
+# 本地 pnpm 商店（构建产物，不入库）
+.pnpm-store/

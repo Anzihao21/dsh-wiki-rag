@@ -1,0 +1,48 @@
+/* ===== Tooltip 气泡（复刻官方 ui-primitives Tooltip） ===== */
+
+.dsw-tooltip-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: fixed;
+  z-index: 100;
+  /* 固定宽度测量只算 left 到视口边的空间，max-content 按文字自身约束，封顶半屏 */
+  width: max-content;
+  max-width: 50vw;
+  padding: 3px 7px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-tooltip-bg);
+  color: var(--dsw-static-neutral-bluish-00);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  animation: dsw-tooltip-in 150ms var(--ds-ease-in-out);
+}
+
+.dsw-tooltip-bubble[data-portal] {
+  z-index: 1100;
+}
+
+.dsw-tooltip-bubble[data-side='right'] {
+  transform: translateY(-50%);
+}
+
+.dsw-tooltip-bubble[data-side='bottom'] {
+  transform: translateX(-50%);
+}
+
+.dsw-tooltip-bubble[data-side='top'] {
+  transform: translate(-50%, -100%);
+}
+
+@keyframes dsw-tooltip-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsw-tooltip-bubble {
+    animation: none;
+  }
+}

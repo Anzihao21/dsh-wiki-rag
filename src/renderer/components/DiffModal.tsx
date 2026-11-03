@@ -56,11 +56,11 @@ export default function DiffModal({ diff, onClose, onAccept, onReject }: Props) 
     <Modal open onClose={onClose} title={diff.fileName} footer={footer}>
       {subtitle && <div style={{ marginBottom: 8 }}>{subtitle}</div>}
       {hasDiff ? (
-        <div className="flex flex-col gap-0.5 font-mono text-[13px] leading-relaxed">
+        <div className="dsw-code">
           {diff.diff!.map((d, i) => (
             <div
               key={i}
-              className={`whitespace-pre-wrap rounded px-2 ${
+              className={`dsw-diff-line whitespace-pre-wrap ${
                 d.added ? 'dsw-diff-added' : d.removed ? 'dsw-diff-removed' : 'dsw-diff-plain'
               }`}
             >
@@ -69,7 +69,7 @@ export default function DiffModal({ diff, onClose, onAccept, onReject }: Props) 
           ))}
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-[14px] leading-6" style={{ color: 'var(--dsw-alias-label-secondary)' }}>
+        <div className="dsw-text-sm flex items-center gap-2" style={{ color: 'var(--dsw-alias-label-secondary)' }}>
           <IconWarningTriangleOutlineRegular size={16} className="shrink-0" />
           <span>{diff.message ?? t('diff.noChanges')}</span>
         </div>
