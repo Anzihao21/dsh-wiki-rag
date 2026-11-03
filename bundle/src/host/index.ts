@@ -25,6 +25,7 @@ import { writeLog, listLogs } from '../../../src/main/db/log-db';
 import {
   listKnowledgeFiles,
   getKnowledgeFileById,
+  insertKnowledgeFile,
   deleteKnowledgeFile,
   updateMdPath,
   updateZipPath,
@@ -35,10 +36,15 @@ import {
   renameFolder,
   moveFolder,
   deleteFolder,
-  moveFileToFolder
+  moveFileToFolder,
+  updateSourcePath,
+  listKnowledgeFilesByFolder
 } from '../../../src/main/db/knowledge-db';
 import { triggerSourceSync, applySourceUpdate } from '../../../src/main/file/source-sync';
-import { resolveUniqueFileName } from '../../../src/main/file/name-auto-rename';
+import { resolveUniqueFileName, isUncPath } from '../../../src/main/file/name-auto-rename';
+import { extractTextToMarkdown, sha256Text } from '../../../src/main/file/file-utils';
+import { buildDiffResult } from '../../../src/main/file/diff-compare';
+import { archiveSourceFile } from '../../../src/main/file/zip-archive';
 import { createSnapshot, restoreSnapshot, listSnapshots } from '../../../src/main/snapshot/snapshot-backup';
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 
@@ -51,9 +57,11 @@ export const Config = z.object({
   snapshotStoragePath: z.string().default('.dsh-wiki-rag/snapshots'),
   chunkSize: z.number().default(800),
   chunkOverlap: z.number().default(120),
+  chunkMode: z.union(['fixed', 'heading']).default('fixed'),
   webMode: z.union(['intranet', 'extranet', 'external']).default('extranet'),
   webTimeout: z.number().default(15000),
   autoSnapshot: z.boolean().default(false),
+  snapshotKeep: z.number().default(3),
   // ---- Embedding ----
   embeddingProvider: z.union(['local', 'openai', 'fallback']).default('fallback'),
   embeddingModelPath: z.string().default(''),
@@ -78,9 +86,11 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     zipStoragePath: path.resolve(config.zipStoragePath),
     chunkSize: config.chunkSize,
     chunkOverlap: config.chunkOverlap,
+    chunkMode: config.chunkMode,
     webMode: config.webMode,
     webTimeout: config.webTimeout,
     autoSnapshot: config.autoSnapshot,
+    snapshotKeep: config.snapshotKeep,
     embeddingProvider: config.embeddingProvider,
     embeddingModelPath: config.embeddingModelPath,
     embeddingOpenAIBaseURL: config.embeddingOpenAIBaseURL,
@@ -105,17 +115,23 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     zipDir: settings.zipStoragePath,
     chunkSize: settings.chunkSize,
     chunkOverlap: settings.chunkOverlap,
+    chunkMode: settings.chunkMode,
     webTimeout: settings.webTimeout,
   });
 
   const watcher = new FileWatcher();
 
   // 待确认变更队列（文件监听触发 → 客户端弹窗三态：接受/拒绝/暂存）
+  // 监听触发时即预计算 oldText/newText/diff，前端轮询到即可直接渲染 Diff，无需二次请求
   const pendingChanges: Array<{
     fileId: number;
     fileName: string;
     sourcePath: string;
     time: number;
+    shelved: boolean;
+    oldText: string;
+    newText: string;
+    diff: Array<{ added: boolean; removed: boolean; value: string }>;
   }> = [];
 
   // ---- 批量任务进度（内存态）----
@@ -163,9 +179,28 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     await initDatabase(path.join(dataDir, 'dsh-wiki-rag.db'));
     await writeLog('plugin-activate', `wiki-rag-host DB=${getDbPath()}`);
 
-    // 接入文件监听：源文件变更入待确认队列
-    watcher.setCallback((change) => {
-      pendingChanges.push({ ...change, time: Date.now() });
+    // 接入文件监听：源文件变更入待确认队列；入队前预计算新旧文本与 diff，前端轮询即可直接渲染
+    watcher.setCallback(async (change) => {
+      let oldText = '';
+      try {
+        const rec = await getKnowledgeFileById(change.fileId);
+        if (rec) {
+          try { oldText = await fs.readFile(rec.md_path, 'utf-8'); } catch { oldText = ''; }
+        }
+      } catch { /* 条目读取失败时旧文本为空 */ }
+      let newText = '';
+      try { newText = await extractTextToMarkdown(change.sourcePath); } catch { newText = ''; }
+      // 新旧内容一致视为无改动，不入队（与 triggerSourceSync 判据一致）
+      if (oldText && sha256Text(oldText) === sha256Text(newText)) return;
+      const diff = buildDiffResult(change.fileId, change.fileName, oldText, newText).diff;
+      pendingChanges.push({
+        ...change,
+        oldText,
+        newText,
+        diff,
+        shelved: false,
+        time: Date.now(),
+      });
     });
     // 启动时对所有已有本地源文件条目挂监听
     const existing = await listKnowledgeFiles();
@@ -355,9 +390,11 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       snapshotStoragePath,
       chunkSize: settings.chunkSize,
       chunkOverlap: settings.chunkOverlap,
+      chunkMode: settings.chunkMode,
       webMode: settings.webMode,
       webTimeout: settings.webTimeout,
       autoSnapshot: settings.autoSnapshot,
+      snapshotKeep: settings.snapshotKeep,
       embeddingProvider: settings.embeddingProvider,
       rerankProvider: settings.rerankProvider,
       rerankTopK: settings.rerankTopK,
@@ -449,6 +486,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
     if (typeof patch.chunkSize === 'number') settings.chunkSize = patch.chunkSize;
     if (typeof patch.chunkOverlap === 'number') settings.chunkOverlap = patch.chunkOverlap;
+    if (patch.chunkMode === 'fixed' || patch.chunkMode === 'heading') settings.chunkMode = patch.chunkMode;
+    if (typeof patch.snapshotKeep === 'number' && patch.snapshotKeep >= 0) settings.snapshotKeep = Math.floor(patch.snapshotKeep);
     if (typeof patch.webTimeout === 'number') settings.webTimeout = patch.webTimeout;
     if (typeof patch.autoSnapshot === 'boolean') settings.autoSnapshot = patch.autoSnapshot;
     if (typeof patch.rerankTopK === 'number') settings.rerankTopK = patch.rerankTopK;
@@ -466,6 +505,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       zipDir: settings.zipStoragePath,
       chunkSize: settings.chunkSize,
       chunkOverlap: settings.chunkOverlap,
+      chunkMode: settings.chunkMode,
       webTimeout: settings.webTimeout,
     });
   }
@@ -619,7 +659,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         }
         if (req.method === 'POST' && pathname === '/api/wiki/snapshots') {
           const out = await createSnapshot(settings.mdStoragePath, settings.zipStoragePath, snapshotStoragePath);
-          await pruneSnapshots(3);
+          await pruneSnapshots(settings.snapshotKeep);
           return json(200, { status: 'created', path: out, list: await readSnapshotList() });
         }
         // 快照恢复：/api/wiki/snapshots/:id/restore
@@ -722,6 +762,106 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           await moveFileToFolder(fileId, folderId);
           await writeLog('file-move', `fileId=${fileId} -> folder=${folderId}`);
           return json(200, { fileId, folderId });
+        }
+
+        // ---- 新建空白 MD 文档：POST /files/new ----
+        if (req.method === 'POST' && pathname === '/api/wiki/files/new') {
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+          if (!title) return json(400, { error: '缺少 title' });
+          let folderId: number | null = null;
+          if (parsed.folderId !== undefined && parsed.folderId !== null) {
+            if (typeof parsed.folderId !== 'number') return json(400, { error: 'folderId 必须是数字或 null' });
+            if (!(await getFolderById(parsed.folderId))) return json(404, { error: '目标文件夹不存在' });
+            folderId = parsed.folderId;
+          }
+          // 同名自动重命名，保证 mdDir 内文件名唯一
+          const existingNames = (await listKnowledgeFiles()).map((f) => f.file_name);
+          const finalName = resolveUniqueFileName(title.endsWith('.md') ? title : `${title}.md`, existingNames);
+          await fs.mkdir(settings.mdStoragePath, { recursive: true });
+          const mdPath = path.join(settings.mdStoragePath, finalName);
+          const content = `# ${finalName.replace(/\.md$/i, '')}\n\n`;
+          await fs.writeFile(mdPath, content, 'utf-8');
+          const fileId = await insertKnowledgeFile({
+            file_name: finalName,
+            source_path: 'manual://' + title,
+            md_path: mdPath,
+            zip_archive_path: '',
+            file_type: 'md',
+            create_time: Date.now(),
+            last_sync_time: Date.now(),
+            folder_id: folderId,
+          });
+          // 空内容也走一遍 reindex（向量库留一条记录，后续编辑时重建）
+          await importer.reindex(fileId, content);
+          await writeLog('create-blank-md', `新建空白MD fileId=${fileId} name=${finalName}`);
+          return json(200, { fileId, fileName: finalName, mdPath });
+        }
+
+        // ---- 读取 MD 内容：GET /files/:id/content ----
+        if (req.method === 'GET' && seg.length === 5 && seg[2] === 'files' && seg[4] === 'content') {
+          const fileId = parseInt(seg[3] || '');
+          if (Number.isNaN(fileId)) return json(400, { error: '非法 fileId' });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: '条目不存在' });
+          let content = '';
+          try { content = await fs.readFile(rec.md_path, 'utf-8'); } catch { content = ''; }
+          return json(200, { content });
+        }
+
+        // ---- 保存 MD 内容（人工编辑链路）：POST /files/:id/content ----
+        if (req.method === 'POST' && seg.length === 5 && seg[2] === 'files' && seg[4] === 'content') {
+          const fileId = parseInt(seg[3] || '');
+          if (Number.isNaN(fileId)) return json(400, { error: '非法 fileId' });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: '条目不存在' });
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          const content = typeof parsed?.content === 'string' ? parsed.content : '';
+          // 审计日志记录新旧内容哈希
+          let oldContent = '';
+          try { oldContent = await fs.readFile(rec.md_path, 'utf-8'); } catch { oldContent = ''; }
+          await fs.mkdir(path.dirname(rec.md_path), { recursive: true });
+          await fs.writeFile(rec.md_path, content, 'utf-8');
+          // 重建向量库
+          await importer.reindex(fileId, content);
+          await writeLog(
+            'manual_edit',
+            `人工编辑 fileId=${fileId} old=${sha256Text(oldContent)} new=${sha256Text(content)}`
+          );
+          return json(200, { status: 'saved' });
+        }
+
+        // ---- 文件夹批量同步：POST /folders/:id/sync ----
+        if (req.method === 'POST' && seg.length === 5 && seg[2] === 'folders' && seg[4] === 'sync') {
+          const fid = parseInt(seg[3] || '');
+          if (Number.isNaN(fid)) return json(400, { error: '非法文件夹 id' });
+          if (!(await getFolderById(fid))) return json(404, { error: '文件夹不存在' });
+          const files = await listKnowledgeFilesByFolder(fid);
+          let synced = 0;
+          let skipped = 0;
+          const needsConfirm: Array<{ fileId: number; fileName: string; diff: any }> = [];
+          for (const f of files) {
+            const outcome = await triggerSourceSync(f.id, f.zip_archive_path, f.md_path);
+            if (outcome.status === 'needs-confirm' && outcome.diff) {
+              needsConfirm.push({ fileId: f.id, fileName: f.file_name, diff: outcome.diff });
+            } else if (outcome.status === 'no-change') {
+              synced++;
+            } else {
+              // source-lost：源文件丢失，不阻塞批量同步
+              skipped++;
+            }
+          }
+          await writeLog(
+            'folder-sync',
+            `文件夹批量同步 id=${fid} total=${files.length} synced=${synced} skipped=${skipped} needsConfirm=${needsConfirm.length}`
+          );
+          return json(200, { total: files.length, synced, skipped, needsConfirm });
         }
 
         // ---- 设置：GET /settings ----
@@ -842,7 +982,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             if (settings.autoSnapshot) {
               try {
                 await createSnapshot(settings.mdStoragePath, settings.zipStoragePath, snapshotStoragePath);
-                await pruneSnapshots(3);
+                await pruneSnapshots(settings.snapshotKeep);
               } catch (e) { await writeLog('auto-snapshot-error', (e as Error).message); }
             }
             await applySourceUpdate(id, newText, record.md_path, (fid, t) => importer.reindex(fid, t));
@@ -874,6 +1014,57 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             await updateMdPath(id, finalName, newMdPath);
             await writeLog('rename', `重命名 fileId=${id} -> ${finalName}`);
             return json(200, { status: 'renamed', fileId: id, file_name: finalName, md_path: newMdPath });
+          }
+
+          if (req.method === 'POST' && action === 'rebind-source') {
+            if (!record) return json(404, { error: '条目不存在' });
+            let parsed: any;
+            try { parsed = JSON.parse(body || '{}'); } catch {
+              return json(400, { error: '请求体不是合法 JSON' });
+            }
+            const sourcePath = typeof parsed?.sourcePath === 'string' ? parsed.sourcePath.trim() : '';
+            if (!sourcePath) return json(400, { error: '缺少 sourcePath' });
+            const oldSource = record.source_path;
+            // 1. 摘掉旧路径监听
+            try { watcher.unwatchPath(oldSource); } catch { /* ignore */ }
+            // 2. 审计：新旧内容哈希（本地/可读才算，否则置空）
+            let oldHash = '';
+            let newHash = '';
+            const isLocalNew = sourcePath.startsWith('/') || isUncPath(sourcePath);
+            try { oldHash = sha256Text(await extractTextToMarkdown(oldSource)); } catch { oldHash = ''; }
+            try { newHash = sha256Text(await extractTextToMarkdown(sourcePath)); } catch { newHash = ''; }
+            // 3. 更新 DB source_path
+            await updateSourcePath(id, sourcePath);
+            // 4. 本地文件：重新归档覆盖旧 zip；URL 不归档
+            if (isLocalNew) {
+              try {
+                const newZipPath = await archiveSourceFile(
+                  sourcePath,
+                  settings.zipStoragePath,
+                  `${record.file_name.replace(/\.md$/i, '')}-src`
+                );
+                try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
+                await updateZipPath(id, newZipPath);
+              } catch (e) {
+                await writeLog('rebind-archive-error', `fileId=${id}: ${(e as Error).message}`);
+              }
+              // 5. 重新挂新路径监听
+              try { watcher.watchSource(id); } catch { /* ignore */ }
+            }
+            await writeLog(
+              'rebind-source',
+              `重新绑定 fileId=${id} ${oldSource} -> ${sourcePath} old=${oldHash} new=${newHash}`
+            );
+            return json(200, { status: 'rebound', sourcePath });
+          }
+
+          if (req.method === 'POST' && action === 'shelve') {
+            // 三态操作之“暂存”：不删除，仅标记 shelved，前端可继续查看
+            for (const p of pendingChanges) {
+              if (p.fileId === id) p.shelved = true;
+            }
+            await writeLog('shelve', `暂存待确认变更 fileId=${id}`);
+            return json(200, { status: 'shelved' });
           }
         }
 

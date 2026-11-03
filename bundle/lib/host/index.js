@@ -25095,7 +25095,7 @@ async function fetchWebContent(url, intranetMode, opts) {
   assertSafeFetchUrl(url);
   const timeout = intranetMode ? Math.max(opts.timeout, 15e3) : opts.timeout;
   const ua = intranetMode ? "Mozilla/5.0 (DSH-Wiki-RAG/Intranet)" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-  const body = await rawFetch(url, { ua, timeout });
+  const body = await rawFetchWithRetry(url, { ua, timeout });
   return htmlToText(body);
 }
 function assertSafeFetchUrl(url) {
@@ -25118,6 +25118,22 @@ function assertSafeFetchUrl(url) {
   if (host === "0.0.0.0" || host === "::") {
     throw new Error(`\u7981\u6B62\u8BBF\u95EE\u901A\u914D\u5730\u5740: ${host}`);
   }
+}
+async function rawFetchWithRetry(url, opts) {
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY_MS = 500;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await rawFetch(url, opts);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
+  }
+  throw lastErr ?? new Error("\u7F51\u9875\u6293\u53D6\u5931\u8D25");
 }
 function rawFetch(url, opts) {
   return new Promise((resolve, reject) => {
@@ -32900,8 +32916,8 @@ import { randomUUID } from "crypto";
 async function insertKnowledgeFile(record) {
   await run(
     `INSERT INTO knowledge_files
-     (file_name, source_path, md_path, zip_archive_path, file_type, create_time, last_sync_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     (file_name, source_path, md_path, zip_archive_path, file_type, create_time, last_sync_time, folder_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       record.file_name,
       record.source_path,
@@ -32909,10 +32925,14 @@ async function insertKnowledgeFile(record) {
       record.zip_archive_path,
       record.file_type,
       record.create_time,
-      record.last_sync_time
+      record.last_sync_time,
+      record.folder_id ?? null
     ]
   );
   return lastInsertId();
+}
+async function updateSourcePath(id, sourcePath) {
+  await run("UPDATE knowledge_files SET source_path = ? WHERE id = ?", [sourcePath, id]);
 }
 async function getKnowledgeFileById(id) {
   return get("SELECT * FROM knowledge_files WHERE id = ?", [id]);
@@ -32955,6 +32975,17 @@ async function countByType() {
 }
 async function updateZipPath(id, zipPath) {
   await run("UPDATE knowledge_files SET zip_archive_path = ? WHERE id = ?", [zipPath, id]);
+}
+async function listKnowledgeFilesByFolder(folderId) {
+  if (folderId === null) {
+    return all(
+      "SELECT * FROM knowledge_files WHERE folder_id IS NULL ORDER BY create_time DESC"
+    );
+  }
+  return all(
+    "SELECT * FROM knowledge_files WHERE folder_id = ? ORDER BY create_time DESC",
+    [folderId]
+  );
 }
 async function listFolders() {
   return all("SELECT * FROM folders ORDER BY parent_id, id");
@@ -33048,6 +33079,41 @@ function chunkText(text, chunkSize, overlap) {
     start = end - ov;
   }
   return chunks;
+}
+function chunkTextSmart(text, chunkSize, overlap, mode = "fixed") {
+  if (mode !== "heading") {
+    return chunkText(text, chunkSize, overlap);
+  }
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return [];
+  }
+  const size = Math.max(1, Math.floor(chunkSize));
+  const lines = normalized.split("\n");
+  const sections = [];
+  let current = [];
+  const isHeading = (line) => /^#{1,6}\s/.test(line.trim());
+  for (const line of lines) {
+    if (isHeading(line) && current.length > 0) {
+      const sec = current.join("\n").trim();
+      if (sec) sections.push(sec);
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+  const tail = current.join("\n").trim();
+  if (tail) sections.push(tail);
+  const out = [];
+  for (const sec of sections) {
+    if (!sec) continue;
+    if (sec.length <= size) {
+      out.push(sec);
+    } else {
+      out.push(...chunkText(sec, size, overlap));
+    }
+  }
+  return out;
 }
 
 // ../src/main/rag/embedding.ts
@@ -33376,7 +33442,7 @@ ${noteText}`;
   /** 重新切片并写入向量库 */
   async reindex(fileId, text) {
     await deleteChunksByFileId(fileId);
-    const chunks = chunkText(text, this.ctx.chunkSize, this.ctx.chunkOverlap);
+    const chunks = chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, this.ctx.chunkMode);
     for (const c of chunks) {
       const vec = embedText(c);
       await insertVectorChunk(fileId, c, vec);
@@ -34060,11 +34126,20 @@ async function triggerSourceSync(fileId, zipArchivePath, mdPath) {
   };
 }
 async function applySourceUpdate(fileId, newText, mdPath, reindex) {
+  let oldText = "";
+  try {
+    oldText = await fs5.readFile(mdPath, "utf-8");
+  } catch {
+    oldText = "";
+  }
   await fs5.mkdir(path7.dirname(mdPath), { recursive: true });
   await fs5.writeFile(mdPath, newText, "utf-8");
   await reindex(fileId, newText);
   await updateSyncTime(fileId, Date.now());
-  await writeLog("source-sync", `\u5DF2\u63A5\u53D7\u66F4\u65B0 fileId=${fileId}`);
+  await writeLog(
+    "source-sync",
+    `\u5DF2\u63A5\u53D7\u66F4\u65B0 fileId=${fileId} old=${sha256Text(oldText)} new=${sha256Text(newText)}`
+  );
 }
 
 // ../src/main/snapshot/snapshot-backup.ts
@@ -34119,7 +34194,9 @@ var DEFAULT_SETTINGS = {
   webTimeout: 3e4,
   chunkSize: 800,
   chunkOverlap: 120,
+  chunkMode: "fixed",
   autoSnapshot: false,
+  snapshotKeep: 3,
   embeddingProvider: "fallback",
   embeddingModelPath: "",
   embeddingOpenAIBaseURL: "https://api.openai.com/v1",
@@ -34142,9 +34219,11 @@ var Config = z.object({
   snapshotStoragePath: z.string().default(".dsh-wiki-rag/snapshots"),
   chunkSize: z.number().default(800),
   chunkOverlap: z.number().default(120),
+  chunkMode: z.union(["fixed", "heading"]).default("fixed"),
   webMode: z.union(["intranet", "extranet", "external"]).default("extranet"),
   webTimeout: z.number().default(15e3),
   autoSnapshot: z.boolean().default(false),
+  snapshotKeep: z.number().default(3),
   // ---- Embedding ----
   embeddingProvider: z.union(["local", "openai", "fallback"]).default("fallback"),
   embeddingModelPath: z.string().default(""),
@@ -34168,9 +34247,11 @@ function apply(ctx, config) {
     zipStoragePath: path9.resolve(config.zipStoragePath),
     chunkSize: config.chunkSize,
     chunkOverlap: config.chunkOverlap,
+    chunkMode: config.chunkMode,
     webMode: config.webMode,
     webTimeout: config.webTimeout,
     autoSnapshot: config.autoSnapshot,
+    snapshotKeep: config.snapshotKeep,
     embeddingProvider: config.embeddingProvider,
     embeddingModelPath: config.embeddingModelPath,
     embeddingOpenAIBaseURL: config.embeddingOpenAIBaseURL,
@@ -34192,6 +34273,7 @@ function apply(ctx, config) {
     zipDir: settings3.zipStoragePath,
     chunkSize: settings3.chunkSize,
     chunkOverlap: settings3.chunkOverlap,
+    chunkMode: settings3.chunkMode,
     webTimeout: settings3.webTimeout
   });
   const watcher = new FileWatcher();
@@ -34220,8 +34302,35 @@ function apply(ctx, config) {
   ctx.effect(async () => {
     await initDatabase(path9.join(dataDir, "dsh-wiki-rag.db"));
     await writeLog("plugin-activate", `wiki-rag-host DB=${getDbPath()}`);
-    watcher.setCallback((change) => {
-      pendingChanges.push({ ...change, time: Date.now() });
+    watcher.setCallback(async (change) => {
+      let oldText = "";
+      try {
+        const rec = await getKnowledgeFileById(change.fileId);
+        if (rec) {
+          try {
+            oldText = await fs7.readFile(rec.md_path, "utf-8");
+          } catch {
+            oldText = "";
+          }
+        }
+      } catch {
+      }
+      let newText = "";
+      try {
+        newText = await extractTextToMarkdown(change.sourcePath);
+      } catch {
+        newText = "";
+      }
+      if (oldText && sha256Text(oldText) === sha256Text(newText)) return;
+      const diff2 = buildDiffResult(change.fileId, change.fileName, oldText, newText).diff;
+      pendingChanges.push({
+        ...change,
+        oldText,
+        newText,
+        diff: diff2,
+        shelved: false,
+        time: Date.now()
+      });
     });
     const existing = await listKnowledgeFiles();
     for (const f of existing) {
@@ -34405,9 +34514,11 @@ function apply(ctx, config) {
       snapshotStoragePath,
       chunkSize: settings3.chunkSize,
       chunkOverlap: settings3.chunkOverlap,
+      chunkMode: settings3.chunkMode,
       webMode: settings3.webMode,
       webTimeout: settings3.webTimeout,
       autoSnapshot: settings3.autoSnapshot,
+      snapshotKeep: settings3.snapshotKeep,
       embeddingProvider: settings3.embeddingProvider,
       rerankProvider: settings3.rerankProvider,
       rerankTopK: settings3.rerankTopK
@@ -34484,6 +34595,8 @@ function apply(ctx, config) {
     snapshotStoragePath = nextSnap;
     if (typeof patch.chunkSize === "number") settings3.chunkSize = patch.chunkSize;
     if (typeof patch.chunkOverlap === "number") settings3.chunkOverlap = patch.chunkOverlap;
+    if (patch.chunkMode === "fixed" || patch.chunkMode === "heading") settings3.chunkMode = patch.chunkMode;
+    if (typeof patch.snapshotKeep === "number" && patch.snapshotKeep >= 0) settings3.snapshotKeep = Math.floor(patch.snapshotKeep);
     if (typeof patch.webTimeout === "number") settings3.webTimeout = patch.webTimeout;
     if (typeof patch.autoSnapshot === "boolean") settings3.autoSnapshot = patch.autoSnapshot;
     if (typeof patch.rerankTopK === "number") settings3.rerankTopK = patch.rerankTopK;
@@ -34499,6 +34612,7 @@ function apply(ctx, config) {
       zipDir: settings3.zipStoragePath,
       chunkSize: settings3.chunkSize,
       chunkOverlap: settings3.chunkOverlap,
+      chunkMode: settings3.chunkMode,
       webTimeout: settings3.webTimeout
     });
   }
@@ -34638,7 +34752,7 @@ function apply(ctx, config) {
         }
         if (req.method === "POST" && pathname === "/api/wiki/snapshots") {
           const out = await createSnapshot(settings3.mdStoragePath, settings3.zipStoragePath, snapshotStoragePath);
-          await pruneSnapshots(3);
+          await pruneSnapshots(settings3.snapshotKeep);
           return json(200, { status: "created", path: out, list: await readSnapshotList() });
         }
         if (req.method === "POST" && seg.length === 4 && seg[1] === "snapshots" && seg[3] === "restore") {
@@ -34729,6 +34843,107 @@ function apply(ctx, config) {
           await moveFileToFolder(fileId, folderId);
           await writeLog("file-move", `fileId=${fileId} -> folder=${folderId}`);
           return json(200, { fileId, folderId });
+        }
+        if (req.method === "POST" && pathname === "/api/wiki/files/new") {
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          const title = typeof parsed?.title === "string" ? parsed.title.trim() : "";
+          if (!title) return json(400, { error: "\u7F3A\u5C11 title" });
+          let folderId = null;
+          if (parsed.folderId !== void 0 && parsed.folderId !== null) {
+            if (typeof parsed.folderId !== "number") return json(400, { error: "folderId \u5FC5\u987B\u662F\u6570\u5B57\u6216 null" });
+            if (!await getFolderById(parsed.folderId)) return json(404, { error: "\u76EE\u6807\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+            folderId = parsed.folderId;
+          }
+          const existingNames = (await listKnowledgeFiles()).map((f) => f.file_name);
+          const finalName = resolveUniqueFileName(title.endsWith(".md") ? title : `${title}.md`, existingNames);
+          await fs7.mkdir(settings3.mdStoragePath, { recursive: true });
+          const mdPath = path9.join(settings3.mdStoragePath, finalName);
+          const content = `# ${finalName.replace(/\.md$/i, "")}
+
+`;
+          await fs7.writeFile(mdPath, content, "utf-8");
+          const fileId = await insertKnowledgeFile({
+            file_name: finalName,
+            source_path: "manual://" + title,
+            md_path: mdPath,
+            zip_archive_path: "",
+            file_type: "md",
+            create_time: Date.now(),
+            last_sync_time: Date.now(),
+            folder_id: folderId
+          });
+          await importer.reindex(fileId, content);
+          await writeLog("create-blank-md", `\u65B0\u5EFA\u7A7A\u767DMD fileId=${fileId} name=${finalName}`);
+          return json(200, { fileId, fileName: finalName, mdPath });
+        }
+        if (req.method === "GET" && seg.length === 5 && seg[2] === "files" && seg[4] === "content") {
+          const fileId = parseInt(seg[3] || "");
+          if (Number.isNaN(fileId)) return json(400, { error: "\u975E\u6CD5 fileId" });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
+          let content = "";
+          try {
+            content = await fs7.readFile(rec.md_path, "utf-8");
+          } catch {
+            content = "";
+          }
+          return json(200, { content });
+        }
+        if (req.method === "POST" && seg.length === 5 && seg[2] === "files" && seg[4] === "content") {
+          const fileId = parseInt(seg[3] || "");
+          if (Number.isNaN(fileId)) return json(400, { error: "\u975E\u6CD5 fileId" });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          const content = typeof parsed?.content === "string" ? parsed.content : "";
+          let oldContent = "";
+          try {
+            oldContent = await fs7.readFile(rec.md_path, "utf-8");
+          } catch {
+            oldContent = "";
+          }
+          await fs7.mkdir(path9.dirname(rec.md_path), { recursive: true });
+          await fs7.writeFile(rec.md_path, content, "utf-8");
+          await importer.reindex(fileId, content);
+          await writeLog(
+            "manual_edit",
+            `\u4EBA\u5DE5\u7F16\u8F91 fileId=${fileId} old=${sha256Text(oldContent)} new=${sha256Text(content)}`
+          );
+          return json(200, { status: "saved" });
+        }
+        if (req.method === "POST" && seg.length === 5 && seg[2] === "folders" && seg[4] === "sync") {
+          const fid = parseInt(seg[3] || "");
+          if (Number.isNaN(fid)) return json(400, { error: "\u975E\u6CD5\u6587\u4EF6\u5939 id" });
+          if (!await getFolderById(fid)) return json(404, { error: "\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+          const files = await listKnowledgeFilesByFolder(fid);
+          let synced = 0;
+          let skipped = 0;
+          const needsConfirm = [];
+          for (const f of files) {
+            const outcome = await triggerSourceSync(f.id, f.zip_archive_path, f.md_path);
+            if (outcome.status === "needs-confirm" && outcome.diff) {
+              needsConfirm.push({ fileId: f.id, fileName: f.file_name, diff: outcome.diff });
+            } else if (outcome.status === "no-change") {
+              synced++;
+            } else {
+              skipped++;
+            }
+          }
+          await writeLog(
+            "folder-sync",
+            `\u6587\u4EF6\u5939\u6279\u91CF\u540C\u6B65 id=${fid} total=${files.length} synced=${synced} skipped=${skipped} needsConfirm=${needsConfirm.length}`
+          );
+          return json(200, { total: files.length, synced, skipped, needsConfirm });
         }
         if (req.method === "GET" && pathname === "/api/wiki/settings") {
           return json(200, publicSettings());
@@ -34844,7 +35059,7 @@ function apply(ctx, config) {
             if (settings3.autoSnapshot) {
               try {
                 await createSnapshot(settings3.mdStoragePath, settings3.zipStoragePath, snapshotStoragePath);
-                await pruneSnapshots(3);
+                await pruneSnapshots(settings3.snapshotKeep);
               } catch (e) {
                 await writeLog("auto-snapshot-error", e.message);
               }
@@ -34881,6 +35096,68 @@ function apply(ctx, config) {
             await updateMdPath(id, finalName, newMdPath);
             await writeLog("rename", `\u91CD\u547D\u540D fileId=${id} -> ${finalName}`);
             return json(200, { status: "renamed", fileId: id, file_name: finalName, md_path: newMdPath });
+          }
+          if (req.method === "POST" && action === "rebind-source") {
+            if (!record) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
+            let parsed;
+            try {
+              parsed = JSON.parse(body || "{}");
+            } catch {
+              return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+            }
+            const sourcePath = typeof parsed?.sourcePath === "string" ? parsed.sourcePath.trim() : "";
+            if (!sourcePath) return json(400, { error: "\u7F3A\u5C11 sourcePath" });
+            const oldSource = record.source_path;
+            try {
+              watcher.unwatchPath(oldSource);
+            } catch {
+            }
+            let oldHash = "";
+            let newHash = "";
+            const isLocalNew = sourcePath.startsWith("/") || isUncPath(sourcePath);
+            try {
+              oldHash = sha256Text(await extractTextToMarkdown(oldSource));
+            } catch {
+              oldHash = "";
+            }
+            try {
+              newHash = sha256Text(await extractTextToMarkdown(sourcePath));
+            } catch {
+              newHash = "";
+            }
+            await updateSourcePath(id, sourcePath);
+            if (isLocalNew) {
+              try {
+                const newZipPath = await archiveSourceFile(
+                  sourcePath,
+                  settings3.zipStoragePath,
+                  `${record.file_name.replace(/\.md$/i, "")}-src`
+                );
+                try {
+                  if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
+                } catch {
+                }
+                await updateZipPath(id, newZipPath);
+              } catch (e) {
+                await writeLog("rebind-archive-error", `fileId=${id}: ${e.message}`);
+              }
+              try {
+                watcher.watchSource(id);
+              } catch {
+              }
+            }
+            await writeLog(
+              "rebind-source",
+              `\u91CD\u65B0\u7ED1\u5B9A fileId=${id} ${oldSource} -> ${sourcePath} old=${oldHash} new=${newHash}`
+            );
+            return json(200, { status: "rebound", sourcePath });
+          }
+          if (req.method === "POST" && action === "shelve") {
+            for (const p of pendingChanges) {
+              if (p.fileId === id) p.shelved = true;
+            }
+            await writeLog("shelve", `\u6682\u5B58\u5F85\u786E\u8BA4\u53D8\u66F4 fileId=${id}`);
+            return json(200, { status: "shelved" });
           }
         }
         return json(404, { error: "not found", path: pathname });

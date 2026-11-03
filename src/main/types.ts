@@ -66,7 +66,11 @@ export interface PluginSettings {
   webTimeout: number;
   chunkSize: number;
   chunkOverlap: number;
+  /** 切片模式：fixed=固定窗口，heading=按标题分层 */
+  chunkMode: 'fixed' | 'heading';
   autoSnapshot: boolean;
+  /** 快照保留份数 */
+  snapshotKeep: number;
   // ---- Embedding 配置 ----
   embeddingProvider: 'local' | 'openai' | 'fallback';
   embeddingModelPath: string;      // local provider：本地模型目录路径
@@ -89,7 +93,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   webTimeout: 30000,
   chunkSize: 800,
   chunkOverlap: 120,
+  chunkMode: 'fixed',
   autoSnapshot: false,
+  snapshotKeep: 3,
   embeddingProvider: 'fallback',
   embeddingModelPath: '',
   embeddingOpenAIBaseURL: 'https://api.openai.com/v1',

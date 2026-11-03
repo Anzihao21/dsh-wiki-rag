@@ -25,7 +25,7 @@ export async function fetchWebContent(
     ? 'Mozilla/5.0 (DSH-Wiki-RAG/Intranet)'
     : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
-  const body = await rawFetch(url, { ua, timeout });
+  const body = await rawFetchWithRetry(url, { ua, timeout });
 
   // 简单 HTML 转纯文本
   return htmlToText(body);
@@ -61,6 +61,27 @@ export function assertSafeFetchUrl(url: string): void {
   if (host === '0.0.0.0' || host === '::') {
     throw new Error(`禁止访问通配地址: ${host}`);
   }
+}
+
+/** 失败重试：最多 2 次重试（共 3 次请求），间隔 500ms；超时同样计入重试 */
+async function rawFetchWithRetry(
+  url: string,
+  opts: { ua: string; timeout: number }
+): Promise<string> {
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY_MS = 500;
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await rawFetch(url, opts);
+    } catch (e) {
+      lastErr = e as Error;
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
+  }
+  throw lastErr ?? new Error('网页抓取失败');
 }
 
 function rawFetch(

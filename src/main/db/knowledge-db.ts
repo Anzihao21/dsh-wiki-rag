@@ -5,8 +5,8 @@ import type { KnowledgeFile, KnowledgeFolder, FileType } from '../types';
 export async function insertKnowledgeFile(record: Omit<KnowledgeFile, 'id'>): Promise<number> {
   await run(
     `INSERT INTO knowledge_files
-     (file_name, source_path, md_path, zip_archive_path, file_type, create_time, last_sync_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     (file_name, source_path, md_path, zip_archive_path, file_type, create_time, last_sync_time, folder_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       record.file_name,
       record.source_path,
@@ -14,10 +14,16 @@ export async function insertKnowledgeFile(record: Omit<KnowledgeFile, 'id'>): Pr
       record.zip_archive_path,
       record.file_type,
       record.create_time,
-      record.last_sync_time
+      record.last_sync_time,
+      record.folder_id ?? null
     ]
   );
   return lastInsertId();
+}
+
+/** 更新来源路径（重新绑定源文件时使用） */
+export async function updateSourcePath(id: number, sourcePath: string): Promise<void> {
+  await run('UPDATE knowledge_files SET source_path = ? WHERE id = ?', [sourcePath, id]);
 }
 
 /** 按 id 查询 */

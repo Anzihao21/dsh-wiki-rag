@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { insertKnowledgeFile, listFileNamesByPath, findKnowledgeFileBySourcePath } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
 import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
-import { chunkText } from '../rag/text-chunk';
+import { chunkTextSmart } from '../rag/text-chunk';
 import { embedText } from '../rag/embedding';
 import { resolveUniqueFileName, isUncPath } from './name-auto-rename';
 import { archiveSourceFile } from './zip-archive';
@@ -25,6 +25,7 @@ interface ImportContext {
   zipDir: string;
   chunkSize: number;
   chunkOverlap: number;
+  chunkMode: 'fixed' | 'heading';
   webTimeout: number;
 }
 
@@ -184,7 +185,7 @@ export class FileImporter {
   /** 重新切片并写入向量库 */
   async reindex(fileId: number, text: string): Promise<void> {
     await deleteChunksByFileId(fileId);
-    const chunks = chunkText(text, this.ctx.chunkSize, this.ctx.chunkOverlap);
+    const chunks = chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, this.ctx.chunkMode);
     for (const c of chunks) {
       const vec = embedText(c);
       await insertVectorChunk(fileId, c, vec);

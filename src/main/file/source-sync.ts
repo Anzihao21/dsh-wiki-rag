@@ -81,9 +81,19 @@ export async function applySourceUpdate(
   mdPath: string,
   reindex: (fileId: number, text: string) => Promise<void>
 ): Promise<void> {
+  // 覆盖前读取旧内容，审计日志记录新旧内容哈希
+  let oldText = '';
+  try {
+    oldText = await fs.readFile(mdPath, 'utf-8');
+  } catch {
+    oldText = '';
+  }
   await fs.mkdir(path.dirname(mdPath), { recursive: true });
   await fs.writeFile(mdPath, newText, 'utf-8');
   await reindex(fileId, newText);
   await updateSyncTime(fileId, Date.now());
-  await writeLog('source-sync', `已接受更新 fileId=${fileId}`);
+  await writeLog(
+    'source-sync',
+    `已接受更新 fileId=${fileId} old=${sha256Text(oldText)} new=${sha256Text(newText)}`
+  );
 }

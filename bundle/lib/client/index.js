@@ -112,9 +112,18 @@ var apiAcceptUpdate = (id, newText) => request(`/${id}/accept-update`, { method:
 var apiDismiss = (id) => request(`/${id}/dismiss`, { method: "POST" });
 var apiDelete = (id) => request(`/${id}`, { method: "DELETE" });
 var apiSearch = (query) => request("/search", { method: "POST", body: JSON.stringify({ query, topK: 10 }) }).then((r) => r || []);
+var apiGetSettings = () => request("/settings");
 var apiSaveSettings = (patch) => request("/settings", { method: "POST", body: JSON.stringify(patch) });
+var apiCreateSnapshot = () => request("/snapshots", { method: "POST" });
 var apiRestoreSnapshot = (id) => request(`/snapshots/${id}/restore`, { method: "POST" });
 var apiGetJobs = (jobId) => request(`/jobs/${jobId}`);
+var apiNewFile = (title, folderId) => request("/files/new", { method: "POST", body: JSON.stringify({ title, folderId }) });
+var apiGetContent = (id) => request(`/files/${id}/content`);
+var apiSaveContent = (id, content) => request(`/files/${id}/content`, { method: "POST", body: JSON.stringify({ content }) });
+var apiRebindSource = (id, sourcePath) => request(`/${id}/rebind-source`, { method: "POST", body: JSON.stringify({ sourcePath }) });
+var apiFolderSync = (id) => request(`/folders/${id}/sync`, { method: "POST" });
+var apiShelve = (id) => request(`/${id}/shelve`, { method: "POST" });
+var apiPendingChanges = () => request("/pending-changes");
 function renderMdSafe(md) {
   const lines = String(md || "").split("\n");
   const out = [];
@@ -343,6 +352,16 @@ var ErrorBoundary = class extends import_react.Component {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_react.Fragment, { children: this.props.children }, this.state.retryCount);
   }
 };
+function flattenTree(nodes, depth, expanded, out) {
+  (nodes || []).forEach((n) => {
+    if (n.type === "folder") {
+      out.push({ rowType: "folder", depth, id: n.id, title: n.name || "", raw: n });
+      if (expanded.has(n.id)) flattenTree(n.children, depth + 1, expanded, out);
+    } else {
+      out.push({ rowType: "doc", depth, id: n.fileId, title: n.title || "", kind: n.kind, status: n.status, raw: n });
+    }
+  });
+}
 var ROW_H = 38;
 function statusStyle(status) {
   if (status === "error") return { label: "\u5F02\u5E38", color: "var(--dsw-alias-state-danger)" };
@@ -384,6 +403,8 @@ function WikiSidebar(props) {
   const [offline, setOffline] = (0, import_react.useState)(false);
   const [newFolderName, setNewFolderName] = (0, import_react.useState)("");
   const [showNewFolder, setShowNewFolder] = (0, import_react.useState)(false);
+  const [pendingChanges, setPendingChanges] = (0, import_react.useState)([]);
+  const [rebindState, setRebindState] = (0, import_react.useState)(null);
   const searchInputRef = (0, import_react.useRef)(null);
   const listScrollRef = (0, import_react.useRef)(null);
   const [scrollTop, setScrollTop] = (0, import_react.useState)(0);
@@ -421,6 +442,38 @@ function WikiSidebar(props) {
   (0, import_react.useEffect)(() => {
     refreshList();
   }, [refreshList]);
+  (0, import_react.useEffect)(() => {
+    (async () => {
+      try {
+        const s = await apiGetSettings();
+        if (s) setSettings(s);
+      } catch {
+      } finally {
+        setSettingsLoaded(true);
+      }
+    })();
+  }, []);
+  const pollPending = (0, import_react.useCallback)(async () => {
+    try {
+      const list = await apiPendingChanges();
+      setPendingChanges(list || []);
+      const firstUnshelved = (list || []).find((c) => !c.shelved);
+      if (firstUnshelved && !diffModal) {
+        setDiffModal({
+          old: firstUnshelved.oldText || "",
+          new: firstUnshelved.newText || "",
+          title: firstUnshelved.fileName || "",
+          fileId: String(firstUnshelved.fileId),
+          newText: firstUnshelved.newText || ""
+        });
+      }
+    } catch {
+    }
+  }, [diffModal]);
+  (0, import_react.useEffect)(() => {
+    const t2 = setInterval(pollPending, 5e3);
+    return () => clearInterval(t2);
+  }, [pollPending]);
   (0, import_react.useEffect)(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -583,8 +636,94 @@ function WikiSidebar(props) {
     }
     setView("list");
   };
-  const saveEdit = () => {
-    setView("list");
+  const saveEdit = (0, import_react.useCallback)(async () => {
+    if (!activeId) return;
+    try {
+      await apiSaveContent(activeId, mdContent);
+      notify("success", t ? t("wiki.contentSaved") : "\u5185\u5BB9\u5DF2\u4FDD\u5B58");
+      refreshList();
+    } catch (e) {
+      notify("error", e?.message || "\u4FDD\u5B58\u5931\u8D25");
+    }
+  }, [activeId, mdContent, notify, refreshList, t]);
+  const openDoc = (0, import_react.useCallback)(async (id) => {
+    setActiveId(id);
+    setView("editor");
+    setEditTab("edit");
+    setMdContent("");
+    try {
+      const r = await apiGetContent(id);
+      setMdContent(r?.content || "");
+    } catch (e) {
+      if (e?.offline) setMdContent(SAMPLE_MD[id] || "# \u79BB\u7EBF\n\n\u65E0\u6CD5\u52A0\u8F7D\u5185\u5BB9");
+      else setMdContent("# \u52A0\u8F7D\u5931\u8D25\n\n" + (e?.message || ""));
+    }
+  }, []);
+  const doNewDoc = async () => {
+    if (!newMdTitle.trim()) return;
+    try {
+      const r = await apiNewFile(newMdTitle.trim(), null);
+      setShowNewMd(false);
+      setNewMdTitle("");
+      refreshList();
+      if (r && r.fileId) openDoc(String(r.fileId));
+    } catch (e) {
+      notify("error", e?.message || "\u521B\u5EFA\u5931\u8D25");
+    }
+  };
+  const doRebindSource = async () => {
+    if (!rebindState) return;
+    try {
+      await apiRebindSource(rebindState.fileId, rebindState.value.trim());
+      notify("success", t ? t("wiki.saved") : "\u5DF2\u4FDD\u5B58");
+      refreshList();
+    } catch (e) {
+      notify("error", e?.message || "\u7ED1\u5B9A\u5931\u8D25");
+    }
+    setRebindState(null);
+  };
+  const doFolderSync = async (folderId) => {
+    try {
+      const r = await apiFolderSync(folderId);
+      if (r && Array.isArray(r.needsConfirm) && r.needsConfirm.length) {
+        r.needsConfirm.forEach((nc, i) => {
+          setTimeout(() => {
+            setDiffModal({
+              old: nc.diff?.oldText || "",
+              new: nc.diff?.newText || "",
+              title: nc.fileName || "",
+              fileId: String(nc.fileId),
+              newText: nc.diff?.newText || ""
+            });
+          }, i * 100);
+        });
+      } else {
+        notify("success", `\u540C\u6B65\u5B8C\u6210\uFF1A${r?.synced || 0}/${r?.total || 0}`);
+      }
+      refreshList();
+    } catch (e) {
+      notify("error", e?.message || "\u540C\u6B65\u5931\u8D25");
+    }
+  };
+  const doShelve = async (fileId) => {
+    try {
+      await apiShelve(fileId);
+      notify("success", t ? t("wiki.shelved") : "\u5DF2\u6682\u5B58");
+      setDiffModal(null);
+      pollPending();
+    } catch (e) {
+      notify("error", e?.message || "\u6682\u5B58\u5931\u8D25");
+    }
+  };
+  const doCreateSnapshot = async () => {
+    try {
+      await apiCreateSnapshot();
+      notify("success", t ? t("wiki.snapshotCreated") : "\u5DF2\u521B\u5EFA\u5FEB\u7167");
+      setView("list");
+      refreshList();
+    } catch (e) {
+      notify("error", e?.message || "\u521B\u5EFA\u5931\u8D25");
+    }
   };
   const doRestore = async (id) => {
     try {
@@ -619,6 +758,15 @@ function WikiSidebar(props) {
     ) });
   }
   const activeDoc = docs.find((d) => d.id === activeId);
+  const rows = (0, import_react.useMemo)(() => {
+    const out = [];
+    flattenTree(tree, 0, expandedFolders, out);
+    return out;
+  }, [tree, expandedFolders]);
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_H) - 2);
+  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportH) / ROW_H) + 2);
+  const visibleRows = rows.slice(startIndex, endIndex);
+  const searchingMode = searchResults !== null;
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToastStack, { toasts }),
@@ -648,14 +796,59 @@ function WikiSidebar(props) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(WikiIcon, { size: 16 }),
         title
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [
-        ["+", "import", () => setShowImport(!showImport)],
-        [t ? t("wiki.newFolder") : "Dir", "folder", () => setShowNewFolder(!showNewFolder)],
-        ["\u27F3", "refresh", () => refreshList()],
-        [t ? t("wiki.snapshots") : "Snap", "snap", () => setView("snapshots")],
-        [t ? t("wiki.logs") : "Logs", "logs", () => setView("logs")],
-        [t ? t("wiki.settings") : "Set", "set", () => setView("settings")]
-      ].map(([lbl, tip, fn], i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { title: tip, onClick: fn, style: headerBtn, children: lbl }, i)) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 2, alignItems: "center" }, children: [
+        pendingChanges.filter((c) => !c.shelved).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: pollPending,
+            title: t ? t("wiki.pendingChanges") : "\u5F85\u786E\u8BA4\u53D8\u66F4",
+            style: {
+              ...headerBtn,
+              position: "relative",
+              width: 26,
+              height: 26,
+              background: "var(--dsw-alias-state-warning)",
+              color: "var(--dsw-alias-label-on-primary)",
+              fontSize: 11,
+              fontWeight: 700
+            },
+            children: pendingChanges.filter((c) => !c.shelved).length
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { title: t ? t("wiki.newDoc") : "\u65B0\u5EFA\u6587\u6863", onClick: () => setShowNewMd(!showNewMd), style: headerBtn, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", style: { display: "block", margin: "0 auto" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M14 2v6h6" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M12 18v-6M9 15h6" })
+        ] }) }),
+        [
+          ["+", "import", () => setShowImport(!showImport)],
+          [t ? t("wiki.newFolder") : "Dir", "folder", () => setShowNewFolder(!showNewFolder)],
+          ["\u27F3", "refresh", () => refreshList()],
+          [t ? t("wiki.snapshots") : "Snap", "snap", () => setView("snapshots")],
+          [t ? t("wiki.logs") : "Logs", "logs", () => setView("logs")],
+          [t ? t("wiki.settings") : "Set", "set", () => setView("settings")]
+        ].map(([lbl, tip, fn], i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { title: tip, onClick: fn, style: headerBtn, children: lbl }, i))
+      ] })
+    ] }),
+    showNewMd && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: newMdTitle,
+          onChange: (e) => setNewMdTitle(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") doNewDoc();
+          },
+          placeholder: t ? t("wiki.newDocTitle") : "\u65B0\u6587\u6863\u6807\u9898\u2026",
+          autoFocus: true,
+          style: smallInput
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doNewDoc, style: primaryBtn, children: t ? t("wiki.confirm") : "\u786E\u5B9A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
+        setShowNewMd(false);
+        setNewMdTitle("");
+      }, style: ghostBtn, children: t ? t("wiki.cancel") : "\u53D6\u6D88" })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: mainLayoutStyle, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: sidebarStyle, children: [
@@ -783,8 +976,8 @@ function WikiSidebar(props) {
                 ]
               },
               i
-            )) : rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.empty") : "\u77E5\u8BC6\u5E93\u4E3A\u7A7A" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: rows.length * ROW_H, position: "relative" }, children: visibleRows.map((row) => {
-              const top = (startIndex + rows.indexOf(row)) * ROW_H;
+            )) : rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.empty") : "\u77E5\u8BC6\u5E93\u4E3A\u7A7A" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: rows.length * ROW_H, position: "relative" }, children: visibleRows.map((row, vi) => {
+              const top = (startIndex + vi) * ROW_H;
               if (row.rowType === "folder") {
                 const open = expandedFolders.has(row.id);
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -839,8 +1032,7 @@ function WikiSidebar(props) {
                   draggable: true,
                   onDragStart: (e) => e.dataTransfer.setData("text/doc-id", d.id),
                   onClick: () => {
-                    setActiveId(d.id);
-                    setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
+                    openDoc(d.id);
                   },
                   onContextMenu: (e) => {
                     e.preventDefault();
@@ -899,8 +1091,16 @@ function WikiSidebar(props) {
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.storage") : "\u6570\u636E\u5B58\u50A8\u76EE\u5F55" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.storage") : "MD \u5B58\u50A8\u76EE\u5F55" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: settings.mdStoragePath || "", onChange: (e) => setSettings({ ...settings, mdStoragePath: e.target.value }), style: smallInput })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.zipStorage") : "\u538B\u7F29\u5305\u5B58\u50A8\u76EE\u5F55" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: settings.zipStoragePath || "", onChange: (e) => setSettings({ ...settings, zipStoragePath: e.target.value }), style: smallInput })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.snapshotStorage") : "\u5FEB\u7167\u5B58\u50A8\u76EE\u5F55" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: settings.snapshotStoragePath || "", onChange: (e) => setSettings({ ...settings, snapshotStoragePath: e.target.value }), style: smallInput })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
@@ -913,8 +1113,55 @@ function WikiSidebar(props) {
               ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.rerankTopK") : "Rerank TopK" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.rerankTopK || 5, onChange: (e) => setSettings({ ...settings, rerankTopK: Number(e.target.value) }), style: smallInput })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.chunkMode") : "\u5207\u7247\u6A21\u5F0F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "select",
+                {
+                  value: settings.chunkMode || "fixed",
+                  onChange: (e) => setSettings({ ...settings, chunkMode: e.target.value }),
+                  style: { ...smallInput, height: 28 },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "fixed", children: t ? t("chunkModeFixed") : "\u56FA\u5B9A\u5207\u7247" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "heading", children: t ? t("chunkModeHeading") : "\u6807\u9898\u5206\u5C42\u5207\u7247" })
+                  ]
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.webMode") : "Web \u6A21\u5F0F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "select",
+                {
+                  value: settings.webMode || "intranet",
+                  onChange: (e) => setSettings({ ...settings, webMode: e.target.value }),
+                  style: { ...smallInput, height: 28 },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "intranet", children: t ? t("webModeIntranet") : "\u5185\u7F51\u6A21\u5F0F" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "extranet", children: t ? t("webModeExtranet") : "\u5916\u7F51\u6A21\u5F0F" })
+                  ]
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.snapshotKeep") : "\u5FEB\u7167\u4FDD\u7559\u4EFD\u6570" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.snapshotKeep || 10, onChange: (e) => setSettings({ ...settings, snapshotKeep: Number(e.target.value) }), style: smallInput })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.rerankTopK") : "Rerank TopK" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.rerankTopK || 5, onChange: (e) => setSettings({ ...settings, rerankTopK: Number(e.target.value) }), style: smallInput })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  type: "checkbox",
+                  checked: !!settings.autoSnapshot,
+                  onChange: (e) => setSettings({ ...settings, autoSnapshot: e.target.checked })
+                }
+              ),
+              t ? t("wiki.autoSnapshot") : "\u81EA\u52A8\u5FEB\u7167"
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.restartHint") : "\u4FEE\u6539\u5B58\u50A8\u8DEF\u5F84\u540E\u5C06\u81EA\u52A8\u8FC1\u79FB\u5DF2\u6709\u6587\u4EF6" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveSettings, style: primaryBtn, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
@@ -933,7 +1180,7 @@ function WikiSidebar(props) {
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noSnapshots") : "\u6682\u65E0\u5FEB\u7167" }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontSize: 12 }, children: s.name || `Snapshot ${s.id}` }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: new Date(s.time || s.created_at || 0).toLocaleString() }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => doRestoreSnapshot(s.id), style: ghostBtn, children: t ? t("wiki.restore") : "\u6062\u590D" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => doRestore(s.id), style: ghostBtn, children: t ? t("wiki.restore") : "\u6062\u590D" })
           ] }, s.id)) })
         ] })
       ) : view === "logs" ? (
@@ -987,7 +1234,7 @@ function WikiSidebar(props) {
                 lineHeight: 1.6
               }
             }
-          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", padding: 12 }, dangerouslySetInnerHTML: { __html: renderMdSafe(mdContent) } })
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", padding: 12 }, children: renderMdSafe(mdContent) })
         ] })
       ) : (
         /* 空状态 */
@@ -1030,6 +1277,15 @@ function WikiSidebar(props) {
               setDiffModal({ old: "", new: outcome?.reason || "\u65E0\u53EF\u7528\u66F4\u65B0", title: "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0" });
             }
           }, style: menuItem, children: t ? t("wiki.update") : "\u4ECE\u6E90\u76EE\u5F55\u66F4\u65B0" }),
+          contextMenu.kind === "doc" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { onClick: () => {
+            setRebindState({ fileId: String(contextMenu.id), value: "" });
+            setContextMenu(null);
+          }, style: menuItem, children: t ? t("wiki.rebindSource") : "\u91CD\u65B0\u7ED1\u5B9A\u6E90\u8DEF\u5F84" }),
+          contextMenu.kind === "folder" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { onClick: () => {
+            const fid = Number(contextMenu.id);
+            setContextMenu(null);
+            doFolderSync(fid);
+          }, style: menuItem, children: t ? t("wiki.folderSync") : "\u4ECE\u6E90\u6587\u4EF6\u5939\u6279\u91CF\u540C\u6B65" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { onClick: () => {
             if (contextMenu.kind === "doc") doDelete(String(contextMenu.id));
             else doDeleteFolder(Number(contextMenu.id));
@@ -1053,7 +1309,37 @@ function WikiSidebar(props) {
       } catch {
       }
       setDiffModal(null);
-    } })
+    }, onShelve: (ft) => doShelve(ft) }),
+    rebindState && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+      width: "90%",
+      maxWidth: 420,
+      background: "var(--dsw-alias-bg-layer-1)",
+      borderRadius: "var(--dsw-radius-lg)",
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 13 }, children: t ? t("wiki.rebindSource") : "\u91CD\u65B0\u7ED1\u5B9A\u6E90\u8DEF\u5F84" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          autoFocus: true,
+          value: rebindState.value,
+          onChange: (e) => setRebindState({ ...rebindState, value: e.target.value }),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") doRebindSource();
+            if (e.key === "Escape") setRebindState(null);
+          },
+          placeholder: t ? t("wiki.rebindSourcePrompt") : "\u8F93\u5165\u65B0\u7684\u6E90\u8DEF\u5F84\u2026",
+          style: { ...smallInput, flex: "none" }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setRebindState(null), style: ghostBtn, children: t ? t("wiki.cancel") : "\u53D6\u6D88" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doRebindSource, style: primaryBtn, children: t ? t("wiki.confirm") : "\u786E\u5B9A" })
+      ] })
+    ] }) })
   ] });
 }
 var rootStyle = {
@@ -1170,8 +1456,8 @@ function treeFindName(nodes, id) {
   return "";
 }
 function DiffModalBox(props) {
-  const { modal, t, onClose, onAccept, onReject } = props;
-  const rows2 = computeDiff(modal.old, modal.new);
+  const { modal, t, onClose, onAccept, onReject, onShelve } = props;
+  const rows = computeDiff(modal.old, modal.new);
   const rowColor = {
     add: { background: "var(--dsw-alias-state-success-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-success)", sign: "+" },
     del: { background: "var(--dsw-alias-state-danger-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-danger)", sign: "-" },
@@ -1194,7 +1480,7 @@ function DiffModalBox(props) {
       "\uFF1A",
       modal.title
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--dsw-font-family-mono, monospace)", display: "flex", flexDirection: "column" }, children: rows2.map((r, i) => {
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--dsw-font-family-mono, monospace)", display: "flex", flexDirection: "column" }, children: rows.map((r, i) => {
       if (r.type === "mod") {
         return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...rowColor.mod, padding: "2px 6px", whiteSpace: "pre-wrap" }, children: [
@@ -1216,6 +1502,10 @@ function DiffModalBox(props) {
       ] }, i);
     }) }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
+        if (modal.fileId && onShelve) onShelve(modal.fileId);
+        else onClose();
+      }, style: ghostBtn, children: t ? t("wiki.shelve") : "\u6682\u5B58" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
         if (modal.fileId) onReject(modal.fileId);
         else onClose();
@@ -1273,7 +1563,28 @@ function apply(ctx) {
       "wiki.reject": "\u62D2\u7EDD",
       "wiki.accept": "\u63A5\u53D7",
       "wiki.autoIndexHint": "\u7F16\u8F91\u540E\u81EA\u52A8\u5237\u65B0\u5411\u91CF\u7D22\u5F15",
-      "wiki.count": "\u5171 {n} \u6761"
+      "wiki.count": "\u5171 {n} \u6761",
+      "wiki.newDoc": "\u65B0\u5EFA\u6587\u6863",
+      "wiki.newDocTitle": "\u65B0\u6587\u6863\u6807\u9898\u2026",
+      "wiki.rebindSource": "\u91CD\u65B0\u7ED1\u5B9A\u6E90\u8DEF\u5F84",
+      "wiki.rebindSourcePrompt": "\u8F93\u5165\u65B0\u7684\u6E90\u8DEF\u5F84\u2026",
+      "wiki.folderSync": "\u4ECE\u6E90\u6587\u4EF6\u5939\u6279\u91CF\u540C\u6B65",
+      "wiki.shelve": "\u6682\u5B58",
+      "wiki.shelved": "\u5DF2\u6682\u5B58",
+      "wiki.zipStorage": "\u538B\u7F29\u5305\u5B58\u50A8\u76EE\u5F55",
+      "wiki.snapshotStorage": "\u5FEB\u7167\u5B58\u50A8\u76EE\u5F55",
+      "wiki.snapshotKeep": "\u5FEB\u7167\u4FDD\u7559\u4EFD\u6570",
+      "wiki.webMode": "Web \u6A21\u5F0F",
+      "webModeIntranet": "\u5185\u7F51\u6A21\u5F0F",
+      "webModeExtranet": "\u5916\u7F51\u6A21\u5F0F",
+      "wiki.autoSnapshot": "\u81EA\u52A8\u5FEB\u7167",
+      "wiki.chunkMode": "\u5207\u7247\u6A21\u5F0F",
+      "chunkModeFixed": "\u56FA\u5B9A\u5207\u7247",
+      "chunkModeHeading": "\u6807\u9898\u5206\u5C42\u5207\u7247",
+      "wiki.pendingChanges": "\u5F85\u786E\u8BA4\u53D8\u66F4",
+      "wiki.cancel": "\u53D6\u6D88",
+      "wiki.confirm": "\u786E\u5B9A",
+      "wiki.contentSaved": "\u5185\u5BB9\u5DF2\u4FDD\u5B58"
     },
     en: {
       "wiki.title": "Wiki",
@@ -1319,7 +1630,28 @@ function apply(ctx) {
       "wiki.reject": "Reject",
       "wiki.accept": "Accept",
       "wiki.autoIndexHint": "Vector index auto-refreshed after edit",
-      "wiki.count": "{n} items"
+      "wiki.count": "{n} items",
+      "wiki.newDoc": "New Doc",
+      "wiki.newDocTitle": "New document title\u2026",
+      "wiki.rebindSource": "Rebind source path",
+      "wiki.rebindSourcePrompt": "Enter new source path\u2026",
+      "wiki.folderSync": "Batch sync from source folder",
+      "wiki.shelve": "Shelve",
+      "wiki.shelved": "Shelved",
+      "wiki.zipStorage": "Zip storage path",
+      "wiki.snapshotStorage": "Snapshot storage path",
+      "wiki.snapshotKeep": "Snapshot keep count",
+      "wiki.webMode": "Web Mode",
+      "webModeIntranet": "Intranet",
+      "webModeExtranet": "Extranet",
+      "wiki.autoSnapshot": "Auto snapshot",
+      "wiki.chunkMode": "Chunk Mode",
+      "chunkModeFixed": "Fixed",
+      "chunkModeHeading": "Heading-based",
+      "wiki.pendingChanges": "Pending changes",
+      "wiki.cancel": "Cancel",
+      "wiki.confirm": "OK",
+      "wiki.contentSaved": "Content saved"
     }
   }), "wiki: dictionaries");
   ctx.effect(() => {
