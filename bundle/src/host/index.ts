@@ -50,9 +50,9 @@ import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 import { createLogger } from '../../../src/main/utils/logger';
 import { sendHttpError } from '../../../src/main/utils/errors';
 
-const logger = createLogger('wiki-rag-host');
+const logger = createLogger('dsh-wiki-rag');
 
-export const name = 'wiki-rag-host';
+export const name = 'dsh-wiki-rag';
 export const inject = ['tools'];
 
 export const Config = z.object({
@@ -182,7 +182,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   ctx.effect(async () => {
     await initDatabase(path.join(dataDir, 'dsh-wiki-rag.db'));
     logger.info('plugin activated', { dbPath: getDbPath() });
-    await writeLog('plugin-activate', `wiki-rag-host DB=${getDbPath()}`);
+    await writeLog('plugin-activate', `dsh-wiki-rag DB=${getDbPath()}`);
 
     // 接入文件监听：源文件变更入待确认队列；入队前预计算新旧文本与 diff，前端轮询即可直接渲染
     watcher.setCallback(async (change) => {
@@ -784,7 +784,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           return json(200, { fileId, folderId });
         }
 
-        // ---- 新建空白 MD 文档：POST /files/new ----
+        // ---- 新建文档（空白 MD）：POST /files/new ----
         if (req.method === 'POST' && pathname === '/api/wiki/files/new') {
           let parsed: any;
           try { parsed = JSON.parse(body || '{}'); } catch {
@@ -817,7 +817,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           });
           // 空内容也走一遍 reindex（向量库留一条记录，后续编辑时重建）
           await importer.reindex(fileId, content);
-          await writeLog('create-blank-md', `新建空白MD fileId=${fileId} name=${finalName}`);
+          await writeLog('create-blank-md', `新建文档 fileId=${fileId} name=${finalName}`);
           return json(200, { fileId, fileName: finalName, mdPath });
         }
 
@@ -855,6 +855,72 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             `人工编辑 fileId=${fileId} old=${sha256Text(oldContent)} new=${sha256Text(content)}`
           );
           return json(200, { status: 'saved' });
+        }
+
+        // ---- 文件夹重选源：POST /folders/:id/rebind-source ----
+        if (req.method === 'POST' && seg.length === 5 && seg[2] === 'folders' && seg[4] === 'rebind-source') {
+          const fid = parseInt(seg[3] || '');
+          if (Number.isNaN(fid)) return json(400, { error: '非法文件夹 id' });
+          if (!(await getFolderById(fid))) return json(404, { error: '文件夹不存在' });
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          const newDir = typeof parsed?.sourceDir === 'string' ? parsed.sourceDir.trim() : '';
+          if (!newDir) return json(400, { error: '缺少 sourceDir' });
+          if (!(newDir.startsWith('/') || isUncPath(newDir))) return json(400, { error: 'sourceDir 必须是本地目录或 UNC 路径' });
+
+          // 收集本文件夹及全部子文件夹下的知识文件
+          const allFolders = await listFolders();
+          const allFiles = await listKnowledgeFiles();
+          const childIds = new Set<number>([fid]);
+          const stack = [fid];
+          while (stack.length) {
+            const pid = stack.pop()!;
+            for (const f of allFolders) {
+              if (f.parent_id === pid && !childIds.has(f.id)) { childIds.add(f.id); stack.push(f.id); }
+            }
+          }
+          const files = allFiles.filter((f) => f.folder_id !== null && childIds.has(f.folder_id));
+
+          // 仅处理有本地源文件的条目
+          const localFiles = files.filter((f) => f.source_path.startsWith('/') || isUncPath(f.source_path));
+          if (!localFiles.length) {
+            return json(200, { status: 'rebounded', count: 0, reason: '该文件夹（含子文件夹）下无本地源文件条目' });
+          }
+
+          // 计算本地源路径的公共父目录（跨 / 与 \ 分隔符，保留 Windows / UNC 形态）
+          const splitP = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').split('/').filter(Boolean);
+          const groups = localFiles.map((f) => splitP(f.source_path));
+          const first = groups[0];
+          let i = 0;
+          while (i < first.length && groups.every((g) => g[i] === first[i])) i++;
+          let segs = first.slice(0, i);
+          if (segs.length && localFiles.length === 1) segs = segs.slice(0, -1); // 单文件时去掉文件名段
+          const isUnc = localFiles[0].source_path.startsWith('\\\\');
+          const common = isUnc ? '\\\\' + segs.join('\\') : (localFiles[0].source_path.startsWith('/') ? '/' + segs.join('/') : segs.join('/'));
+          const newDirClean = newDir.replace(/[\\/]+$/, '');
+
+          let count = 0;
+          const rebound: Array<{ fileId: number; from: string; to: string }> = [];
+          for (const f of localFiles) {
+            const rel = splitP(f.source_path).slice(segs.length).join('/');
+            const to = newDirClean + (rel ? (isUnc ? '\\' + rel.replace(/\//g, '\\') : '/' + rel) : '');
+            const oldSource = f.source_path;
+            try { watcher.unwatchPath(oldSource); } catch { /* ignore */ }
+            await updateSourcePath(f.id, to);
+            try { watcher.watchSource(f.id); } catch { /* ignore */ }
+            // 重新归档新源文件（容错降级，不中断批量重选）
+            try {
+              const newZip = await archiveSourceFile(to, settings.zipStoragePath, `${f.file_name.replace(/\.md$/i, '')}-src`);
+              try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
+              await updateZipPath(f.id, newZip);
+            } catch (e) { await writeLog('folder-rebind-archive-error', `fileId=${f.id}: ${(e as Error).message}`); }
+            rebound.push({ fileId: f.id, from: oldSource, to });
+            count++;
+          }
+          await writeLog('folder-rebind-source', `文件夹重选源 id=${fid} common=${common} -> ${newDir} count=${count}`);
+          return json(200, { status: 'rebounded', count, common, newDir: newDirClean, rebound });
         }
 
         // ---- 文件夹批量同步：POST /folders/:id/sync ----

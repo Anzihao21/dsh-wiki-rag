@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { execSync } from 'child_process';
 
 // 对 embedText 做同步 mock：file-importer 内部 `const vec = embedText(c)` 未 await，
 // 真实实现返回 Promise 会导致 better-sqlite3 绑定失败；mock 返回 Buffer 即可。
@@ -271,6 +272,18 @@ describe('FileImporter.importNote', () => {
     const r = await importer.importNote('', 'body');
     expect(r.skipped).toBe(false);
     expect(r.fileName).toMatch(/\.md$/);
+  });
+
+  it('笔记导入归档原始笔记 TXT 作证据层（-note.zip，内含原文）', async () => {
+    const r = await importer.importNote('归档笔记', '原始笔记正文XYZ123');
+    expect(r.skipped).toBe(false);
+    const row = await getKnowledgeFileById(r.fileId);
+    // 归档指向 -note.zip，而非默认的 -meta（MD）
+    expect(row!.zip_archive_path).toMatch(/-note\.zip$/);
+    await fs.access(row!.zip_archive_path);
+    // zip 内应包含原始笔记文本
+    const txt = execSync(`unzip -p ${JSON.stringify(row!.zip_archive_path)}`).toString('utf-8');
+    expect(txt).toContain('原始笔记正文XYZ123');
   });
 });
 

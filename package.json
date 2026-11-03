@@ -1,12 +1,14 @@
 {
   "name": "dsh-wiki-rag",
-  "version": "2.2.2",
+  "version": "0.0.1",
   "description": "DeepSeek Harness Wiki风格知识库RAG插件",
   "type": "module",
+  "engines": {
+    "dsh": "~0.2.1-rc.5"
+  },
   "main": "dist/main/index.js",
   "exports": {
     ".": "./dist/main/index.js",
-    "./bundle": "./dist/main/dsh-bundle.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
@@ -14,15 +16,9 @@
     "dist",
     "src",
     "README.md",
-    "cordis.patch.yml",
     "locale/*.json",
     "icon.svg"
   ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Anzihao21/dsh-wiki-rag.git"

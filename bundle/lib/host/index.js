@@ -40,17 +40,138 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../node_modules/.pnpm/minimatch@5.1.9/node_modules/minimatch/lib/path.js
+// ../src/main/db/sqlite-init.ts
+import Database from "better-sqlite3";
+import { promises as fs } from "fs";
+import path from "path";
+function getDbPath() {
+  return dbPath;
+}
+async function initDatabase(filePath) {
+  dbPath = filePath || path.join(process.cwd(), ".dsh-wiki-rag", "wiki.db");
+  if (db) return;
+  const dir = path.dirname(dbPath);
+  await fs.mkdir(dir, { recursive: true });
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  runSchema();
+}
+function runSchema() {
+  const statements = SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean);
+  for (const stmt of statements) {
+    run(stmt);
+  }
+}
+function getDb() {
+  if (!db) throw new Error("\u6570\u636E\u5E93\u5C1A\u672A\u521D\u59CB\u5316\uFF0C\u8BF7\u5148\u8C03\u7528 initDatabase()");
+  return db;
+}
+function run(sql, params = []) {
+  getDb().prepare(sql).run(...params);
+}
+function get(sql, params = []) {
+  return getDb().prepare(sql).get(...params);
+}
+function all(sql, params = []) {
+  return getDb().prepare(sql).all(...params);
+}
+function lastInsertId() {
+  const row = get("SELECT last_insert_rowid() AS id");
+  return row?.id ?? 0;
+}
+function closeDatabase() {
+  if (!db) return;
+  db.close();
+  db = null;
+}
+function walCheckpoint(mode = "TRUNCATE") {
+  if (!db) return;
+  db.pragma(`wal_checkpoint(${mode})`);
+}
+var db, dbPath, SCHEMA_SQL;
+var init_sqlite_init = __esm({
+  "../src/main/db/sqlite-init.ts"() {
+    "use strict";
+    db = null;
+    dbPath = "";
+    SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS knowledge_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_name TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    md_path TEXT NOT NULL,
+    zip_archive_path TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    create_time INTEGER NOT NULL,
+    last_sync_time INTEGER NOT NULL DEFAULT 0,
+    folder_id INTEGER DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER,
+    create_time INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vector_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    FOREIGN KEY(file_id) REFERENCES knowledge_files(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vector_file_id ON vector_chunks(file_id);
+
+CREATE TABLE IF NOT EXISTS operation_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    detail TEXT,
+    time INTEGER NOT NULL
+);
+`;
+  }
+});
+
+// ../src/main/db/log-db.ts
+var log_db_exports = {};
+__export(log_db_exports, {
+  lastLog: () => lastLog,
+  listLogs: () => listLogs,
+  writeLog: () => writeLog
+});
+async function writeLog(action, detail) {
+  await run("INSERT INTO operation_log (action, detail, time) VALUES (?, ?, ?)", [
+    action,
+    detail,
+    Date.now()
+  ]);
+}
+async function listLogs(limit = 100) {
+  return all("SELECT * FROM operation_log ORDER BY id DESC LIMIT ?", [limit]);
+}
+async function lastLog() {
+  return get("SELECT * FROM operation_log ORDER BY id DESC LIMIT 1");
+}
+var init_log_db = __esm({
+  "../src/main/db/log-db.ts"() {
+    "use strict";
+    init_sqlite_init();
+  }
+});
+
+// ../node_modules/readdir-glob/node_modules/minimatch/lib/path.js
 var require_path = __commonJS({
-  "../node_modules/.pnpm/minimatch@5.1.9/node_modules/minimatch/lib/path.js"(exports, module) {
+  "../node_modules/readdir-glob/node_modules/minimatch/lib/path.js"(exports, module) {
     var isWindows = typeof process === "object" && process && process.platform === "win32";
     module.exports = isWindows ? { sep: "\\" } : { sep: "/" };
   }
 });
 
-// ../node_modules/.pnpm/balanced-match@1.0.0/node_modules/balanced-match/index.js
+// ../node_modules/readdir-glob/node_modules/balanced-match/index.js
 var require_balanced_match = __commonJS({
-  "../node_modules/.pnpm/balanced-match@1.0.0/node_modules/balanced-match/index.js"(exports, module) {
+  "../node_modules/readdir-glob/node_modules/balanced-match/index.js"(exports, module) {
     "use strict";
     module.exports = balanced;
     function balanced(a, b, str) {
@@ -76,6 +197,9 @@ var require_balanced_match = __commonJS({
       var bi = str.indexOf(b, ai + 1);
       var i = ai;
       if (ai >= 0 && bi > 0) {
+        if (a === b) {
+          return [ai, bi];
+        }
         begs = [];
         left = str.length;
         while (i >= 0 && !result) {
@@ -103,9 +227,9 @@ var require_balanced_match = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/brace-expansion@2.1.7/node_modules/brace-expansion/index.js
+// ../node_modules/readdir-glob/node_modules/brace-expansion/index.js
 var require_brace_expansion = __commonJS({
-  "../node_modules/.pnpm/brace-expansion@2.1.7/node_modules/brace-expansion/index.js"(exports, module) {
+  "../node_modules/readdir-glob/node_modules/brace-expansion/index.js"(exports, module) {
     var balanced = require_balanced_match();
     module.exports = expandTop;
     var escSlash = "\0SLASH" + Math.random() + "\0";
@@ -345,9 +469,9 @@ var require_brace_expansion = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@5.1.9/node_modules/minimatch/minimatch.js
+// ../node_modules/readdir-glob/node_modules/minimatch/minimatch.js
 var require_minimatch = __commonJS({
-  "../node_modules/.pnpm/minimatch@5.1.9/node_modules/minimatch/minimatch.js"(exports, module) {
+  "../node_modules/readdir-glob/node_modules/minimatch/minimatch.js"(exports, module) {
     var minimatch = module.exports = (p, pattern, options = {}) => {
       assertValidPattern(pattern);
       if (!options.nocomment && pattern.charAt(0) === "#") {
@@ -994,17 +1118,17 @@ var require_minimatch = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readdir-glob@1.1.2/node_modules/readdir-glob/index.js
+// ../node_modules/readdir-glob/index.js
 var require_readdir_glob = __commonJS({
-  "../node_modules/.pnpm/readdir-glob@1.1.2/node_modules/readdir-glob/index.js"(exports, module) {
+  "../node_modules/readdir-glob/index.js"(exports, module) {
     module.exports = readdirGlob;
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var { EventEmitter } = __require("events");
     var { Minimatch } = require_minimatch();
     var { resolve } = __require("path");
     function readdir(dir, strict) {
       return new Promise((resolve2, reject) => {
-        fs8.readdir(dir, { withFileTypes: true }, (err, files) => {
+        fs9.readdir(dir, { withFileTypes: true }, (err, files) => {
           if (err) {
             switch (err.code) {
               case "ENOTDIR":
@@ -1033,7 +1157,7 @@ var require_readdir_glob = __commonJS({
     }
     function stat(file, followSymlinks) {
       return new Promise((resolve2, reject) => {
-        const statFunc = followSymlinks ? fs8.stat : fs8.lstat;
+        const statFunc = followSymlinks ? fs9.stat : fs9.lstat;
         statFunc(file, (err, stats) => {
           if (err) {
             switch (err.code) {
@@ -1212,9 +1336,9 @@ var require_readdir_glob = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/async@3.2.6/node_modules/async/dist/async.js
+// ../node_modules/async/dist/async.js
 var require_async = __commonJS({
-  "../node_modules/.pnpm/async@3.2.6/node_modules/async/dist/async.js"(exports, module) {
+  "../node_modules/async/dist/async.js"(exports, module) {
     (function(global2, factory) {
       typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.async = {}));
     })(exports, function(exports2) {
@@ -3072,9 +3196,9 @@ var require_async = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/polyfills.js
+// ../node_modules/graceful-fs/polyfills.js
 var require_polyfills = __commonJS({
-  "../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/polyfills.js"(exports, module) {
+  "../node_modules/graceful-fs/polyfills.js"(exports, module) {
     var constants = __require("constants");
     var origCwd = process.cwd;
     var cwd = null;
@@ -3098,54 +3222,54 @@ var require_polyfills = __commonJS({
     }
     var chdir;
     module.exports = patch;
-    function patch(fs8) {
+    function patch(fs9) {
       if (constants.hasOwnProperty("O_SYMLINK") && process.version.match(/^v0\.6\.[0-2]|^v0\.5\./)) {
-        patchLchmod(fs8);
+        patchLchmod(fs9);
       }
-      if (!fs8.lutimes) {
-        patchLutimes(fs8);
+      if (!fs9.lutimes) {
+        patchLutimes(fs9);
       }
-      fs8.chown = chownFix(fs8.chown);
-      fs8.fchown = chownFix(fs8.fchown);
-      fs8.lchown = chownFix(fs8.lchown);
-      fs8.chmod = chmodFix(fs8.chmod);
-      fs8.fchmod = chmodFix(fs8.fchmod);
-      fs8.lchmod = chmodFix(fs8.lchmod);
-      fs8.chownSync = chownFixSync(fs8.chownSync);
-      fs8.fchownSync = chownFixSync(fs8.fchownSync);
-      fs8.lchownSync = chownFixSync(fs8.lchownSync);
-      fs8.chmodSync = chmodFixSync(fs8.chmodSync);
-      fs8.fchmodSync = chmodFixSync(fs8.fchmodSync);
-      fs8.lchmodSync = chmodFixSync(fs8.lchmodSync);
-      fs8.stat = statFix(fs8.stat);
-      fs8.fstat = statFix(fs8.fstat);
-      fs8.lstat = statFix(fs8.lstat);
-      fs8.statSync = statFixSync(fs8.statSync);
-      fs8.fstatSync = statFixSync(fs8.fstatSync);
-      fs8.lstatSync = statFixSync(fs8.lstatSync);
-      if (fs8.chmod && !fs8.lchmod) {
-        fs8.lchmod = function(path11, mode, cb) {
+      fs9.chown = chownFix(fs9.chown);
+      fs9.fchown = chownFix(fs9.fchown);
+      fs9.lchown = chownFix(fs9.lchown);
+      fs9.chmod = chmodFix(fs9.chmod);
+      fs9.fchmod = chmodFix(fs9.fchmod);
+      fs9.lchmod = chmodFix(fs9.lchmod);
+      fs9.chownSync = chownFixSync(fs9.chownSync);
+      fs9.fchownSync = chownFixSync(fs9.fchownSync);
+      fs9.lchownSync = chownFixSync(fs9.lchownSync);
+      fs9.chmodSync = chmodFixSync(fs9.chmodSync);
+      fs9.fchmodSync = chmodFixSync(fs9.fchmodSync);
+      fs9.lchmodSync = chmodFixSync(fs9.lchmodSync);
+      fs9.stat = statFix(fs9.stat);
+      fs9.fstat = statFix(fs9.fstat);
+      fs9.lstat = statFix(fs9.lstat);
+      fs9.statSync = statFixSync(fs9.statSync);
+      fs9.fstatSync = statFixSync(fs9.fstatSync);
+      fs9.lstatSync = statFixSync(fs9.lstatSync);
+      if (fs9.chmod && !fs9.lchmod) {
+        fs9.lchmod = function(path11, mode, cb) {
           if (cb) process.nextTick(cb);
         };
-        fs8.lchmodSync = function() {
+        fs9.lchmodSync = function() {
         };
       }
-      if (fs8.chown && !fs8.lchown) {
-        fs8.lchown = function(path11, uid, gid, cb) {
+      if (fs9.chown && !fs9.lchown) {
+        fs9.lchown = function(path11, uid, gid, cb) {
           if (cb) process.nextTick(cb);
         };
-        fs8.lchownSync = function() {
+        fs9.lchownSync = function() {
         };
       }
       if (platform === "win32") {
-        fs8.rename = typeof fs8.rename !== "function" ? fs8.rename : function(fs$rename) {
+        fs9.rename = typeof fs9.rename !== "function" ? fs9.rename : function(fs$rename) {
           function rename(from, to, cb) {
             var start = Date.now();
             var backoff = 0;
             fs$rename(from, to, function CB(er) {
               if (er && (er.code === "EACCES" || er.code === "EPERM" || er.code === "EBUSY") && Date.now() - start < 6e4) {
                 setTimeout(function() {
-                  fs8.stat(to, function(stater, st) {
+                  fs9.stat(to, function(stater, st) {
                     if (stater && stater.code === "ENOENT")
                       fs$rename(from, to, CB);
                     else
@@ -3161,9 +3285,9 @@ var require_polyfills = __commonJS({
           }
           if (Object.setPrototypeOf) Object.setPrototypeOf(rename, fs$rename);
           return rename;
-        }(fs8.rename);
+        }(fs9.rename);
       }
-      fs8.read = typeof fs8.read !== "function" ? fs8.read : function(fs$read) {
+      fs9.read = typeof fs9.read !== "function" ? fs9.read : function(fs$read) {
         function read(fd, buffer, offset, length, position, callback_) {
           var callback;
           if (callback_ && typeof callback_ === "function") {
@@ -3171,22 +3295,22 @@ var require_polyfills = __commonJS({
             callback = function(er, _2, __) {
               if (er && er.code === "EAGAIN" && eagCounter < 10) {
                 eagCounter++;
-                return fs$read.call(fs8, fd, buffer, offset, length, position, callback);
+                return fs$read.call(fs9, fd, buffer, offset, length, position, callback);
               }
               callback_.apply(this, arguments);
             };
           }
-          return fs$read.call(fs8, fd, buffer, offset, length, position, callback);
+          return fs$read.call(fs9, fd, buffer, offset, length, position, callback);
         }
         if (Object.setPrototypeOf) Object.setPrototypeOf(read, fs$read);
         return read;
-      }(fs8.read);
-      fs8.readSync = typeof fs8.readSync !== "function" ? fs8.readSync : /* @__PURE__ */ function(fs$readSync) {
+      }(fs9.read);
+      fs9.readSync = typeof fs9.readSync !== "function" ? fs9.readSync : /* @__PURE__ */ function(fs$readSync) {
         return function(fd, buffer, offset, length, position) {
           var eagCounter = 0;
           while (true) {
             try {
-              return fs$readSync.call(fs8, fd, buffer, offset, length, position);
+              return fs$readSync.call(fs9, fd, buffer, offset, length, position);
             } catch (er) {
               if (er.code === "EAGAIN" && eagCounter < 10) {
                 eagCounter++;
@@ -3196,10 +3320,10 @@ var require_polyfills = __commonJS({
             }
           }
         };
-      }(fs8.readSync);
-      function patchLchmod(fs9) {
-        fs9.lchmod = function(path11, mode, callback) {
-          fs9.open(
+      }(fs9.readSync);
+      function patchLchmod(fs10) {
+        fs10.lchmod = function(path11, mode, callback) {
+          fs10.open(
             path11,
             constants.O_WRONLY | constants.O_SYMLINK,
             mode,
@@ -3208,80 +3332,80 @@ var require_polyfills = __commonJS({
                 if (callback) callback(err);
                 return;
               }
-              fs9.fchmod(fd, mode, function(err2) {
-                fs9.close(fd, function(err22) {
+              fs10.fchmod(fd, mode, function(err2) {
+                fs10.close(fd, function(err22) {
                   if (callback) callback(err2 || err22);
                 });
               });
             }
           );
         };
-        fs9.lchmodSync = function(path11, mode) {
-          var fd = fs9.openSync(path11, constants.O_WRONLY | constants.O_SYMLINK, mode);
+        fs10.lchmodSync = function(path11, mode) {
+          var fd = fs10.openSync(path11, constants.O_WRONLY | constants.O_SYMLINK, mode);
           var threw = true;
           var ret;
           try {
-            ret = fs9.fchmodSync(fd, mode);
+            ret = fs10.fchmodSync(fd, mode);
             threw = false;
           } finally {
             if (threw) {
               try {
-                fs9.closeSync(fd);
+                fs10.closeSync(fd);
               } catch (er) {
               }
             } else {
-              fs9.closeSync(fd);
+              fs10.closeSync(fd);
             }
           }
           return ret;
         };
       }
-      function patchLutimes(fs9) {
-        if (constants.hasOwnProperty("O_SYMLINK") && fs9.futimes) {
-          fs9.lutimes = function(path11, at, mt, cb) {
-            fs9.open(path11, constants.O_SYMLINK, function(er, fd) {
+      function patchLutimes(fs10) {
+        if (constants.hasOwnProperty("O_SYMLINK") && fs10.futimes) {
+          fs10.lutimes = function(path11, at, mt, cb) {
+            fs10.open(path11, constants.O_SYMLINK, function(er, fd) {
               if (er) {
                 if (cb) cb(er);
                 return;
               }
-              fs9.futimes(fd, at, mt, function(er2) {
-                fs9.close(fd, function(er22) {
+              fs10.futimes(fd, at, mt, function(er2) {
+                fs10.close(fd, function(er22) {
                   if (cb) cb(er2 || er22);
                 });
               });
             });
           };
-          fs9.lutimesSync = function(path11, at, mt) {
-            var fd = fs9.openSync(path11, constants.O_SYMLINK);
+          fs10.lutimesSync = function(path11, at, mt) {
+            var fd = fs10.openSync(path11, constants.O_SYMLINK);
             var ret;
             var threw = true;
             try {
-              ret = fs9.futimesSync(fd, at, mt);
+              ret = fs10.futimesSync(fd, at, mt);
               threw = false;
             } finally {
               if (threw) {
                 try {
-                  fs9.closeSync(fd);
+                  fs10.closeSync(fd);
                 } catch (er) {
                 }
               } else {
-                fs9.closeSync(fd);
+                fs10.closeSync(fd);
               }
             }
             return ret;
           };
-        } else if (fs9.futimes) {
-          fs9.lutimes = function(_a, _b, _c, cb) {
+        } else if (fs10.futimes) {
+          fs10.lutimes = function(_a, _b, _c, cb) {
             if (cb) process.nextTick(cb);
           };
-          fs9.lutimesSync = function() {
+          fs10.lutimesSync = function() {
           };
         }
       }
       function chmodFix(orig) {
         if (!orig) return orig;
         return function(target, mode, cb) {
-          return orig.call(fs8, target, mode, function(er) {
+          return orig.call(fs9, target, mode, function(er) {
             if (chownErOk(er)) er = null;
             if (cb) cb.apply(this, arguments);
           });
@@ -3291,7 +3415,7 @@ var require_polyfills = __commonJS({
         if (!orig) return orig;
         return function(target, mode) {
           try {
-            return orig.call(fs8, target, mode);
+            return orig.call(fs9, target, mode);
           } catch (er) {
             if (!chownErOk(er)) throw er;
           }
@@ -3300,7 +3424,7 @@ var require_polyfills = __commonJS({
       function chownFix(orig) {
         if (!orig) return orig;
         return function(target, uid, gid, cb) {
-          return orig.call(fs8, target, uid, gid, function(er) {
+          return orig.call(fs9, target, uid, gid, function(er) {
             if (chownErOk(er)) er = null;
             if (cb) cb.apply(this, arguments);
           });
@@ -3310,7 +3434,7 @@ var require_polyfills = __commonJS({
         if (!orig) return orig;
         return function(target, uid, gid) {
           try {
-            return orig.call(fs8, target, uid, gid);
+            return orig.call(fs9, target, uid, gid);
           } catch (er) {
             if (!chownErOk(er)) throw er;
           }
@@ -3330,13 +3454,13 @@ var require_polyfills = __commonJS({
             }
             if (cb) cb.apply(this, arguments);
           }
-          return options ? orig.call(fs8, target, options, callback) : orig.call(fs8, target, callback);
+          return options ? orig.call(fs9, target, options, callback) : orig.call(fs9, target, callback);
         };
       }
       function statFixSync(orig) {
         if (!orig) return orig;
         return function(target, options) {
-          var stats = options ? orig.call(fs8, target, options) : orig.call(fs8, target);
+          var stats = options ? orig.call(fs9, target, options) : orig.call(fs9, target);
           if (stats) {
             if (stats.uid < 0) stats.uid += 4294967296;
             if (stats.gid < 0) stats.gid += 4294967296;
@@ -3360,12 +3484,12 @@ var require_polyfills = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/legacy-streams.js
+// ../node_modules/graceful-fs/legacy-streams.js
 var require_legacy_streams = __commonJS({
-  "../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/legacy-streams.js"(exports, module) {
+  "../node_modules/graceful-fs/legacy-streams.js"(exports, module) {
     var Stream = __require("stream").Stream;
     module.exports = legacy;
-    function legacy(fs8) {
+    function legacy(fs9) {
       return {
         ReadStream,
         WriteStream
@@ -3408,7 +3532,7 @@ var require_legacy_streams = __commonJS({
           });
           return;
         }
-        fs8.open(this.path, this.flags, this.mode, function(err, fd) {
+        fs9.open(this.path, this.flags, this.mode, function(err, fd) {
           if (err) {
             self2.emit("error", err);
             self2.readable = false;
@@ -3447,7 +3571,7 @@ var require_legacy_streams = __commonJS({
         this.busy = false;
         this._queue = [];
         if (this.fd === null) {
-          this._open = fs8.open;
+          this._open = fs9.open;
           this._queue.push([this._open, this.path, this.flags, this.mode, void 0]);
           this.flush();
         }
@@ -3456,9 +3580,9 @@ var require_legacy_streams = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/clone.js
+// ../node_modules/graceful-fs/clone.js
 var require_clone = __commonJS({
-  "../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/clone.js"(exports, module) {
+  "../node_modules/graceful-fs/clone.js"(exports, module) {
     "use strict";
     module.exports = clone;
     var getPrototypeOf = Object.getPrototypeOf || function(obj) {
@@ -3479,10 +3603,10 @@ var require_clone = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/graceful-fs.js
+// ../node_modules/graceful-fs/graceful-fs.js
 var require_graceful_fs = __commonJS({
-  "../node_modules/.pnpm/graceful-fs@4.2.11/node_modules/graceful-fs/graceful-fs.js"(exports, module) {
-    var fs8 = __require("fs");
+  "../node_modules/graceful-fs/graceful-fs.js"(exports, module) {
+    var fs9 = __require("fs");
     var polyfills = require_polyfills();
     var legacy = require_legacy_streams();
     var clone = require_clone();
@@ -3514,12 +3638,12 @@ var require_graceful_fs = __commonJS({
         m = "GFS4: " + m.split(/\n/).join("\nGFS4: ");
         console.error(m);
       };
-    if (!fs8[gracefulQueue]) {
+    if (!fs9[gracefulQueue]) {
       queue = global[gracefulQueue] || [];
-      publishQueue(fs8, queue);
-      fs8.close = function(fs$close) {
+      publishQueue(fs9, queue);
+      fs9.close = function(fs$close) {
         function close(fd, cb) {
-          return fs$close.call(fs8, fd, function(err) {
+          return fs$close.call(fs9, fd, function(err) {
             if (!err) {
               resetQueue();
             }
@@ -3531,40 +3655,40 @@ var require_graceful_fs = __commonJS({
           value: fs$close
         });
         return close;
-      }(fs8.close);
-      fs8.closeSync = function(fs$closeSync) {
+      }(fs9.close);
+      fs9.closeSync = function(fs$closeSync) {
         function closeSync(fd) {
-          fs$closeSync.apply(fs8, arguments);
+          fs$closeSync.apply(fs9, arguments);
           resetQueue();
         }
         Object.defineProperty(closeSync, previousSymbol, {
           value: fs$closeSync
         });
         return closeSync;
-      }(fs8.closeSync);
+      }(fs9.closeSync);
       if (/\bgfs4\b/i.test(process.env.NODE_DEBUG || "")) {
         process.on("exit", function() {
-          debug(fs8[gracefulQueue]);
-          __require("assert").equal(fs8[gracefulQueue].length, 0);
+          debug(fs9[gracefulQueue]);
+          __require("assert").equal(fs9[gracefulQueue].length, 0);
         });
       }
     }
     var queue;
     if (!global[gracefulQueue]) {
-      publishQueue(global, fs8[gracefulQueue]);
+      publishQueue(global, fs9[gracefulQueue]);
     }
-    module.exports = patch(clone(fs8));
-    if (process.env.TEST_GRACEFUL_FS_GLOBAL_PATCH && !fs8.__patched) {
-      module.exports = patch(fs8);
-      fs8.__patched = true;
+    module.exports = patch(clone(fs9));
+    if (process.env.TEST_GRACEFUL_FS_GLOBAL_PATCH && !fs9.__patched) {
+      module.exports = patch(fs9);
+      fs9.__patched = true;
     }
-    function patch(fs9) {
-      polyfills(fs9);
-      fs9.gracefulify = patch;
-      fs9.createReadStream = createReadStream;
-      fs9.createWriteStream = createWriteStream3;
-      var fs$readFile = fs9.readFile;
-      fs9.readFile = readFile;
+    function patch(fs10) {
+      polyfills(fs10);
+      fs10.gracefulify = patch;
+      fs10.createReadStream = createReadStream;
+      fs10.createWriteStream = createWriteStream3;
+      var fs$readFile = fs10.readFile;
+      fs10.readFile = readFile;
       function readFile(path11, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
@@ -3580,8 +3704,8 @@ var require_graceful_fs = __commonJS({
           });
         }
       }
-      var fs$writeFile = fs9.writeFile;
-      fs9.writeFile = writeFile;
+      var fs$writeFile = fs10.writeFile;
+      fs10.writeFile = writeFile;
       function writeFile(path11, data, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
@@ -3597,9 +3721,9 @@ var require_graceful_fs = __commonJS({
           });
         }
       }
-      var fs$appendFile = fs9.appendFile;
+      var fs$appendFile = fs10.appendFile;
       if (fs$appendFile)
-        fs9.appendFile = appendFile;
+        fs10.appendFile = appendFile;
       function appendFile(path11, data, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
@@ -3615,9 +3739,9 @@ var require_graceful_fs = __commonJS({
           });
         }
       }
-      var fs$copyFile = fs9.copyFile;
+      var fs$copyFile = fs10.copyFile;
       if (fs$copyFile)
-        fs9.copyFile = copyFile;
+        fs10.copyFile = copyFile;
       function copyFile(src, dest, flags, cb) {
         if (typeof flags === "function") {
           cb = flags;
@@ -3635,8 +3759,8 @@ var require_graceful_fs = __commonJS({
           });
         }
       }
-      var fs$readdir = fs9.readdir;
-      fs9.readdir = readdir;
+      var fs$readdir = fs10.readdir;
+      fs10.readdir = readdir;
       var noReaddirOptionVersions = /^v[0-5]\./;
       function readdir(path11, options, cb) {
         if (typeof options === "function")
@@ -3677,21 +3801,21 @@ var require_graceful_fs = __commonJS({
         }
       }
       if (process.version.substr(0, 4) === "v0.8") {
-        var legStreams = legacy(fs9);
+        var legStreams = legacy(fs10);
         ReadStream = legStreams.ReadStream;
         WriteStream = legStreams.WriteStream;
       }
-      var fs$ReadStream = fs9.ReadStream;
+      var fs$ReadStream = fs10.ReadStream;
       if (fs$ReadStream) {
         ReadStream.prototype = Object.create(fs$ReadStream.prototype);
         ReadStream.prototype.open = ReadStream$open;
       }
-      var fs$WriteStream = fs9.WriteStream;
+      var fs$WriteStream = fs10.WriteStream;
       if (fs$WriteStream) {
         WriteStream.prototype = Object.create(fs$WriteStream.prototype);
         WriteStream.prototype.open = WriteStream$open;
       }
-      Object.defineProperty(fs9, "ReadStream", {
+      Object.defineProperty(fs10, "ReadStream", {
         get: function() {
           return ReadStream;
         },
@@ -3701,7 +3825,7 @@ var require_graceful_fs = __commonJS({
         enumerable: true,
         configurable: true
       });
-      Object.defineProperty(fs9, "WriteStream", {
+      Object.defineProperty(fs10, "WriteStream", {
         get: function() {
           return WriteStream;
         },
@@ -3712,7 +3836,7 @@ var require_graceful_fs = __commonJS({
         configurable: true
       });
       var FileReadStream = ReadStream;
-      Object.defineProperty(fs9, "FileReadStream", {
+      Object.defineProperty(fs10, "FileReadStream", {
         get: function() {
           return FileReadStream;
         },
@@ -3723,7 +3847,7 @@ var require_graceful_fs = __commonJS({
         configurable: true
       });
       var FileWriteStream = WriteStream;
-      Object.defineProperty(fs9, "FileWriteStream", {
+      Object.defineProperty(fs10, "FileWriteStream", {
         get: function() {
           return FileWriteStream;
         },
@@ -3772,13 +3896,13 @@ var require_graceful_fs = __commonJS({
         });
       }
       function createReadStream(path11, options) {
-        return new fs9.ReadStream(path11, options);
+        return new fs10.ReadStream(path11, options);
       }
       function createWriteStream3(path11, options) {
-        return new fs9.WriteStream(path11, options);
+        return new fs10.WriteStream(path11, options);
       }
-      var fs$open = fs9.open;
-      fs9.open = open;
+      var fs$open = fs10.open;
+      fs10.open = open;
       function open(path11, flags, mode, cb) {
         if (typeof mode === "function")
           cb = mode, mode = null;
@@ -3794,20 +3918,20 @@ var require_graceful_fs = __commonJS({
           });
         }
       }
-      return fs9;
+      return fs10;
     }
     function enqueue(elem) {
       debug("ENQUEUE", elem[0].name, elem[1]);
-      fs8[gracefulQueue].push(elem);
+      fs9[gracefulQueue].push(elem);
       retry();
     }
     var retryTimer;
     function resetQueue() {
       var now = Date.now();
-      for (var i = 0; i < fs8[gracefulQueue].length; ++i) {
-        if (fs8[gracefulQueue][i].length > 2) {
-          fs8[gracefulQueue][i][3] = now;
-          fs8[gracefulQueue][i][4] = now;
+      for (var i = 0; i < fs9[gracefulQueue].length; ++i) {
+        if (fs9[gracefulQueue][i].length > 2) {
+          fs9[gracefulQueue][i][3] = now;
+          fs9[gracefulQueue][i][4] = now;
         }
       }
       retry();
@@ -3815,9 +3939,9 @@ var require_graceful_fs = __commonJS({
     function retry() {
       clearTimeout(retryTimer);
       retryTimer = void 0;
-      if (fs8[gracefulQueue].length === 0)
+      if (fs9[gracefulQueue].length === 0)
         return;
-      var elem = fs8[gracefulQueue].shift();
+      var elem = fs9[gracefulQueue].shift();
       var fn = elem[0];
       var args = elem[1];
       var err = elem[2];
@@ -3839,7 +3963,7 @@ var require_graceful_fs = __commonJS({
           debug("RETRY", fn.name, args);
           fn.apply(null, args.concat([startTime]));
         } else {
-          fs8[gracefulQueue].push(elem);
+          fs9[gracefulQueue].push(elem);
         }
       }
       if (retryTimer === void 0) {
@@ -3849,9 +3973,9 @@ var require_graceful_fs = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/is-stream@2.0.1/node_modules/is-stream/index.js
+// ../node_modules/is-stream/index.js
 var require_is_stream = __commonJS({
-  "../node_modules/.pnpm/is-stream@2.0.1/node_modules/is-stream/index.js"(exports, module) {
+  "../node_modules/is-stream/index.js"(exports, module) {
     "use strict";
     var isStream = (stream) => stream !== null && typeof stream === "object" && typeof stream.pipe === "function";
     isStream.writable = (stream) => isStream(stream) && stream.writable !== false && typeof stream._write === "function" && typeof stream._writableState === "object";
@@ -3862,14 +3986,14 @@ var require_is_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/process-nextick-args@1.0.7/node_modules/process-nextick-args/index.js
+// ../node_modules/process-nextick-args/index.js
 var require_process_nextick_args = __commonJS({
-  "../node_modules/.pnpm/process-nextick-args@1.0.7/node_modules/process-nextick-args/index.js"(exports, module) {
+  "../node_modules/process-nextick-args/index.js"(exports, module) {
     "use strict";
-    if (!process.version || process.version.indexOf("v0.") === 0 || process.version.indexOf("v1.") === 0 && process.version.indexOf("v1.8.") !== 0) {
-      module.exports = nextTick;
+    if (typeof process === "undefined" || !process.version || process.version.indexOf("v0.") === 0 || process.version.indexOf("v1.") === 0 && process.version.indexOf("v1.8.") !== 0) {
+      module.exports = { nextTick };
     } else {
-      module.exports = process.nextTick;
+      module.exports = process;
     }
     function nextTick(fn, arg1, arg2, arg3) {
       if (typeof fn !== "function") {
@@ -3907,9 +4031,83 @@ var require_process_nextick_args = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/core-util-is@1.0.3/node_modules/core-util-is/lib/util.js
+// ../node_modules/isarray/index.js
+var require_isarray = __commonJS({
+  "../node_modules/isarray/index.js"(exports, module) {
+    var toString = {}.toString;
+    module.exports = Array.isArray || function(arr) {
+      return toString.call(arr) == "[object Array]";
+    };
+  }
+});
+
+// ../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/stream.js
+var require_stream = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/stream.js"(exports, module) {
+    module.exports = __require("stream");
+  }
+});
+
+// ../node_modules/lazystream/node_modules/safe-buffer/index.js
+var require_safe_buffer = __commonJS({
+  "../node_modules/lazystream/node_modules/safe-buffer/index.js"(exports, module) {
+    var buffer = __require("buffer");
+    var Buffer2 = buffer.Buffer;
+    function copyProps(src, dst) {
+      for (var key in src) {
+        dst[key] = src[key];
+      }
+    }
+    if (Buffer2.from && Buffer2.alloc && Buffer2.allocUnsafe && Buffer2.allocUnsafeSlow) {
+      module.exports = buffer;
+    } else {
+      copyProps(buffer, exports);
+      exports.Buffer = SafeBuffer;
+    }
+    function SafeBuffer(arg, encodingOrOffset, length) {
+      return Buffer2(arg, encodingOrOffset, length);
+    }
+    copyProps(Buffer2, SafeBuffer);
+    SafeBuffer.from = function(arg, encodingOrOffset, length) {
+      if (typeof arg === "number") {
+        throw new TypeError("Argument must not be a number");
+      }
+      return Buffer2(arg, encodingOrOffset, length);
+    };
+    SafeBuffer.alloc = function(size, fill, encoding) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      var buf = Buffer2(size);
+      if (fill !== void 0) {
+        if (typeof encoding === "string") {
+          buf.fill(fill, encoding);
+        } else {
+          buf.fill(fill);
+        }
+      } else {
+        buf.fill(0);
+      }
+      return buf;
+    };
+    SafeBuffer.allocUnsafe = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return Buffer2(size);
+    };
+    SafeBuffer.allocUnsafeSlow = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return buffer.SlowBuffer(size);
+    };
+  }
+});
+
+// ../node_modules/core-util-is/lib/util.js
 var require_util = __commonJS({
-  "../node_modules/.pnpm/core-util-is@1.0.3/node_modules/core-util-is/lib/util.js"(exports) {
+  "../node_modules/core-util-is/lib/util.js"(exports) {
     function isArray(arg) {
       if (Array.isArray) {
         return Array.isArray(arg);
@@ -3977,9 +4175,9 @@ var require_util = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/inherits@2.0.4/node_modules/inherits/inherits_browser.js
+// ../node_modules/inherits/inherits_browser.js
 var require_inherits_browser = __commonJS({
-  "../node_modules/.pnpm/inherits@2.0.4/node_modules/inherits/inherits_browser.js"(exports, module) {
+  "../node_modules/inherits/inherits_browser.js"(exports, module) {
     if (typeof Object.create === "function") {
       module.exports = function inherits(ctor, superCtor) {
         if (superCtor) {
@@ -4009,9 +4207,9 @@ var require_inherits_browser = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/inherits@2.0.4/node_modules/inherits/inherits.js
+// ../node_modules/inherits/inherits.js
 var require_inherits = __commonJS({
-  "../node_modules/.pnpm/inherits@2.0.4/node_modules/inherits/inherits.js"(exports, module) {
+  "../node_modules/inherits/inherits.js"(exports, module) {
     try {
       util = __require("util");
       if (typeof util.inherits !== "function") throw "";
@@ -4023,20 +4221,684 @@ var require_inherits = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/isarray@0.0.1/node_modules/isarray/index.js
-var require_isarray = __commonJS({
-  "../node_modules/.pnpm/isarray@0.0.1/node_modules/isarray/index.js"(exports, module) {
-    module.exports = Array.isArray || function(arr) {
-      return Object.prototype.toString.call(arr) == "[object Array]";
+// ../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/BufferList.js
+var require_BufferList = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/BufferList.js"(exports, module) {
+    "use strict";
+    function _classCallCheck(instance, Constructor) {
+      if (!(instance instanceof Constructor)) {
+        throw new TypeError("Cannot call a class as a function");
+      }
+    }
+    var Buffer2 = require_safe_buffer().Buffer;
+    var util = __require("util");
+    function copyBuffer(src, target, offset) {
+      src.copy(target, offset);
+    }
+    module.exports = function() {
+      function BufferList() {
+        _classCallCheck(this, BufferList);
+        this.head = null;
+        this.tail = null;
+        this.length = 0;
+      }
+      BufferList.prototype.push = function push(v) {
+        var entry = { data: v, next: null };
+        if (this.length > 0) this.tail.next = entry;
+        else this.head = entry;
+        this.tail = entry;
+        ++this.length;
+      };
+      BufferList.prototype.unshift = function unshift(v) {
+        var entry = { data: v, next: this.head };
+        if (this.length === 0) this.tail = entry;
+        this.head = entry;
+        ++this.length;
+      };
+      BufferList.prototype.shift = function shift() {
+        if (this.length === 0) return;
+        var ret = this.head.data;
+        if (this.length === 1) this.head = this.tail = null;
+        else this.head = this.head.next;
+        --this.length;
+        return ret;
+      };
+      BufferList.prototype.clear = function clear() {
+        this.head = this.tail = null;
+        this.length = 0;
+      };
+      BufferList.prototype.join = function join2(s) {
+        if (this.length === 0) return "";
+        var p = this.head;
+        var ret = "" + p.data;
+        while (p = p.next) {
+          ret += s + p.data;
+        }
+        return ret;
+      };
+      BufferList.prototype.concat = function concat(n) {
+        if (this.length === 0) return Buffer2.alloc(0);
+        var ret = Buffer2.allocUnsafe(n >>> 0);
+        var p = this.head;
+        var i = 0;
+        while (p) {
+          copyBuffer(p.data, ret, i);
+          i += p.data.length;
+          p = p.next;
+        }
+        return ret;
+      };
+      return BufferList;
+    }();
+    if (util && util.inspect && util.inspect.custom) {
+      module.exports.prototype[util.inspect.custom] = function() {
+        var obj = util.inspect({ length: this.length });
+        return this.constructor.name + " " + obj;
+      };
+    }
+  }
+});
+
+// ../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/destroy.js
+var require_destroy = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/lib/internal/streams/destroy.js"(exports, module) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    function destroy(err, cb) {
+      var _this = this;
+      var readableDestroyed = this._readableState && this._readableState.destroyed;
+      var writableDestroyed = this._writableState && this._writableState.destroyed;
+      if (readableDestroyed || writableDestroyed) {
+        if (cb) {
+          cb(err);
+        } else if (err) {
+          if (!this._writableState) {
+            pna.nextTick(emitErrorNT, this, err);
+          } else if (!this._writableState.errorEmitted) {
+            this._writableState.errorEmitted = true;
+            pna.nextTick(emitErrorNT, this, err);
+          }
+        }
+        return this;
+      }
+      if (this._readableState) {
+        this._readableState.destroyed = true;
+      }
+      if (this._writableState) {
+        this._writableState.destroyed = true;
+      }
+      this._destroy(err || null, function(err2) {
+        if (!cb && err2) {
+          if (!_this._writableState) {
+            pna.nextTick(emitErrorNT, _this, err2);
+          } else if (!_this._writableState.errorEmitted) {
+            _this._writableState.errorEmitted = true;
+            pna.nextTick(emitErrorNT, _this, err2);
+          }
+        } else if (cb) {
+          cb(err2);
+        }
+      });
+      return this;
+    }
+    function undestroy() {
+      if (this._readableState) {
+        this._readableState.destroyed = false;
+        this._readableState.reading = false;
+        this._readableState.ended = false;
+        this._readableState.endEmitted = false;
+      }
+      if (this._writableState) {
+        this._writableState.destroyed = false;
+        this._writableState.ended = false;
+        this._writableState.ending = false;
+        this._writableState.finalCalled = false;
+        this._writableState.prefinished = false;
+        this._writableState.finished = false;
+        this._writableState.errorEmitted = false;
+      }
+    }
+    function emitErrorNT(self2, err) {
+      self2.emit("error", err);
+    }
+    module.exports = {
+      destroy,
+      undestroy
     };
   }
 });
 
-// ../node_modules/.pnpm/string_decoder@0.10.31/node_modules/string_decoder/index.js
+// ../node_modules/util-deprecate/node.js
+var require_node = __commonJS({
+  "../node_modules/util-deprecate/node.js"(exports, module) {
+    module.exports = __require("util").deprecate;
+  }
+});
+
+// ../node_modules/lazystream/node_modules/readable-stream/lib/_stream_writable.js
+var require_stream_writable = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/lib/_stream_writable.js"(exports, module) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    module.exports = Writable;
+    function CorkedRequest(state) {
+      var _this = this;
+      this.next = null;
+      this.entry = null;
+      this.finish = function() {
+        onCorkedFinish(_this, state);
+      };
+    }
+    var asyncWrite = !process.browser && ["v0.10", "v0.9."].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : pna.nextTick;
+    var Duplex;
+    Writable.WritableState = WritableState;
+    var util = Object.create(require_util());
+    util.inherits = require_inherits();
+    var internalUtil = {
+      deprecate: require_node()
+    };
+    var Stream = require_stream();
+    var Buffer2 = require_safe_buffer().Buffer;
+    var OurUint8Array = (typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {}).Uint8Array || function() {
+    };
+    function _uint8ArrayToBuffer(chunk) {
+      return Buffer2.from(chunk);
+    }
+    function _isUint8Array(obj) {
+      return Buffer2.isBuffer(obj) || obj instanceof OurUint8Array;
+    }
+    var destroyImpl = require_destroy();
+    util.inherits(Writable, Stream);
+    function nop() {
+    }
+    function WritableState(options, stream) {
+      Duplex = Duplex || require_stream_duplex();
+      options = options || {};
+      var isDuplex = stream instanceof Duplex;
+      this.objectMode = !!options.objectMode;
+      if (isDuplex) this.objectMode = this.objectMode || !!options.writableObjectMode;
+      var hwm = options.highWaterMark;
+      var writableHwm = options.writableHighWaterMark;
+      var defaultHwm = this.objectMode ? 16 : 16 * 1024;
+      if (hwm || hwm === 0) this.highWaterMark = hwm;
+      else if (isDuplex && (writableHwm || writableHwm === 0)) this.highWaterMark = writableHwm;
+      else this.highWaterMark = defaultHwm;
+      this.highWaterMark = Math.floor(this.highWaterMark);
+      this.finalCalled = false;
+      this.needDrain = false;
+      this.ending = false;
+      this.ended = false;
+      this.finished = false;
+      this.destroyed = false;
+      var noDecode = options.decodeStrings === false;
+      this.decodeStrings = !noDecode;
+      this.defaultEncoding = options.defaultEncoding || "utf8";
+      this.length = 0;
+      this.writing = false;
+      this.corked = 0;
+      this.sync = true;
+      this.bufferProcessing = false;
+      this.onwrite = function(er) {
+        onwrite(stream, er);
+      };
+      this.writecb = null;
+      this.writelen = 0;
+      this.bufferedRequest = null;
+      this.lastBufferedRequest = null;
+      this.pendingcb = 0;
+      this.prefinished = false;
+      this.errorEmitted = false;
+      this.bufferedRequestCount = 0;
+      this.corkedRequestsFree = new CorkedRequest(this);
+    }
+    WritableState.prototype.getBuffer = function getBuffer() {
+      var current = this.bufferedRequest;
+      var out = [];
+      while (current) {
+        out.push(current);
+        current = current.next;
+      }
+      return out;
+    };
+    (function() {
+      try {
+        Object.defineProperty(WritableState.prototype, "buffer", {
+          get: internalUtil.deprecate(function() {
+            return this.getBuffer();
+          }, "_writableState.buffer is deprecated. Use _writableState.getBuffer instead.", "DEP0003")
+        });
+      } catch (_2) {
+      }
+    })();
+    var realHasInstance;
+    if (typeof Symbol === "function" && Symbol.hasInstance && typeof Function.prototype[Symbol.hasInstance] === "function") {
+      realHasInstance = Function.prototype[Symbol.hasInstance];
+      Object.defineProperty(Writable, Symbol.hasInstance, {
+        value: function(object) {
+          if (realHasInstance.call(this, object)) return true;
+          if (this !== Writable) return false;
+          return object && object._writableState instanceof WritableState;
+        }
+      });
+    } else {
+      realHasInstance = function(object) {
+        return object instanceof this;
+      };
+    }
+    function Writable(options) {
+      Duplex = Duplex || require_stream_duplex();
+      if (!realHasInstance.call(Writable, this) && !(this instanceof Duplex)) {
+        return new Writable(options);
+      }
+      this._writableState = new WritableState(options, this);
+      this.writable = true;
+      if (options) {
+        if (typeof options.write === "function") this._write = options.write;
+        if (typeof options.writev === "function") this._writev = options.writev;
+        if (typeof options.destroy === "function") this._destroy = options.destroy;
+        if (typeof options.final === "function") this._final = options.final;
+      }
+      Stream.call(this);
+    }
+    Writable.prototype.pipe = function() {
+      this.emit("error", new Error("Cannot pipe, not readable"));
+    };
+    function writeAfterEnd(stream, cb) {
+      var er = new Error("write after end");
+      stream.emit("error", er);
+      pna.nextTick(cb, er);
+    }
+    function validChunk(stream, state, chunk, cb) {
+      var valid = true;
+      var er = false;
+      if (chunk === null) {
+        er = new TypeError("May not write null values to stream");
+      } else if (typeof chunk !== "string" && chunk !== void 0 && !state.objectMode) {
+        er = new TypeError("Invalid non-string/buffer chunk");
+      }
+      if (er) {
+        stream.emit("error", er);
+        pna.nextTick(cb, er);
+        valid = false;
+      }
+      return valid;
+    }
+    Writable.prototype.write = function(chunk, encoding, cb) {
+      var state = this._writableState;
+      var ret = false;
+      var isBuf = !state.objectMode && _isUint8Array(chunk);
+      if (isBuf && !Buffer2.isBuffer(chunk)) {
+        chunk = _uint8ArrayToBuffer(chunk);
+      }
+      if (typeof encoding === "function") {
+        cb = encoding;
+        encoding = null;
+      }
+      if (isBuf) encoding = "buffer";
+      else if (!encoding) encoding = state.defaultEncoding;
+      if (typeof cb !== "function") cb = nop;
+      if (state.ended) writeAfterEnd(this, cb);
+      else if (isBuf || validChunk(this, state, chunk, cb)) {
+        state.pendingcb++;
+        ret = writeOrBuffer(this, state, isBuf, chunk, encoding, cb);
+      }
+      return ret;
+    };
+    Writable.prototype.cork = function() {
+      var state = this._writableState;
+      state.corked++;
+    };
+    Writable.prototype.uncork = function() {
+      var state = this._writableState;
+      if (state.corked) {
+        state.corked--;
+        if (!state.writing && !state.corked && !state.bufferProcessing && state.bufferedRequest) clearBuffer(this, state);
+      }
+    };
+    Writable.prototype.setDefaultEncoding = function setDefaultEncoding(encoding) {
+      if (typeof encoding === "string") encoding = encoding.toLowerCase();
+      if (!(["hex", "utf8", "utf-8", "ascii", "binary", "base64", "ucs2", "ucs-2", "utf16le", "utf-16le", "raw"].indexOf((encoding + "").toLowerCase()) > -1)) throw new TypeError("Unknown encoding: " + encoding);
+      this._writableState.defaultEncoding = encoding;
+      return this;
+    };
+    function decodeChunk(state, chunk, encoding) {
+      if (!state.objectMode && state.decodeStrings !== false && typeof chunk === "string") {
+        chunk = Buffer2.from(chunk, encoding);
+      }
+      return chunk;
+    }
+    Object.defineProperty(Writable.prototype, "writableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._writableState.highWaterMark;
+      }
+    });
+    function writeOrBuffer(stream, state, isBuf, chunk, encoding, cb) {
+      if (!isBuf) {
+        var newChunk = decodeChunk(state, chunk, encoding);
+        if (chunk !== newChunk) {
+          isBuf = true;
+          encoding = "buffer";
+          chunk = newChunk;
+        }
+      }
+      var len = state.objectMode ? 1 : chunk.length;
+      state.length += len;
+      var ret = state.length < state.highWaterMark;
+      if (!ret) state.needDrain = true;
+      if (state.writing || state.corked) {
+        var last = state.lastBufferedRequest;
+        state.lastBufferedRequest = {
+          chunk,
+          encoding,
+          isBuf,
+          callback: cb,
+          next: null
+        };
+        if (last) {
+          last.next = state.lastBufferedRequest;
+        } else {
+          state.bufferedRequest = state.lastBufferedRequest;
+        }
+        state.bufferedRequestCount += 1;
+      } else {
+        doWrite(stream, state, false, len, chunk, encoding, cb);
+      }
+      return ret;
+    }
+    function doWrite(stream, state, writev, len, chunk, encoding, cb) {
+      state.writelen = len;
+      state.writecb = cb;
+      state.writing = true;
+      state.sync = true;
+      if (writev) stream._writev(chunk, state.onwrite);
+      else stream._write(chunk, encoding, state.onwrite);
+      state.sync = false;
+    }
+    function onwriteError(stream, state, sync, er, cb) {
+      --state.pendingcb;
+      if (sync) {
+        pna.nextTick(cb, er);
+        pna.nextTick(finishMaybe, stream, state);
+        stream._writableState.errorEmitted = true;
+        stream.emit("error", er);
+      } else {
+        cb(er);
+        stream._writableState.errorEmitted = true;
+        stream.emit("error", er);
+        finishMaybe(stream, state);
+      }
+    }
+    function onwriteStateUpdate(state) {
+      state.writing = false;
+      state.writecb = null;
+      state.length -= state.writelen;
+      state.writelen = 0;
+    }
+    function onwrite(stream, er) {
+      var state = stream._writableState;
+      var sync = state.sync;
+      var cb = state.writecb;
+      onwriteStateUpdate(state);
+      if (er) onwriteError(stream, state, sync, er, cb);
+      else {
+        var finished = needFinish(state);
+        if (!finished && !state.corked && !state.bufferProcessing && state.bufferedRequest) {
+          clearBuffer(stream, state);
+        }
+        if (sync) {
+          asyncWrite(afterWrite, stream, state, finished, cb);
+        } else {
+          afterWrite(stream, state, finished, cb);
+        }
+      }
+    }
+    function afterWrite(stream, state, finished, cb) {
+      if (!finished) onwriteDrain(stream, state);
+      state.pendingcb--;
+      cb();
+      finishMaybe(stream, state);
+    }
+    function onwriteDrain(stream, state) {
+      if (state.length === 0 && state.needDrain) {
+        state.needDrain = false;
+        stream.emit("drain");
+      }
+    }
+    function clearBuffer(stream, state) {
+      state.bufferProcessing = true;
+      var entry = state.bufferedRequest;
+      if (stream._writev && entry && entry.next) {
+        var l = state.bufferedRequestCount;
+        var buffer = new Array(l);
+        var holder = state.corkedRequestsFree;
+        holder.entry = entry;
+        var count = 0;
+        var allBuffers = true;
+        while (entry) {
+          buffer[count] = entry;
+          if (!entry.isBuf) allBuffers = false;
+          entry = entry.next;
+          count += 1;
+        }
+        buffer.allBuffers = allBuffers;
+        doWrite(stream, state, true, state.length, buffer, "", holder.finish);
+        state.pendingcb++;
+        state.lastBufferedRequest = null;
+        if (holder.next) {
+          state.corkedRequestsFree = holder.next;
+          holder.next = null;
+        } else {
+          state.corkedRequestsFree = new CorkedRequest(state);
+        }
+        state.bufferedRequestCount = 0;
+      } else {
+        while (entry) {
+          var chunk = entry.chunk;
+          var encoding = entry.encoding;
+          var cb = entry.callback;
+          var len = state.objectMode ? 1 : chunk.length;
+          doWrite(stream, state, false, len, chunk, encoding, cb);
+          entry = entry.next;
+          state.bufferedRequestCount--;
+          if (state.writing) {
+            break;
+          }
+        }
+        if (entry === null) state.lastBufferedRequest = null;
+      }
+      state.bufferedRequest = entry;
+      state.bufferProcessing = false;
+    }
+    Writable.prototype._write = function(chunk, encoding, cb) {
+      cb(new Error("_write() is not implemented"));
+    };
+    Writable.prototype._writev = null;
+    Writable.prototype.end = function(chunk, encoding, cb) {
+      var state = this._writableState;
+      if (typeof chunk === "function") {
+        cb = chunk;
+        chunk = null;
+        encoding = null;
+      } else if (typeof encoding === "function") {
+        cb = encoding;
+        encoding = null;
+      }
+      if (chunk !== null && chunk !== void 0) this.write(chunk, encoding);
+      if (state.corked) {
+        state.corked = 1;
+        this.uncork();
+      }
+      if (!state.ending) endWritable(this, state, cb);
+    };
+    function needFinish(state) {
+      return state.ending && state.length === 0 && state.bufferedRequest === null && !state.finished && !state.writing;
+    }
+    function callFinal(stream, state) {
+      stream._final(function(err) {
+        state.pendingcb--;
+        if (err) {
+          stream.emit("error", err);
+        }
+        state.prefinished = true;
+        stream.emit("prefinish");
+        finishMaybe(stream, state);
+      });
+    }
+    function prefinish(stream, state) {
+      if (!state.prefinished && !state.finalCalled) {
+        if (typeof stream._final === "function") {
+          state.pendingcb++;
+          state.finalCalled = true;
+          pna.nextTick(callFinal, stream, state);
+        } else {
+          state.prefinished = true;
+          stream.emit("prefinish");
+        }
+      }
+    }
+    function finishMaybe(stream, state) {
+      var need = needFinish(state);
+      if (need) {
+        prefinish(stream, state);
+        if (state.pendingcb === 0) {
+          state.finished = true;
+          stream.emit("finish");
+        }
+      }
+      return need;
+    }
+    function endWritable(stream, state, cb) {
+      state.ending = true;
+      finishMaybe(stream, state);
+      if (cb) {
+        if (state.finished) pna.nextTick(cb);
+        else stream.once("finish", cb);
+      }
+      state.ended = true;
+      stream.writable = false;
+    }
+    function onCorkedFinish(corkReq, state, err) {
+      var entry = corkReq.entry;
+      corkReq.entry = null;
+      while (entry) {
+        var cb = entry.callback;
+        state.pendingcb--;
+        cb(err);
+        entry = entry.next;
+      }
+      state.corkedRequestsFree.next = corkReq;
+    }
+    Object.defineProperty(Writable.prototype, "destroyed", {
+      get: function() {
+        if (this._writableState === void 0) {
+          return false;
+        }
+        return this._writableState.destroyed;
+      },
+      set: function(value) {
+        if (!this._writableState) {
+          return;
+        }
+        this._writableState.destroyed = value;
+      }
+    });
+    Writable.prototype.destroy = destroyImpl.destroy;
+    Writable.prototype._undestroy = destroyImpl.undestroy;
+    Writable.prototype._destroy = function(err, cb) {
+      this.end();
+      cb(err);
+    };
+  }
+});
+
+// ../node_modules/lazystream/node_modules/readable-stream/lib/_stream_duplex.js
+var require_stream_duplex = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/lib/_stream_duplex.js"(exports, module) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    var objectKeys = Object.keys || function(obj) {
+      var keys2 = [];
+      for (var key in obj) {
+        keys2.push(key);
+      }
+      return keys2;
+    };
+    module.exports = Duplex;
+    var util = Object.create(require_util());
+    util.inherits = require_inherits();
+    var Readable = require_stream_readable();
+    var Writable = require_stream_writable();
+    util.inherits(Duplex, Readable);
+    {
+      keys = objectKeys(Writable.prototype);
+      for (v = 0; v < keys.length; v++) {
+        method = keys[v];
+        if (!Duplex.prototype[method]) Duplex.prototype[method] = Writable.prototype[method];
+      }
+    }
+    var keys;
+    var method;
+    var v;
+    function Duplex(options) {
+      if (!(this instanceof Duplex)) return new Duplex(options);
+      Readable.call(this, options);
+      Writable.call(this, options);
+      if (options && options.readable === false) this.readable = false;
+      if (options && options.writable === false) this.writable = false;
+      this.allowHalfOpen = true;
+      if (options && options.allowHalfOpen === false) this.allowHalfOpen = false;
+      this.once("end", onend);
+    }
+    Object.defineProperty(Duplex.prototype, "writableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._writableState.highWaterMark;
+      }
+    });
+    function onend() {
+      if (this.allowHalfOpen || this._writableState.ended) return;
+      pna.nextTick(onEndNT, this);
+    }
+    function onEndNT(self2) {
+      self2.end();
+    }
+    Object.defineProperty(Duplex.prototype, "destroyed", {
+      get: function() {
+        if (this._readableState === void 0 || this._writableState === void 0) {
+          return false;
+        }
+        return this._readableState.destroyed && this._writableState.destroyed;
+      },
+      set: function(value) {
+        if (this._readableState === void 0 || this._writableState === void 0) {
+          return;
+        }
+        this._readableState.destroyed = value;
+        this._writableState.destroyed = value;
+      }
+    });
+    Duplex.prototype._destroy = function(err, cb) {
+      this.push(null);
+      this.end();
+      pna.nextTick(cb, err);
+    };
+  }
+});
+
+// ../node_modules/lazystream/node_modules/string_decoder/lib/string_decoder.js
 var require_string_decoder = __commonJS({
-  "../node_modules/.pnpm/string_decoder@0.10.31/node_modules/string_decoder/index.js"(exports) {
-    var Buffer2 = __require("buffer").Buffer;
-    var isBufferEncoding = Buffer2.isEncoding || function(encoding) {
+  "../node_modules/lazystream/node_modules/string_decoder/lib/string_decoder.js"(exports) {
+    "use strict";
+    var Buffer2 = require_safe_buffer().Buffer;
+    var isEncoding = Buffer2.isEncoding || function(encoding) {
+      encoding = "" + encoding;
       switch (encoding && encoding.toLowerCase()) {
         case "hex":
         case "utf8":
@@ -4054,170 +4916,278 @@ var require_string_decoder = __commonJS({
           return false;
       }
     };
-    function assertEncoding(encoding) {
-      if (encoding && !isBufferEncoding(encoding)) {
-        throw new Error("Unknown encoding: " + encoding);
+    function _normalizeEncoding(enc) {
+      if (!enc) return "utf8";
+      var retried;
+      while (true) {
+        switch (enc) {
+          case "utf8":
+          case "utf-8":
+            return "utf8";
+          case "ucs2":
+          case "ucs-2":
+          case "utf16le":
+          case "utf-16le":
+            return "utf16le";
+          case "latin1":
+          case "binary":
+            return "latin1";
+          case "base64":
+          case "ascii":
+          case "hex":
+            return enc;
+          default:
+            if (retried) return;
+            enc = ("" + enc).toLowerCase();
+            retried = true;
+        }
       }
     }
-    var StringDecoder = exports.StringDecoder = function(encoding) {
-      this.encoding = (encoding || "utf8").toLowerCase().replace(/[-_]/, "");
-      assertEncoding(encoding);
+    function normalizeEncoding(enc) {
+      var nenc = _normalizeEncoding(enc);
+      if (typeof nenc !== "string" && (Buffer2.isEncoding === isEncoding || !isEncoding(enc))) throw new Error("Unknown encoding: " + enc);
+      return nenc || enc;
+    }
+    exports.StringDecoder = StringDecoder;
+    function StringDecoder(encoding) {
+      this.encoding = normalizeEncoding(encoding);
+      var nb;
       switch (this.encoding) {
-        case "utf8":
-          this.surrogateSize = 3;
-          break;
-        case "ucs2":
         case "utf16le":
-          this.surrogateSize = 2;
-          this.detectIncompleteChar = utf16DetectIncompleteChar;
+          this.text = utf16Text;
+          this.end = utf16End;
+          nb = 4;
+          break;
+        case "utf8":
+          this.fillLast = utf8FillLast;
+          nb = 4;
           break;
         case "base64":
-          this.surrogateSize = 3;
-          this.detectIncompleteChar = base64DetectIncompleteChar;
+          this.text = base64Text;
+          this.end = base64End;
+          nb = 3;
           break;
         default:
-          this.write = passThroughWrite;
+          this.write = simpleWrite;
+          this.end = simpleEnd;
           return;
       }
-      this.charBuffer = new Buffer2(6);
-      this.charReceived = 0;
-      this.charLength = 0;
-    };
-    StringDecoder.prototype.write = function(buffer) {
-      var charStr = "";
-      while (this.charLength) {
-        var available = buffer.length >= this.charLength - this.charReceived ? this.charLength - this.charReceived : buffer.length;
-        buffer.copy(this.charBuffer, this.charReceived, 0, available);
-        this.charReceived += available;
-        if (this.charReceived < this.charLength) {
-          return "";
-        }
-        buffer = buffer.slice(available, buffer.length);
-        charStr = this.charBuffer.slice(0, this.charLength).toString(this.encoding);
-        var charCode = charStr.charCodeAt(charStr.length - 1);
-        if (charCode >= 55296 && charCode <= 56319) {
-          this.charLength += this.surrogateSize;
-          charStr = "";
-          continue;
-        }
-        this.charReceived = this.charLength = 0;
-        if (buffer.length === 0) {
-          return charStr;
-        }
-        break;
-      }
-      this.detectIncompleteChar(buffer);
-      var end = buffer.length;
-      if (this.charLength) {
-        buffer.copy(this.charBuffer, 0, buffer.length - this.charReceived, end);
-        end -= this.charReceived;
-      }
-      charStr += buffer.toString(this.encoding, 0, end);
-      var end = charStr.length - 1;
-      var charCode = charStr.charCodeAt(end);
-      if (charCode >= 55296 && charCode <= 56319) {
-        var size = this.surrogateSize;
-        this.charLength += size;
-        this.charReceived += size;
-        this.charBuffer.copy(this.charBuffer, size, 0, size);
-        buffer.copy(this.charBuffer, 0, 0, size);
-        return charStr.substring(0, end);
-      }
-      return charStr;
-    };
-    StringDecoder.prototype.detectIncompleteChar = function(buffer) {
-      var i = buffer.length >= 3 ? 3 : buffer.length;
-      for (; i > 0; i--) {
-        var c = buffer[buffer.length - i];
-        if (i == 1 && c >> 5 == 6) {
-          this.charLength = 2;
-          break;
-        }
-        if (i <= 2 && c >> 4 == 14) {
-          this.charLength = 3;
-          break;
-        }
-        if (i <= 3 && c >> 3 == 30) {
-          this.charLength = 4;
-          break;
-        }
-      }
-      this.charReceived = i;
-    };
-    StringDecoder.prototype.end = function(buffer) {
-      var res = "";
-      if (buffer && buffer.length)
-        res = this.write(buffer);
-      if (this.charReceived) {
-        var cr = this.charReceived;
-        var buf = this.charBuffer;
-        var enc = this.encoding;
-        res += buf.slice(0, cr).toString(enc);
-      }
-      return res;
-    };
-    function passThroughWrite(buffer) {
-      return buffer.toString(this.encoding);
+      this.lastNeed = 0;
+      this.lastTotal = 0;
+      this.lastChar = Buffer2.allocUnsafe(nb);
     }
-    function utf16DetectIncompleteChar(buffer) {
-      this.charReceived = buffer.length % 2;
-      this.charLength = this.charReceived ? 2 : 0;
+    StringDecoder.prototype.write = function(buf) {
+      if (buf.length === 0) return "";
+      var r;
+      var i;
+      if (this.lastNeed) {
+        r = this.fillLast(buf);
+        if (r === void 0) return "";
+        i = this.lastNeed;
+        this.lastNeed = 0;
+      } else {
+        i = 0;
+      }
+      if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
+      return r || "";
+    };
+    StringDecoder.prototype.end = utf8End;
+    StringDecoder.prototype.text = utf8Text;
+    StringDecoder.prototype.fillLast = function(buf) {
+      if (this.lastNeed <= buf.length) {
+        buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
+        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+      }
+      buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
+      this.lastNeed -= buf.length;
+    };
+    function utf8CheckByte(byte) {
+      if (byte <= 127) return 0;
+      else if (byte >> 5 === 6) return 2;
+      else if (byte >> 4 === 14) return 3;
+      else if (byte >> 3 === 30) return 4;
+      return byte >> 6 === 2 ? -1 : -2;
     }
-    function base64DetectIncompleteChar(buffer) {
-      this.charReceived = buffer.length % 3;
-      this.charLength = this.charReceived ? 3 : 0;
+    function utf8CheckIncomplete(self2, buf, i) {
+      var j = buf.length - 1;
+      if (j < i) return 0;
+      var nb = utf8CheckByte(buf[j]);
+      if (nb >= 0) {
+        if (nb > 0) self2.lastNeed = nb - 1;
+        return nb;
+      }
+      if (--j < i || nb === -2) return 0;
+      nb = utf8CheckByte(buf[j]);
+      if (nb >= 0) {
+        if (nb > 0) self2.lastNeed = nb - 2;
+        return nb;
+      }
+      if (--j < i || nb === -2) return 0;
+      nb = utf8CheckByte(buf[j]);
+      if (nb >= 0) {
+        if (nb > 0) {
+          if (nb === 2) nb = 0;
+          else self2.lastNeed = nb - 3;
+        }
+        return nb;
+      }
+      return 0;
+    }
+    function utf8CheckExtraBytes(self2, buf, p) {
+      if ((buf[0] & 192) !== 128) {
+        self2.lastNeed = 0;
+        return "\uFFFD";
+      }
+      if (self2.lastNeed > 1 && buf.length > 1) {
+        if ((buf[1] & 192) !== 128) {
+          self2.lastNeed = 1;
+          return "\uFFFD";
+        }
+        if (self2.lastNeed > 2 && buf.length > 2) {
+          if ((buf[2] & 192) !== 128) {
+            self2.lastNeed = 2;
+            return "\uFFFD";
+          }
+        }
+      }
+    }
+    function utf8FillLast(buf) {
+      var p = this.lastTotal - this.lastNeed;
+      var r = utf8CheckExtraBytes(this, buf, p);
+      if (r !== void 0) return r;
+      if (this.lastNeed <= buf.length) {
+        buf.copy(this.lastChar, p, 0, this.lastNeed);
+        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+      }
+      buf.copy(this.lastChar, p, 0, buf.length);
+      this.lastNeed -= buf.length;
+    }
+    function utf8Text(buf, i) {
+      var total = utf8CheckIncomplete(this, buf, i);
+      if (!this.lastNeed) return buf.toString("utf8", i);
+      this.lastTotal = total;
+      var end = buf.length - (total - this.lastNeed);
+      buf.copy(this.lastChar, 0, end);
+      return buf.toString("utf8", i, end);
+    }
+    function utf8End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) return r + "\uFFFD";
+      return r;
+    }
+    function utf16Text(buf, i) {
+      if ((buf.length - i) % 2 === 0) {
+        var r = buf.toString("utf16le", i);
+        if (r) {
+          var c = r.charCodeAt(r.length - 1);
+          if (c >= 55296 && c <= 56319) {
+            this.lastNeed = 2;
+            this.lastTotal = 4;
+            this.lastChar[0] = buf[buf.length - 2];
+            this.lastChar[1] = buf[buf.length - 1];
+            return r.slice(0, -1);
+          }
+        }
+        return r;
+      }
+      this.lastNeed = 1;
+      this.lastTotal = 2;
+      this.lastChar[0] = buf[buf.length - 1];
+      return buf.toString("utf16le", i, buf.length - 1);
+    }
+    function utf16End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) {
+        var end = this.lastTotal - this.lastNeed;
+        return r + this.lastChar.toString("utf16le", 0, end);
+      }
+      return r;
+    }
+    function base64Text(buf, i) {
+      var n = (buf.length - i) % 3;
+      if (n === 0) return buf.toString("base64", i);
+      this.lastNeed = 3 - n;
+      this.lastTotal = 3;
+      if (n === 1) {
+        this.lastChar[0] = buf[buf.length - 1];
+      } else {
+        this.lastChar[0] = buf[buf.length - 2];
+        this.lastChar[1] = buf[buf.length - 1];
+      }
+      return buf.toString("base64", i, buf.length - n);
+    }
+    function base64End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
+      return r;
+    }
+    function simpleWrite(buf) {
+      return buf.toString(this.encoding);
+    }
+    function simpleEnd(buf) {
+      return buf && buf.length ? this.write(buf) : "";
     }
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_readable.js
+// ../node_modules/lazystream/node_modules/readable-stream/lib/_stream_readable.js
 var require_stream_readable = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_readable.js"(exports, module) {
+  "../node_modules/lazystream/node_modules/readable-stream/lib/_stream_readable.js"(exports, module) {
     "use strict";
+    var pna = require_process_nextick_args();
     module.exports = Readable;
-    var processNextTick = require_process_nextick_args();
     var isArray = require_isarray();
-    var Buffer2 = __require("buffer").Buffer;
+    var Duplex;
     Readable.ReadableState = ReadableState;
-    var EE = __require("events");
+    var EE = __require("events").EventEmitter;
     var EElistenerCount = function(emitter, type) {
       return emitter.listeners(type).length;
     };
-    var Stream;
-    (function() {
-      try {
-        Stream = __require("stream");
-      } catch (_2) {
-      } finally {
-        if (!Stream)
-          Stream = __require("events").EventEmitter;
-      }
-    })();
-    var Buffer2 = __require("buffer").Buffer;
-    var util = require_util();
+    var Stream = require_stream();
+    var Buffer2 = require_safe_buffer().Buffer;
+    var OurUint8Array = (typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {}).Uint8Array || function() {
+    };
+    function _uint8ArrayToBuffer(chunk) {
+      return Buffer2.from(chunk);
+    }
+    function _isUint8Array(obj) {
+      return Buffer2.isBuffer(obj) || obj instanceof OurUint8Array;
+    }
+    var util = Object.create(require_util());
     util.inherits = require_inherits();
     var debugUtil = __require("util");
-    var debug;
+    var debug = void 0;
     if (debugUtil && debugUtil.debuglog) {
       debug = debugUtil.debuglog("stream");
     } else {
       debug = function() {
       };
     }
+    var BufferList = require_BufferList();
+    var destroyImpl = require_destroy();
     var StringDecoder;
     util.inherits(Readable, Stream);
-    var Duplex;
+    var kProxyEvents = ["error", "close", "destroy", "pause", "resume"];
+    function prependListener(emitter, event, fn) {
+      if (typeof emitter.prependListener === "function") return emitter.prependListener(event, fn);
+      if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);
+      else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);
+      else emitter._events[event] = [fn, emitter._events[event]];
+    }
     function ReadableState(options, stream) {
       Duplex = Duplex || require_stream_duplex();
       options = options || {};
+      var isDuplex = stream instanceof Duplex;
       this.objectMode = !!options.objectMode;
-      if (stream instanceof Duplex)
-        this.objectMode = this.objectMode || !!options.readableObjectMode;
+      if (isDuplex) this.objectMode = this.objectMode || !!options.readableObjectMode;
       var hwm = options.highWaterMark;
+      var readableHwm = options.readableHighWaterMark;
       var defaultHwm = this.objectMode ? 16 : 16 * 1024;
-      this.highWaterMark = hwm || hwm === 0 ? hwm : defaultHwm;
-      this.highWaterMark = ~~this.highWaterMark;
-      this.buffer = [];
+      if (hwm || hwm === 0) this.highWaterMark = hwm;
+      else if (isDuplex && (readableHwm || readableHwm === 0)) this.highWaterMark = readableHwm;
+      else this.highWaterMark = defaultHwm;
+      this.highWaterMark = Math.floor(this.highWaterMark);
+      this.buffer = new BufferList();
       this.length = 0;
       this.pipes = null;
       this.pipesCount = 0;
@@ -4229,92 +5199,132 @@ var require_stream_readable = __commonJS({
       this.needReadable = false;
       this.emittedReadable = false;
       this.readableListening = false;
+      this.resumeScheduled = false;
+      this.destroyed = false;
       this.defaultEncoding = options.defaultEncoding || "utf8";
-      this.ranOut = false;
       this.awaitDrain = 0;
       this.readingMore = false;
       this.decoder = null;
       this.encoding = null;
       if (options.encoding) {
-        if (!StringDecoder)
-          StringDecoder = require_string_decoder().StringDecoder;
+        if (!StringDecoder) StringDecoder = require_string_decoder().StringDecoder;
         this.decoder = new StringDecoder(options.encoding);
         this.encoding = options.encoding;
       }
     }
-    var Duplex;
     function Readable(options) {
       Duplex = Duplex || require_stream_duplex();
-      if (!(this instanceof Readable))
-        return new Readable(options);
+      if (!(this instanceof Readable)) return new Readable(options);
       this._readableState = new ReadableState(options, this);
       this.readable = true;
-      if (options && typeof options.read === "function")
-        this._read = options.read;
+      if (options) {
+        if (typeof options.read === "function") this._read = options.read;
+        if (typeof options.destroy === "function") this._destroy = options.destroy;
+      }
       Stream.call(this);
     }
+    Object.defineProperty(Readable.prototype, "destroyed", {
+      get: function() {
+        if (this._readableState === void 0) {
+          return false;
+        }
+        return this._readableState.destroyed;
+      },
+      set: function(value) {
+        if (!this._readableState) {
+          return;
+        }
+        this._readableState.destroyed = value;
+      }
+    });
+    Readable.prototype.destroy = destroyImpl.destroy;
+    Readable.prototype._undestroy = destroyImpl.undestroy;
+    Readable.prototype._destroy = function(err, cb) {
+      this.push(null);
+      cb(err);
+    };
     Readable.prototype.push = function(chunk, encoding) {
       var state = this._readableState;
-      if (!state.objectMode && typeof chunk === "string") {
-        encoding = encoding || state.defaultEncoding;
-        if (encoding !== state.encoding) {
-          chunk = new Buffer2(chunk, encoding);
-          encoding = "";
+      var skipChunkCheck;
+      if (!state.objectMode) {
+        if (typeof chunk === "string") {
+          encoding = encoding || state.defaultEncoding;
+          if (encoding !== state.encoding) {
+            chunk = Buffer2.from(chunk, encoding);
+            encoding = "";
+          }
+          skipChunkCheck = true;
         }
+      } else {
+        skipChunkCheck = true;
       }
-      return readableAddChunk(this, state, chunk, encoding, false);
+      return readableAddChunk(this, chunk, encoding, false, skipChunkCheck);
     };
     Readable.prototype.unshift = function(chunk) {
-      var state = this._readableState;
-      return readableAddChunk(this, state, chunk, "", true);
+      return readableAddChunk(this, chunk, null, true, false);
     };
-    Readable.prototype.isPaused = function() {
-      return this._readableState.flowing === false;
-    };
-    function readableAddChunk(stream, state, chunk, encoding, addToFront) {
-      var er = chunkInvalid(state, chunk);
-      if (er) {
-        stream.emit("error", er);
-      } else if (chunk === null) {
+    function readableAddChunk(stream, chunk, encoding, addToFront, skipChunkCheck) {
+      var state = stream._readableState;
+      if (chunk === null) {
         state.reading = false;
         onEofChunk(stream, state);
-      } else if (state.objectMode || chunk && chunk.length > 0) {
-        if (state.ended && !addToFront) {
-          var e = new Error("stream.push() after EOF");
-          stream.emit("error", e);
-        } else if (state.endEmitted && addToFront) {
-          var e = new Error("stream.unshift() after end event");
-          stream.emit("error", e);
-        } else {
-          if (state.decoder && !addToFront && !encoding)
-            chunk = state.decoder.write(chunk);
-          if (!addToFront)
-            state.reading = false;
-          if (state.flowing && state.length === 0 && !state.sync) {
-            stream.emit("data", chunk);
-            stream.read(0);
-          } else {
-            state.length += state.objectMode ? 1 : chunk.length;
-            if (addToFront)
-              state.buffer.unshift(chunk);
-            else
-              state.buffer.push(chunk);
-            if (state.needReadable)
-              emitReadable(stream);
+      } else {
+        var er;
+        if (!skipChunkCheck) er = chunkInvalid(state, chunk);
+        if (er) {
+          stream.emit("error", er);
+        } else if (state.objectMode || chunk && chunk.length > 0) {
+          if (typeof chunk !== "string" && !state.objectMode && Object.getPrototypeOf(chunk) !== Buffer2.prototype) {
+            chunk = _uint8ArrayToBuffer(chunk);
           }
-          maybeReadMore(stream, state);
+          if (addToFront) {
+            if (state.endEmitted) stream.emit("error", new Error("stream.unshift() after end event"));
+            else addChunk(stream, state, chunk, true);
+          } else if (state.ended) {
+            stream.emit("error", new Error("stream.push() after EOF"));
+          } else {
+            state.reading = false;
+            if (state.decoder && !encoding) {
+              chunk = state.decoder.write(chunk);
+              if (state.objectMode || chunk.length !== 0) addChunk(stream, state, chunk, false);
+              else maybeReadMore(stream, state);
+            } else {
+              addChunk(stream, state, chunk, false);
+            }
+          }
+        } else if (!addToFront) {
+          state.reading = false;
         }
-      } else if (!addToFront) {
-        state.reading = false;
       }
       return needMoreData(state);
+    }
+    function addChunk(stream, state, chunk, addToFront) {
+      if (state.flowing && state.length === 0 && !state.sync) {
+        stream.emit("data", chunk);
+        stream.read(0);
+      } else {
+        state.length += state.objectMode ? 1 : chunk.length;
+        if (addToFront) state.buffer.unshift(chunk);
+        else state.buffer.push(chunk);
+        if (state.needReadable) emitReadable(stream);
+      }
+      maybeReadMore(stream, state);
+    }
+    function chunkInvalid(state, chunk) {
+      var er;
+      if (!_isUint8Array(chunk) && typeof chunk !== "string" && chunk !== void 0 && !state.objectMode) {
+        er = new TypeError("Invalid non-string/buffer chunk");
+      }
+      return er;
     }
     function needMoreData(state) {
       return !state.ended && (state.needReadable || state.length < state.highWaterMark || state.length === 0);
     }
+    Readable.prototype.isPaused = function() {
+      return this._readableState.flowing === false;
+    };
     Readable.prototype.setEncoding = function(enc) {
-      if (!StringDecoder)
-        StringDecoder = require_string_decoder().StringDecoder;
+      if (!StringDecoder) StringDecoder = require_string_decoder().StringDecoder;
       this._readableState.decoder = new StringDecoder(enc);
       this._readableState.encoding = enc;
       return this;
@@ -4335,48 +5345,35 @@ var require_stream_readable = __commonJS({
       return n;
     }
     function howMuchToRead(n, state) {
-      if (state.length === 0 && state.ended)
-        return 0;
-      if (state.objectMode)
-        return n === 0 ? 0 : 1;
-      if (n === null || isNaN(n)) {
-        if (state.flowing && state.buffer.length)
-          return state.buffer[0].length;
-        else
-          return state.length;
+      if (n <= 0 || state.length === 0 && state.ended) return 0;
+      if (state.objectMode) return 1;
+      if (n !== n) {
+        if (state.flowing && state.length) return state.buffer.head.data.length;
+        else return state.length;
       }
-      if (n <= 0)
+      if (n > state.highWaterMark) state.highWaterMark = computeNewHighWaterMark(n);
+      if (n <= state.length) return n;
+      if (!state.ended) {
+        state.needReadable = true;
         return 0;
-      if (n > state.highWaterMark)
-        state.highWaterMark = computeNewHighWaterMark(n);
-      if (n > state.length) {
-        if (!state.ended) {
-          state.needReadable = true;
-          return 0;
-        } else {
-          return state.length;
-        }
       }
-      return n;
+      return state.length;
     }
     Readable.prototype.read = function(n) {
       debug("read", n);
+      n = parseInt(n, 10);
       var state = this._readableState;
       var nOrig = n;
-      if (typeof n !== "number" || n > 0)
-        state.emittedReadable = false;
+      if (n !== 0) state.emittedReadable = false;
       if (n === 0 && state.needReadable && (state.length >= state.highWaterMark || state.ended)) {
         debug("read: emitReadable", state.length, state.ended);
-        if (state.length === 0 && state.ended)
-          endReadable(this);
-        else
-          emitReadable(this);
+        if (state.length === 0 && state.ended) endReadable(this);
+        else emitReadable(this);
         return null;
       }
       n = howMuchToRead(n, state);
       if (n === 0 && state.ended) {
-        if (state.length === 0)
-          endReadable(this);
+        if (state.length === 0) endReadable(this);
         return null;
       }
       var doRead = state.needReadable;
@@ -4388,43 +5385,31 @@ var require_stream_readable = __commonJS({
       if (state.ended || state.reading) {
         doRead = false;
         debug("reading or ended", doRead);
-      }
-      if (doRead) {
+      } else if (doRead) {
         debug("do read");
         state.reading = true;
         state.sync = true;
-        if (state.length === 0)
-          state.needReadable = true;
+        if (state.length === 0) state.needReadable = true;
         this._read(state.highWaterMark);
         state.sync = false;
+        if (!state.reading) n = howMuchToRead(nOrig, state);
       }
-      if (doRead && !state.reading)
-        n = howMuchToRead(nOrig, state);
       var ret;
-      if (n > 0)
-        ret = fromList(n, state);
-      else
-        ret = null;
+      if (n > 0) ret = fromList(n, state);
+      else ret = null;
       if (ret === null) {
         state.needReadable = true;
         n = 0;
+      } else {
+        state.length -= n;
       }
-      state.length -= n;
-      if (state.length === 0 && !state.ended)
-        state.needReadable = true;
-      if (nOrig !== n && state.ended && state.length === 0)
-        endReadable(this);
-      if (ret !== null)
-        this.emit("data", ret);
+      if (state.length === 0) {
+        if (!state.ended) state.needReadable = true;
+        if (nOrig !== n && state.ended) endReadable(this);
+      }
+      if (ret !== null) this.emit("data", ret);
       return ret;
     };
-    function chunkInvalid(state, chunk) {
-      var er = null;
-      if (!Buffer2.isBuffer(chunk) && typeof chunk !== "string" && chunk !== null && chunk !== void 0 && !state.objectMode) {
-        er = new TypeError("Invalid non-string/buffer chunk");
-      }
-      return er;
-    }
     function onEofChunk(stream, state) {
       if (state.ended) return;
       if (state.decoder) {
@@ -4443,10 +5428,8 @@ var require_stream_readable = __commonJS({
       if (!state.emittedReadable) {
         debug("emitReadable", state.flowing);
         state.emittedReadable = true;
-        if (state.sync)
-          processNextTick(emitReadable_, stream);
-        else
-          emitReadable_(stream);
+        if (state.sync) pna.nextTick(emitReadable_, stream);
+        else emitReadable_(stream);
       }
     }
     function emitReadable_(stream) {
@@ -4457,7 +5440,7 @@ var require_stream_readable = __commonJS({
     function maybeReadMore(stream, state) {
       if (!state.readingMore) {
         state.readingMore = true;
-        processNextTick(maybeReadMore_, stream, state);
+        pna.nextTick(maybeReadMore_, stream, state);
       }
     }
     function maybeReadMore_(stream, state) {
@@ -4467,13 +5450,12 @@ var require_stream_readable = __commonJS({
         stream.read(0);
         if (len === state.length)
           break;
-        else
-          len = state.length;
+        else len = state.length;
       }
       state.readingMore = false;
     }
     Readable.prototype._read = function(n) {
-      this.emit("error", new Error("not implemented"));
+      this.emit("error", new Error("_read() is not implemented"));
     };
     Readable.prototype.pipe = function(dest, pipeOpts) {
       var src = this;
@@ -4492,16 +5474,17 @@ var require_stream_readable = __commonJS({
       state.pipesCount += 1;
       debug("pipe count=%d opts=%j", state.pipesCount, pipeOpts);
       var doEnd = (!pipeOpts || pipeOpts.end !== false) && dest !== process.stdout && dest !== process.stderr;
-      var endFn = doEnd ? onend : cleanup;
-      if (state.endEmitted)
-        processNextTick(endFn);
-      else
-        src.once("end", endFn);
+      var endFn = doEnd ? onend : unpipe;
+      if (state.endEmitted) pna.nextTick(endFn);
+      else src.once("end", endFn);
       dest.on("unpipe", onunpipe);
-      function onunpipe(readable) {
+      function onunpipe(readable, unpipeInfo) {
         debug("onunpipe");
         if (readable === src) {
-          cleanup();
+          if (unpipeInfo && unpipeInfo.hasUnpiped === false) {
+            unpipeInfo.hasUnpiped = true;
+            cleanup();
+          }
         }
       }
       function onend() {
@@ -4519,20 +5502,22 @@ var require_stream_readable = __commonJS({
         dest.removeListener("error", onerror);
         dest.removeListener("unpipe", onunpipe);
         src.removeListener("end", onend);
-        src.removeListener("end", cleanup);
+        src.removeListener("end", unpipe);
         src.removeListener("data", ondata);
         cleanedUp = true;
-        if (state.awaitDrain && (!dest._writableState || dest._writableState.needDrain))
-          ondrain();
+        if (state.awaitDrain && (!dest._writableState || dest._writableState.needDrain)) ondrain();
       }
+      var increasedAwaitDrain = false;
       src.on("data", ondata);
       function ondata(chunk) {
         debug("ondata");
+        increasedAwaitDrain = false;
         var ret = dest.write(chunk);
-        if (false === ret) {
-          if (state.pipesCount === 1 && state.pipes[0] === dest && src.listenerCount("data") === 1 && !cleanedUp) {
-            debug("false write response, pause", src._readableState.awaitDrain);
-            src._readableState.awaitDrain++;
+        if (false === ret && !increasedAwaitDrain) {
+          if ((state.pipesCount === 1 && state.pipes === dest || state.pipesCount > 1 && indexOf(state.pipes, dest) !== -1) && !cleanedUp) {
+            debug("false write response, pause", state.awaitDrain);
+            state.awaitDrain++;
+            increasedAwaitDrain = true;
           }
           src.pause();
         }
@@ -4541,15 +5526,9 @@ var require_stream_readable = __commonJS({
         debug("onerror", er);
         unpipe();
         dest.removeListener("error", onerror);
-        if (EElistenerCount(dest, "error") === 0)
-          dest.emit("error", er);
+        if (EElistenerCount(dest, "error") === 0) dest.emit("error", er);
       }
-      if (!dest._events || !dest._events.error)
-        dest.on("error", onerror);
-      else if (isArray(dest._events.error))
-        dest._events.error.unshift(onerror);
-      else
-        dest._events.error = [onerror, dest._events.error];
+      prependListener(dest, "error", onerror);
       function onclose() {
         dest.removeListener("finish", onfinish);
         unpipe();
@@ -4576,8 +5555,7 @@ var require_stream_readable = __commonJS({
       return function() {
         var state = src._readableState;
         debug("pipeOnDrain", state.awaitDrain);
-        if (state.awaitDrain)
-          state.awaitDrain--;
+        if (state.awaitDrain) state.awaitDrain--;
         if (state.awaitDrain === 0 && EElistenerCount(src, "data")) {
           state.flowing = true;
           flow(src);
@@ -4586,18 +5564,15 @@ var require_stream_readable = __commonJS({
     }
     Readable.prototype.unpipe = function(dest) {
       var state = this._readableState;
-      if (state.pipesCount === 0)
-        return this;
+      var unpipeInfo = { hasUnpiped: false };
+      if (state.pipesCount === 0) return this;
       if (state.pipesCount === 1) {
-        if (dest && dest !== state.pipes)
-          return this;
-        if (!dest)
-          dest = state.pipes;
+        if (dest && dest !== state.pipes) return this;
+        if (!dest) dest = state.pipes;
         state.pipes = null;
         state.pipesCount = 0;
         state.flowing = false;
-        if (dest)
-          dest.emit("unpipe", this);
+        if (dest) dest.emit("unpipe", this, unpipeInfo);
         return this;
       }
       if (!dest) {
@@ -4606,35 +5581,32 @@ var require_stream_readable = __commonJS({
         state.pipes = null;
         state.pipesCount = 0;
         state.flowing = false;
-        for (var i = 0; i < len; i++)
-          dests[i].emit("unpipe", this);
+        for (var i = 0; i < len; i++) {
+          dests[i].emit("unpipe", this, { hasUnpiped: false });
+        }
         return this;
       }
-      var i = indexOf(state.pipes, dest);
-      if (i === -1)
-        return this;
-      state.pipes.splice(i, 1);
+      var index = indexOf(state.pipes, dest);
+      if (index === -1) return this;
+      state.pipes.splice(index, 1);
       state.pipesCount -= 1;
-      if (state.pipesCount === 1)
-        state.pipes = state.pipes[0];
-      dest.emit("unpipe", this);
+      if (state.pipesCount === 1) state.pipes = state.pipes[0];
+      dest.emit("unpipe", this, unpipeInfo);
       return this;
     };
     Readable.prototype.on = function(ev, fn) {
       var res = Stream.prototype.on.call(this, ev, fn);
-      if (ev === "data" && false !== this._readableState.flowing) {
-        this.resume();
-      }
-      if (ev === "readable" && this.readable) {
+      if (ev === "data") {
+        if (this._readableState.flowing !== false) this.resume();
+      } else if (ev === "readable") {
         var state = this._readableState;
-        if (!state.readableListening) {
-          state.readableListening = true;
+        if (!state.endEmitted && !state.readableListening) {
+          state.readableListening = state.needReadable = true;
           state.emittedReadable = false;
-          state.needReadable = true;
           if (!state.reading) {
-            processNextTick(nReadingNextTick, this);
+            pna.nextTick(nReadingNextTick, this);
           } else if (state.length) {
-            emitReadable(this, state);
+            emitReadable(this);
           }
         }
       }
@@ -4657,7 +5629,7 @@ var require_stream_readable = __commonJS({
     function resume(stream, state) {
       if (!state.resumeScheduled) {
         state.resumeScheduled = true;
-        processNextTick(resume_, stream, state);
+        pna.nextTick(resume_, stream, state);
       }
     }
     function resume_(stream, state) {
@@ -4666,10 +5638,10 @@ var require_stream_readable = __commonJS({
         stream.read(0);
       }
       state.resumeScheduled = false;
+      state.awaitDrain = 0;
       stream.emit("resume");
       flow(stream);
-      if (state.flowing && !state.reading)
-        stream.read(0);
+      if (state.flowing && !state.reading) stream.read(0);
     }
     Readable.prototype.pause = function() {
       debug("call pause flowing=%j", this._readableState.flowing);
@@ -4683,34 +5655,27 @@ var require_stream_readable = __commonJS({
     function flow(stream) {
       var state = stream._readableState;
       debug("flow", state.flowing);
-      if (state.flowing) {
-        do {
-          var chunk = stream.read();
-        } while (null !== chunk && state.flowing);
+      while (state.flowing && stream.read() !== null) {
       }
     }
     Readable.prototype.wrap = function(stream) {
+      var _this = this;
       var state = this._readableState;
       var paused = false;
-      var self2 = this;
       stream.on("end", function() {
         debug("wrapped end");
         if (state.decoder && !state.ended) {
           var chunk = state.decoder.end();
-          if (chunk && chunk.length)
-            self2.push(chunk);
+          if (chunk && chunk.length) _this.push(chunk);
         }
-        self2.push(null);
+        _this.push(null);
       });
       stream.on("data", function(chunk) {
         debug("wrapped data");
-        if (state.decoder)
-          chunk = state.decoder.write(chunk);
-        if (state.objectMode && (chunk === null || chunk === void 0))
-          return;
-        else if (!state.objectMode && (!chunk || !chunk.length))
-          return;
-        var ret = self2.push(chunk);
+        if (state.decoder) chunk = state.decoder.write(chunk);
+        if (state.objectMode && (chunk === null || chunk === void 0)) return;
+        else if (!state.objectMode && (!chunk || !chunk.length)) return;
+        var ret = _this.push(chunk);
         if (!ret) {
           paused = true;
           stream.pause();
@@ -4725,77 +5690,114 @@ var require_stream_readable = __commonJS({
           }(i);
         }
       }
-      var events = ["error", "close", "destroy", "pause", "resume"];
-      forEach(events, function(ev) {
-        stream.on(ev, self2.emit.bind(self2, ev));
-      });
-      self2._read = function(n) {
-        debug("wrapped _read", n);
+      for (var n = 0; n < kProxyEvents.length; n++) {
+        stream.on(kProxyEvents[n], this.emit.bind(this, kProxyEvents[n]));
+      }
+      this._read = function(n2) {
+        debug("wrapped _read", n2);
         if (paused) {
           paused = false;
           stream.resume();
         }
       };
-      return self2;
+      return this;
     };
+    Object.defineProperty(Readable.prototype, "readableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._readableState.highWaterMark;
+      }
+    });
     Readable._fromList = fromList;
     function fromList(n, state) {
-      var list = state.buffer;
-      var length = state.length;
-      var stringMode = !!state.decoder;
-      var objectMode = !!state.objectMode;
+      if (state.length === 0) return null;
       var ret;
-      if (list.length === 0)
-        return null;
-      if (length === 0)
-        ret = null;
-      else if (objectMode)
-        ret = list.shift();
-      else if (!n || n >= length) {
-        if (stringMode)
-          ret = list.join("");
-        else if (list.length === 1)
-          ret = list[0];
-        else
-          ret = Buffer2.concat(list, length);
-        list.length = 0;
+      if (state.objectMode) ret = state.buffer.shift();
+      else if (!n || n >= state.length) {
+        if (state.decoder) ret = state.buffer.join("");
+        else if (state.buffer.length === 1) ret = state.buffer.head.data;
+        else ret = state.buffer.concat(state.length);
+        state.buffer.clear();
       } else {
-        if (n < list[0].length) {
-          var buf = list[0];
-          ret = buf.slice(0, n);
-          list[0] = buf.slice(n);
-        } else if (n === list[0].length) {
-          ret = list.shift();
-        } else {
-          if (stringMode)
-            ret = "";
-          else
-            ret = new Buffer2(n);
-          var c = 0;
-          for (var i = 0, l = list.length; i < l && c < n; i++) {
-            var buf = list[0];
-            var cpy = Math.min(n - c, buf.length);
-            if (stringMode)
-              ret += buf.slice(0, cpy);
-            else
-              buf.copy(ret, c, 0, cpy);
-            if (cpy < buf.length)
-              list[0] = buf.slice(cpy);
-            else
-              list.shift();
-            c += cpy;
-          }
-        }
+        ret = fromListPartial(n, state.buffer, state.decoder);
       }
+      return ret;
+    }
+    function fromListPartial(n, list, hasStrings) {
+      var ret;
+      if (n < list.head.data.length) {
+        ret = list.head.data.slice(0, n);
+        list.head.data = list.head.data.slice(n);
+      } else if (n === list.head.data.length) {
+        ret = list.shift();
+      } else {
+        ret = hasStrings ? copyFromBufferString(n, list) : copyFromBuffer(n, list);
+      }
+      return ret;
+    }
+    function copyFromBufferString(n, list) {
+      var p = list.head;
+      var c = 1;
+      var ret = p.data;
+      n -= ret.length;
+      while (p = p.next) {
+        var str = p.data;
+        var nb = n > str.length ? str.length : n;
+        if (nb === str.length) ret += str;
+        else ret += str.slice(0, n);
+        n -= nb;
+        if (n === 0) {
+          if (nb === str.length) {
+            ++c;
+            if (p.next) list.head = p.next;
+            else list.head = list.tail = null;
+          } else {
+            list.head = p;
+            p.data = str.slice(nb);
+          }
+          break;
+        }
+        ++c;
+      }
+      list.length -= c;
+      return ret;
+    }
+    function copyFromBuffer(n, list) {
+      var ret = Buffer2.allocUnsafe(n);
+      var p = list.head;
+      var c = 1;
+      p.data.copy(ret);
+      n -= p.data.length;
+      while (p = p.next) {
+        var buf = p.data;
+        var nb = n > buf.length ? buf.length : n;
+        buf.copy(ret, ret.length - n, 0, nb);
+        n -= nb;
+        if (n === 0) {
+          if (nb === buf.length) {
+            ++c;
+            if (p.next) list.head = p.next;
+            else list.head = list.tail = null;
+          } else {
+            list.head = p;
+            p.data = buf.slice(nb);
+          }
+          break;
+        }
+        ++c;
+      }
+      list.length -= c;
       return ret;
     }
     function endReadable(stream) {
       var state = stream._readableState;
-      if (state.length > 0)
-        throw new Error("endReadable called on non-empty stream");
+      if (state.length > 0) throw new Error('"endReadable()" called on non-empty stream');
       if (!state.endEmitted) {
         state.ended = true;
-        processNextTick(endReadableNT, state, stream);
+        pna.nextTick(endReadableNT, state, stream);
       }
     }
     function endReadableNT(state, stream) {
@@ -4803,11 +5805,6 @@ var require_stream_readable = __commonJS({
         state.endEmitted = true;
         stream.readable = false;
         stream.emit("end");
-      }
-    }
-    function forEach(xs, f) {
-      for (var i = 0, l = xs.length; i < l; i++) {
-        f(xs[i], i);
       }
     }
     function indexOf(xs, x) {
@@ -4819,480 +5816,68 @@ var require_stream_readable = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/util-deprecate@1.0.2/node_modules/util-deprecate/node.js
-var require_node = __commonJS({
-  "../node_modules/.pnpm/util-deprecate@1.0.2/node_modules/util-deprecate/node.js"(exports, module) {
-    module.exports = __require("util").deprecate;
-  }
-});
-
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_writable.js
-var require_stream_writable = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_writable.js"(exports, module) {
-    "use strict";
-    module.exports = Writable;
-    var processNextTick = require_process_nextick_args();
-    var Buffer2 = __require("buffer").Buffer;
-    Writable.WritableState = WritableState;
-    var util = require_util();
-    util.inherits = require_inherits();
-    var internalUtil = {
-      deprecate: require_node()
-    };
-    var Stream;
-    (function() {
-      try {
-        Stream = __require("stream");
-      } catch (_2) {
-      } finally {
-        if (!Stream)
-          Stream = __require("events").EventEmitter;
-      }
-    })();
-    var Buffer2 = __require("buffer").Buffer;
-    util.inherits(Writable, Stream);
-    function nop() {
-    }
-    function WriteReq(chunk, encoding, cb) {
-      this.chunk = chunk;
-      this.encoding = encoding;
-      this.callback = cb;
-      this.next = null;
-    }
-    var Duplex;
-    function WritableState(options, stream) {
-      Duplex = Duplex || require_stream_duplex();
-      options = options || {};
-      this.objectMode = !!options.objectMode;
-      if (stream instanceof Duplex)
-        this.objectMode = this.objectMode || !!options.writableObjectMode;
-      var hwm = options.highWaterMark;
-      var defaultHwm = this.objectMode ? 16 : 16 * 1024;
-      this.highWaterMark = hwm || hwm === 0 ? hwm : defaultHwm;
-      this.highWaterMark = ~~this.highWaterMark;
-      this.needDrain = false;
-      this.ending = false;
-      this.ended = false;
-      this.finished = false;
-      var noDecode = options.decodeStrings === false;
-      this.decodeStrings = !noDecode;
-      this.defaultEncoding = options.defaultEncoding || "utf8";
-      this.length = 0;
-      this.writing = false;
-      this.corked = 0;
-      this.sync = true;
-      this.bufferProcessing = false;
-      this.onwrite = function(er) {
-        onwrite(stream, er);
-      };
-      this.writecb = null;
-      this.writelen = 0;
-      this.bufferedRequest = null;
-      this.lastBufferedRequest = null;
-      this.pendingcb = 0;
-      this.prefinished = false;
-      this.errorEmitted = false;
-    }
-    WritableState.prototype.getBuffer = function writableStateGetBuffer() {
-      var current = this.bufferedRequest;
-      var out = [];
-      while (current) {
-        out.push(current);
-        current = current.next;
-      }
-      return out;
-    };
-    (function() {
-      try {
-        Object.defineProperty(WritableState.prototype, "buffer", {
-          get: internalUtil.deprecate(function() {
-            return this.getBuffer();
-          }, "_writableState.buffer is deprecated. Use _writableState.getBuffer instead.")
-        });
-      } catch (_2) {
-      }
-    })();
-    var Duplex;
-    function Writable(options) {
-      Duplex = Duplex || require_stream_duplex();
-      if (!(this instanceof Writable) && !(this instanceof Duplex))
-        return new Writable(options);
-      this._writableState = new WritableState(options, this);
-      this.writable = true;
-      if (options) {
-        if (typeof options.write === "function")
-          this._write = options.write;
-        if (typeof options.writev === "function")
-          this._writev = options.writev;
-      }
-      Stream.call(this);
-    }
-    Writable.prototype.pipe = function() {
-      this.emit("error", new Error("Cannot pipe. Not readable."));
-    };
-    function writeAfterEnd(stream, cb) {
-      var er = new Error("write after end");
-      stream.emit("error", er);
-      processNextTick(cb, er);
-    }
-    function validChunk(stream, state, chunk, cb) {
-      var valid = true;
-      if (!Buffer2.isBuffer(chunk) && typeof chunk !== "string" && chunk !== null && chunk !== void 0 && !state.objectMode) {
-        var er = new TypeError("Invalid non-string/buffer chunk");
-        stream.emit("error", er);
-        processNextTick(cb, er);
-        valid = false;
-      }
-      return valid;
-    }
-    Writable.prototype.write = function(chunk, encoding, cb) {
-      var state = this._writableState;
-      var ret = false;
-      if (typeof encoding === "function") {
-        cb = encoding;
-        encoding = null;
-      }
-      if (Buffer2.isBuffer(chunk))
-        encoding = "buffer";
-      else if (!encoding)
-        encoding = state.defaultEncoding;
-      if (typeof cb !== "function")
-        cb = nop;
-      if (state.ended)
-        writeAfterEnd(this, cb);
-      else if (validChunk(this, state, chunk, cb)) {
-        state.pendingcb++;
-        ret = writeOrBuffer(this, state, chunk, encoding, cb);
-      }
-      return ret;
-    };
-    Writable.prototype.cork = function() {
-      var state = this._writableState;
-      state.corked++;
-    };
-    Writable.prototype.uncork = function() {
-      var state = this._writableState;
-      if (state.corked) {
-        state.corked--;
-        if (!state.writing && !state.corked && !state.finished && !state.bufferProcessing && state.bufferedRequest)
-          clearBuffer(this, state);
-      }
-    };
-    Writable.prototype.setDefaultEncoding = function setDefaultEncoding(encoding) {
-      if (typeof encoding === "string")
-        encoding = encoding.toLowerCase();
-      if (!([
-        "hex",
-        "utf8",
-        "utf-8",
-        "ascii",
-        "binary",
-        "base64",
-        "ucs2",
-        "ucs-2",
-        "utf16le",
-        "utf-16le",
-        "raw"
-      ].indexOf((encoding + "").toLowerCase()) > -1))
-        throw new TypeError("Unknown encoding: " + encoding);
-      this._writableState.defaultEncoding = encoding;
-    };
-    function decodeChunk(state, chunk, encoding) {
-      if (!state.objectMode && state.decodeStrings !== false && typeof chunk === "string") {
-        chunk = new Buffer2(chunk, encoding);
-      }
-      return chunk;
-    }
-    function writeOrBuffer(stream, state, chunk, encoding, cb) {
-      chunk = decodeChunk(state, chunk, encoding);
-      if (Buffer2.isBuffer(chunk))
-        encoding = "buffer";
-      var len = state.objectMode ? 1 : chunk.length;
-      state.length += len;
-      var ret = state.length < state.highWaterMark;
-      if (!ret)
-        state.needDrain = true;
-      if (state.writing || state.corked) {
-        var last = state.lastBufferedRequest;
-        state.lastBufferedRequest = new WriteReq(chunk, encoding, cb);
-        if (last) {
-          last.next = state.lastBufferedRequest;
-        } else {
-          state.bufferedRequest = state.lastBufferedRequest;
-        }
-      } else {
-        doWrite(stream, state, false, len, chunk, encoding, cb);
-      }
-      return ret;
-    }
-    function doWrite(stream, state, writev, len, chunk, encoding, cb) {
-      state.writelen = len;
-      state.writecb = cb;
-      state.writing = true;
-      state.sync = true;
-      if (writev)
-        stream._writev(chunk, state.onwrite);
-      else
-        stream._write(chunk, encoding, state.onwrite);
-      state.sync = false;
-    }
-    function onwriteError(stream, state, sync, er, cb) {
-      --state.pendingcb;
-      if (sync)
-        processNextTick(cb, er);
-      else
-        cb(er);
-      stream._writableState.errorEmitted = true;
-      stream.emit("error", er);
-    }
-    function onwriteStateUpdate(state) {
-      state.writing = false;
-      state.writecb = null;
-      state.length -= state.writelen;
-      state.writelen = 0;
-    }
-    function onwrite(stream, er) {
-      var state = stream._writableState;
-      var sync = state.sync;
-      var cb = state.writecb;
-      onwriteStateUpdate(state);
-      if (er)
-        onwriteError(stream, state, sync, er, cb);
-      else {
-        var finished = needFinish(state);
-        if (!finished && !state.corked && !state.bufferProcessing && state.bufferedRequest) {
-          clearBuffer(stream, state);
-        }
-        if (sync) {
-          processNextTick(afterWrite, stream, state, finished, cb);
-        } else {
-          afterWrite(stream, state, finished, cb);
-        }
-      }
-    }
-    function afterWrite(stream, state, finished, cb) {
-      if (!finished)
-        onwriteDrain(stream, state);
-      state.pendingcb--;
-      cb();
-      finishMaybe(stream, state);
-    }
-    function onwriteDrain(stream, state) {
-      if (state.length === 0 && state.needDrain) {
-        state.needDrain = false;
-        stream.emit("drain");
-      }
-    }
-    function clearBuffer(stream, state) {
-      state.bufferProcessing = true;
-      var entry = state.bufferedRequest;
-      if (stream._writev && entry && entry.next) {
-        var buffer = [];
-        var cbs = [];
-        while (entry) {
-          cbs.push(entry.callback);
-          buffer.push(entry);
-          entry = entry.next;
-        }
-        state.pendingcb++;
-        state.lastBufferedRequest = null;
-        doWrite(stream, state, true, state.length, buffer, "", function(err) {
-          for (var i = 0; i < cbs.length; i++) {
-            state.pendingcb--;
-            cbs[i](err);
-          }
-        });
-      } else {
-        while (entry) {
-          var chunk = entry.chunk;
-          var encoding = entry.encoding;
-          var cb = entry.callback;
-          var len = state.objectMode ? 1 : chunk.length;
-          doWrite(stream, state, false, len, chunk, encoding, cb);
-          entry = entry.next;
-          if (state.writing) {
-            break;
-          }
-        }
-        if (entry === null)
-          state.lastBufferedRequest = null;
-      }
-      state.bufferedRequest = entry;
-      state.bufferProcessing = false;
-    }
-    Writable.prototype._write = function(chunk, encoding, cb) {
-      cb(new Error("not implemented"));
-    };
-    Writable.prototype._writev = null;
-    Writable.prototype.end = function(chunk, encoding, cb) {
-      var state = this._writableState;
-      if (typeof chunk === "function") {
-        cb = chunk;
-        chunk = null;
-        encoding = null;
-      } else if (typeof encoding === "function") {
-        cb = encoding;
-        encoding = null;
-      }
-      if (chunk !== null && chunk !== void 0)
-        this.write(chunk, encoding);
-      if (state.corked) {
-        state.corked = 1;
-        this.uncork();
-      }
-      if (!state.ending && !state.finished)
-        endWritable(this, state, cb);
-    };
-    function needFinish(state) {
-      return state.ending && state.length === 0 && state.bufferedRequest === null && !state.finished && !state.writing;
-    }
-    function prefinish(stream, state) {
-      if (!state.prefinished) {
-        state.prefinished = true;
-        stream.emit("prefinish");
-      }
-    }
-    function finishMaybe(stream, state) {
-      var need = needFinish(state);
-      if (need) {
-        if (state.pendingcb === 0) {
-          prefinish(stream, state);
-          state.finished = true;
-          stream.emit("finish");
-        } else {
-          prefinish(stream, state);
-        }
-      }
-      return need;
-    }
-    function endWritable(stream, state, cb) {
-      state.ending = true;
-      finishMaybe(stream, state);
-      if (cb) {
-        if (state.finished)
-          processNextTick(cb);
-        else
-          stream.once("finish", cb);
-      }
-      state.ended = true;
-    }
-  }
-});
-
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_duplex.js
-var require_stream_duplex = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_duplex.js"(exports, module) {
-    "use strict";
-    var objectKeys = Object.keys || function(obj) {
-      var keys2 = [];
-      for (var key in obj) keys2.push(key);
-      return keys2;
-    };
-    module.exports = Duplex;
-    var processNextTick = require_process_nextick_args();
-    var util = require_util();
-    util.inherits = require_inherits();
-    var Readable = require_stream_readable();
-    var Writable = require_stream_writable();
-    util.inherits(Duplex, Readable);
-    var keys = objectKeys(Writable.prototype);
-    for (v = 0; v < keys.length; v++) {
-      method = keys[v];
-      if (!Duplex.prototype[method])
-        Duplex.prototype[method] = Writable.prototype[method];
-    }
-    var method;
-    var v;
-    function Duplex(options) {
-      if (!(this instanceof Duplex))
-        return new Duplex(options);
-      Readable.call(this, options);
-      Writable.call(this, options);
-      if (options && options.readable === false)
-        this.readable = false;
-      if (options && options.writable === false)
-        this.writable = false;
-      this.allowHalfOpen = true;
-      if (options && options.allowHalfOpen === false)
-        this.allowHalfOpen = false;
-      this.once("end", onend);
-    }
-    function onend() {
-      if (this.allowHalfOpen || this._writableState.ended)
-        return;
-      processNextTick(onEndNT, this);
-    }
-    function onEndNT(self2) {
-      self2.end();
-    }
-  }
-});
-
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_transform.js
+// ../node_modules/lazystream/node_modules/readable-stream/lib/_stream_transform.js
 var require_stream_transform = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_transform.js"(exports, module) {
+  "../node_modules/lazystream/node_modules/readable-stream/lib/_stream_transform.js"(exports, module) {
     "use strict";
     module.exports = Transform;
     var Duplex = require_stream_duplex();
-    var util = require_util();
+    var util = Object.create(require_util());
     util.inherits = require_inherits();
     util.inherits(Transform, Duplex);
-    function TransformState(stream) {
-      this.afterTransform = function(er, data) {
-        return afterTransform(stream, er, data);
-      };
-      this.needTransform = false;
-      this.transforming = false;
-      this.writecb = null;
-      this.writechunk = null;
-    }
-    function afterTransform(stream, er, data) {
-      var ts = stream._transformState;
+    function afterTransform(er, data) {
+      var ts = this._transformState;
       ts.transforming = false;
       var cb = ts.writecb;
-      if (!cb)
-        return stream.emit("error", new Error("no writecb in Transform class"));
+      if (!cb) {
+        return this.emit("error", new Error("write callback called multiple times"));
+      }
       ts.writechunk = null;
       ts.writecb = null;
-      if (data !== null && data !== void 0)
-        stream.push(data);
-      if (cb)
-        cb(er);
-      var rs = stream._readableState;
+      if (data != null)
+        this.push(data);
+      cb(er);
+      var rs = this._readableState;
       rs.reading = false;
       if (rs.needReadable || rs.length < rs.highWaterMark) {
-        stream._read(rs.highWaterMark);
+        this._read(rs.highWaterMark);
       }
     }
     function Transform(options) {
-      if (!(this instanceof Transform))
-        return new Transform(options);
+      if (!(this instanceof Transform)) return new Transform(options);
       Duplex.call(this, options);
-      this._transformState = new TransformState(this);
-      var stream = this;
+      this._transformState = {
+        afterTransform: afterTransform.bind(this),
+        needTransform: false,
+        transforming: false,
+        writecb: null,
+        writechunk: null,
+        writeencoding: null
+      };
       this._readableState.needReadable = true;
       this._readableState.sync = false;
       if (options) {
-        if (typeof options.transform === "function")
-          this._transform = options.transform;
-        if (typeof options.flush === "function")
-          this._flush = options.flush;
+        if (typeof options.transform === "function") this._transform = options.transform;
+        if (typeof options.flush === "function") this._flush = options.flush;
       }
-      this.once("prefinish", function() {
-        if (typeof this._flush === "function")
-          this._flush(function(er) {
-            done(stream, er);
-          });
-        else
-          done(stream);
-      });
+      this.on("prefinish", prefinish);
+    }
+    function prefinish() {
+      var _this = this;
+      if (typeof this._flush === "function") {
+        this._flush(function(er, data) {
+          done(_this, er, data);
+        });
+      } else {
+        done(this, null, null);
+      }
     }
     Transform.prototype.push = function(chunk, encoding) {
       this._transformState.needTransform = false;
       return Duplex.prototype.push.call(this, chunk, encoding);
     };
     Transform.prototype._transform = function(chunk, encoding, cb) {
-      throw new Error("not implemented");
+      throw new Error("_transform() is not implemented");
     };
     Transform.prototype._write = function(chunk, encoding, cb) {
       var ts = this._transformState;
@@ -5301,8 +5886,7 @@ var require_stream_transform = __commonJS({
       ts.writeencoding = encoding;
       if (!ts.transforming) {
         var rs = this._readableState;
-        if (ts.needTransform || rs.needReadable || rs.length < rs.highWaterMark)
-          this._read(rs.highWaterMark);
+        if (ts.needTransform || rs.needReadable || rs.length < rs.highWaterMark) this._read(rs.highWaterMark);
       }
     };
     Transform.prototype._read = function(n) {
@@ -5314,32 +5898,35 @@ var require_stream_transform = __commonJS({
         ts.needTransform = true;
       }
     };
-    function done(stream, er) {
-      if (er)
-        return stream.emit("error", er);
-      var ws = stream._writableState;
-      var ts = stream._transformState;
-      if (ws.length)
-        throw new Error("calling transform done when ws.length != 0");
-      if (ts.transforming)
-        throw new Error("calling transform done when still transforming");
+    Transform.prototype._destroy = function(err, cb) {
+      var _this2 = this;
+      Duplex.prototype._destroy.call(this, err, function(err2) {
+        cb(err2);
+        _this2.emit("close");
+      });
+    };
+    function done(stream, er, data) {
+      if (er) return stream.emit("error", er);
+      if (data != null)
+        stream.push(data);
+      if (stream._writableState.length) throw new Error("Calling transform done when ws.length != 0");
+      if (stream._transformState.transforming) throw new Error("Calling transform done when still transforming");
       return stream.push(null);
     }
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_passthrough.js
+// ../node_modules/lazystream/node_modules/readable-stream/lib/_stream_passthrough.js
 var require_stream_passthrough = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/lib/_stream_passthrough.js"(exports, module) {
+  "../node_modules/lazystream/node_modules/readable-stream/lib/_stream_passthrough.js"(exports, module) {
     "use strict";
     module.exports = PassThrough;
     var Transform = require_stream_transform();
-    var util = require_util();
+    var util = Object.create(require_util());
     util.inherits = require_inherits();
     util.inherits(PassThrough, Transform);
     function PassThrough(options) {
-      if (!(this instanceof PassThrough))
-        return new PassThrough(options);
+      if (!(this instanceof PassThrough)) return new PassThrough(options);
       Transform.call(this, options);
     }
     PassThrough.prototype._transform = function(chunk, encoding, cb) {
@@ -5348,16 +5935,41 @@ var require_stream_passthrough = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/passthrough.js
-var require_passthrough = __commonJS({
-  "../node_modules/.pnpm/readable-stream@2.0.5/node_modules/readable-stream/passthrough.js"(exports, module) {
-    module.exports = require_stream_passthrough();
+// ../node_modules/lazystream/node_modules/readable-stream/readable.js
+var require_readable = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/readable.js"(exports, module) {
+    var Stream = __require("stream");
+    if (process.env.READABLE_STREAM === "disable" && Stream) {
+      module.exports = Stream;
+      exports = module.exports = Stream.Readable;
+      exports.Readable = Stream.Readable;
+      exports.Writable = Stream.Writable;
+      exports.Duplex = Stream.Duplex;
+      exports.Transform = Stream.Transform;
+      exports.PassThrough = Stream.PassThrough;
+      exports.Stream = Stream;
+    } else {
+      exports = module.exports = require_stream_readable();
+      exports.Stream = Stream || exports;
+      exports.Readable = exports;
+      exports.Writable = require_stream_writable();
+      exports.Duplex = require_stream_duplex();
+      exports.Transform = require_stream_transform();
+      exports.PassThrough = require_stream_passthrough();
+    }
   }
 });
 
-// ../node_modules/.pnpm/lazystream@1.0.1/node_modules/lazystream/lib/lazystream.js
+// ../node_modules/lazystream/node_modules/readable-stream/passthrough.js
+var require_passthrough = __commonJS({
+  "../node_modules/lazystream/node_modules/readable-stream/passthrough.js"(exports, module) {
+    module.exports = require_readable().PassThrough;
+  }
+});
+
+// ../node_modules/lazystream/lib/lazystream.js
 var require_lazystream = __commonJS({
-  "../node_modules/.pnpm/lazystream@1.0.1/node_modules/lazystream/lib/lazystream.js"(exports, module) {
+  "../node_modules/lazystream/lib/lazystream.js"(exports, module) {
     var util = __require("util");
     var PassThrough = require_passthrough();
     module.exports = {
@@ -5400,9 +6012,9 @@ var require_lazystream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/normalize-path@3.0.0/node_modules/normalize-path/index.js
+// ../node_modules/normalize-path/index.js
 var require_normalize_path = __commonJS({
-  "../node_modules/.pnpm/normalize-path@3.0.0/node_modules/normalize-path/index.js"(exports, module) {
+  "../node_modules/normalize-path/index.js"(exports, module) {
     module.exports = function(path11, stripTrailing) {
       if (typeof path11 !== "string") {
         throw new TypeError("expected path to be a string");
@@ -5427,9 +6039,9 @@ var require_normalize_path = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/identity.js
+// ../node_modules/lodash/identity.js
 var require_identity = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/identity.js"(exports, module) {
+  "../node_modules/lodash/identity.js"(exports, module) {
     function identity(value) {
       return value;
     }
@@ -5437,9 +6049,9 @@ var require_identity = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_apply.js
+// ../node_modules/lodash/_apply.js
 var require_apply = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_apply.js"(exports, module) {
+  "../node_modules/lodash/_apply.js"(exports, module) {
     function apply2(func, thisArg, args) {
       switch (args.length) {
         case 0:
@@ -5457,9 +6069,9 @@ var require_apply = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_overRest.js
+// ../node_modules/lodash/_overRest.js
 var require_overRest = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_overRest.js"(exports, module) {
+  "../node_modules/lodash/_overRest.js"(exports, module) {
     var apply2 = require_apply();
     var nativeMax = Math.max;
     function overRest(func, start, transform) {
@@ -5482,9 +6094,9 @@ var require_overRest = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/constant.js
+// ../node_modules/lodash/constant.js
 var require_constant = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/constant.js"(exports, module) {
+  "../node_modules/lodash/constant.js"(exports, module) {
     function constant(value) {
       return function() {
         return value;
@@ -5494,17 +6106,17 @@ var require_constant = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_freeGlobal.js
+// ../node_modules/lodash/_freeGlobal.js
 var require_freeGlobal = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_freeGlobal.js"(exports, module) {
+  "../node_modules/lodash/_freeGlobal.js"(exports, module) {
     var freeGlobal = typeof global == "object" && global && global.Object === Object && global;
     module.exports = freeGlobal;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_root.js
+// ../node_modules/lodash/_root.js
 var require_root = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_root.js"(exports, module) {
+  "../node_modules/lodash/_root.js"(exports, module) {
     var freeGlobal = require_freeGlobal();
     var freeSelf = typeof self == "object" && self && self.Object === Object && self;
     var root = freeGlobal || freeSelf || Function("return this")();
@@ -5512,18 +6124,18 @@ var require_root = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Symbol.js
+// ../node_modules/lodash/_Symbol.js
 var require_Symbol = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Symbol.js"(exports, module) {
+  "../node_modules/lodash/_Symbol.js"(exports, module) {
     var root = require_root();
     var Symbol2 = root.Symbol;
     module.exports = Symbol2;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getRawTag.js
+// ../node_modules/lodash/_getRawTag.js
 var require_getRawTag = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getRawTag.js"(exports, module) {
+  "../node_modules/lodash/_getRawTag.js"(exports, module) {
     var Symbol2 = require_Symbol();
     var objectProto = Object.prototype;
     var hasOwnProperty = objectProto.hasOwnProperty;
@@ -5550,9 +6162,9 @@ var require_getRawTag = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_objectToString.js
+// ../node_modules/lodash/_objectToString.js
 var require_objectToString = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_objectToString.js"(exports, module) {
+  "../node_modules/lodash/_objectToString.js"(exports, module) {
     var objectProto = Object.prototype;
     var nativeObjectToString = objectProto.toString;
     function objectToString(value) {
@@ -5562,9 +6174,9 @@ var require_objectToString = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseGetTag.js
+// ../node_modules/lodash/_baseGetTag.js
 var require_baseGetTag = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseGetTag.js"(exports, module) {
+  "../node_modules/lodash/_baseGetTag.js"(exports, module) {
     var Symbol2 = require_Symbol();
     var getRawTag = require_getRawTag();
     var objectToString = require_objectToString();
@@ -5581,9 +6193,9 @@ var require_baseGetTag = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isObject.js
+// ../node_modules/lodash/isObject.js
 var require_isObject = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isObject.js"(exports, module) {
+  "../node_modules/lodash/isObject.js"(exports, module) {
     function isObject(value) {
       var type = typeof value;
       return value != null && (type == "object" || type == "function");
@@ -5592,9 +6204,9 @@ var require_isObject = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isFunction.js
+// ../node_modules/lodash/isFunction.js
 var require_isFunction = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isFunction.js"(exports, module) {
+  "../node_modules/lodash/isFunction.js"(exports, module) {
     var baseGetTag = require_baseGetTag();
     var isObject = require_isObject();
     var asyncTag = "[object AsyncFunction]";
@@ -5612,18 +6224,18 @@ var require_isFunction = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_coreJsData.js
+// ../node_modules/lodash/_coreJsData.js
 var require_coreJsData = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_coreJsData.js"(exports, module) {
+  "../node_modules/lodash/_coreJsData.js"(exports, module) {
     var root = require_root();
     var coreJsData = root["__core-js_shared__"];
     module.exports = coreJsData;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isMasked.js
+// ../node_modules/lodash/_isMasked.js
 var require_isMasked = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isMasked.js"(exports, module) {
+  "../node_modules/lodash/_isMasked.js"(exports, module) {
     var coreJsData = require_coreJsData();
     var maskSrcKey = function() {
       var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || "");
@@ -5636,9 +6248,9 @@ var require_isMasked = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_toSource.js
+// ../node_modules/lodash/_toSource.js
 var require_toSource = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_toSource.js"(exports, module) {
+  "../node_modules/lodash/_toSource.js"(exports, module) {
     var funcProto = Function.prototype;
     var funcToString = funcProto.toString;
     function toSource(func) {
@@ -5658,9 +6270,9 @@ var require_toSource = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsNative.js
+// ../node_modules/lodash/_baseIsNative.js
 var require_baseIsNative = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsNative.js"(exports, module) {
+  "../node_modules/lodash/_baseIsNative.js"(exports, module) {
     var isFunction = require_isFunction();
     var isMasked = require_isMasked();
     var isObject = require_isObject();
@@ -5685,9 +6297,9 @@ var require_baseIsNative = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getValue.js
+// ../node_modules/lodash/_getValue.js
 var require_getValue = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getValue.js"(exports, module) {
+  "../node_modules/lodash/_getValue.js"(exports, module) {
     function getValue(object, key) {
       return object == null ? void 0 : object[key];
     }
@@ -5695,9 +6307,9 @@ var require_getValue = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getNative.js
+// ../node_modules/lodash/_getNative.js
 var require_getNative = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getNative.js"(exports, module) {
+  "../node_modules/lodash/_getNative.js"(exports, module) {
     var baseIsNative = require_baseIsNative();
     var getValue = require_getValue();
     function getNative(object, key) {
@@ -5708,9 +6320,9 @@ var require_getNative = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_defineProperty.js
+// ../node_modules/lodash/_defineProperty.js
 var require_defineProperty = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_defineProperty.js"(exports, module) {
+  "../node_modules/lodash/_defineProperty.js"(exports, module) {
     var getNative = require_getNative();
     var defineProperty = function() {
       try {
@@ -5724,9 +6336,9 @@ var require_defineProperty = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseSetToString.js
+// ../node_modules/lodash/_baseSetToString.js
 var require_baseSetToString = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseSetToString.js"(exports, module) {
+  "../node_modules/lodash/_baseSetToString.js"(exports, module) {
     var constant = require_constant();
     var defineProperty = require_defineProperty();
     var identity = require_identity();
@@ -5742,9 +6354,9 @@ var require_baseSetToString = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_shortOut.js
+// ../node_modules/lodash/_shortOut.js
 var require_shortOut = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_shortOut.js"(exports, module) {
+  "../node_modules/lodash/_shortOut.js"(exports, module) {
     var HOT_COUNT = 800;
     var HOT_SPAN = 16;
     var nativeNow = Date.now;
@@ -5767,9 +6379,9 @@ var require_shortOut = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setToString.js
+// ../node_modules/lodash/_setToString.js
 var require_setToString = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setToString.js"(exports, module) {
+  "../node_modules/lodash/_setToString.js"(exports, module) {
     var baseSetToString = require_baseSetToString();
     var shortOut = require_shortOut();
     var setToString = shortOut(baseSetToString);
@@ -5777,9 +6389,9 @@ var require_setToString = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseRest.js
+// ../node_modules/lodash/_baseRest.js
 var require_baseRest = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseRest.js"(exports, module) {
+  "../node_modules/lodash/_baseRest.js"(exports, module) {
     var identity = require_identity();
     var overRest = require_overRest();
     var setToString = require_setToString();
@@ -5790,9 +6402,9 @@ var require_baseRest = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/eq.js
+// ../node_modules/lodash/eq.js
 var require_eq = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/eq.js"(exports, module) {
+  "../node_modules/lodash/eq.js"(exports, module) {
     function eq(value, other) {
       return value === other || value !== value && other !== other;
     }
@@ -5800,9 +6412,9 @@ var require_eq = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isLength.js
+// ../node_modules/lodash/isLength.js
 var require_isLength = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isLength.js"(exports, module) {
+  "../node_modules/lodash/isLength.js"(exports, module) {
     var MAX_SAFE_INTEGER = 9007199254740991;
     function isLength(value) {
       return typeof value == "number" && value > -1 && value % 1 == 0 && value <= MAX_SAFE_INTEGER;
@@ -5811,9 +6423,9 @@ var require_isLength = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArrayLike.js
+// ../node_modules/lodash/isArrayLike.js
 var require_isArrayLike = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArrayLike.js"(exports, module) {
+  "../node_modules/lodash/isArrayLike.js"(exports, module) {
     var isFunction = require_isFunction();
     var isLength = require_isLength();
     function isArrayLike(value) {
@@ -5823,9 +6435,9 @@ var require_isArrayLike = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isIndex.js
+// ../node_modules/lodash/_isIndex.js
 var require_isIndex = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isIndex.js"(exports, module) {
+  "../node_modules/lodash/_isIndex.js"(exports, module) {
     var MAX_SAFE_INTEGER = 9007199254740991;
     var reIsUint = /^(?:0|[1-9]\d*)$/;
     function isIndex(value, length) {
@@ -5837,9 +6449,9 @@ var require_isIndex = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isIterateeCall.js
+// ../node_modules/lodash/_isIterateeCall.js
 var require_isIterateeCall = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isIterateeCall.js"(exports, module) {
+  "../node_modules/lodash/_isIterateeCall.js"(exports, module) {
     var eq = require_eq();
     var isArrayLike = require_isArrayLike();
     var isIndex = require_isIndex();
@@ -5858,9 +6470,9 @@ var require_isIterateeCall = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseTimes.js
+// ../node_modules/lodash/_baseTimes.js
 var require_baseTimes = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseTimes.js"(exports, module) {
+  "../node_modules/lodash/_baseTimes.js"(exports, module) {
     function baseTimes(n, iteratee) {
       var index = -1, result = Array(n);
       while (++index < n) {
@@ -5872,9 +6484,9 @@ var require_baseTimes = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isObjectLike.js
+// ../node_modules/lodash/isObjectLike.js
 var require_isObjectLike = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isObjectLike.js"(exports, module) {
+  "../node_modules/lodash/isObjectLike.js"(exports, module) {
     function isObjectLike(value) {
       return value != null && typeof value == "object";
     }
@@ -5882,9 +6494,9 @@ var require_isObjectLike = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsArguments.js
+// ../node_modules/lodash/_baseIsArguments.js
 var require_baseIsArguments = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsArguments.js"(exports, module) {
+  "../node_modules/lodash/_baseIsArguments.js"(exports, module) {
     var baseGetTag = require_baseGetTag();
     var isObjectLike = require_isObjectLike();
     var argsTag = "[object Arguments]";
@@ -5895,9 +6507,9 @@ var require_baseIsArguments = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArguments.js
+// ../node_modules/lodash/isArguments.js
 var require_isArguments = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArguments.js"(exports, module) {
+  "../node_modules/lodash/isArguments.js"(exports, module) {
     var baseIsArguments = require_baseIsArguments();
     var isObjectLike = require_isObjectLike();
     var objectProto = Object.prototype;
@@ -5912,17 +6524,17 @@ var require_isArguments = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArray.js
+// ../node_modules/lodash/isArray.js
 var require_isArray = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArray.js"(exports, module) {
+  "../node_modules/lodash/isArray.js"(exports, module) {
     var isArray = Array.isArray;
     module.exports = isArray;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/stubFalse.js
+// ../node_modules/lodash/stubFalse.js
 var require_stubFalse = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/stubFalse.js"(exports, module) {
+  "../node_modules/lodash/stubFalse.js"(exports, module) {
     function stubFalse() {
       return false;
     }
@@ -5930,9 +6542,9 @@ var require_stubFalse = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isBuffer.js
+// ../node_modules/lodash/isBuffer.js
 var require_isBuffer = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isBuffer.js"(exports, module) {
+  "../node_modules/lodash/isBuffer.js"(exports, module) {
     var root = require_root();
     var stubFalse = require_stubFalse();
     var freeExports = typeof exports == "object" && exports && !exports.nodeType && exports;
@@ -5945,9 +6557,9 @@ var require_isBuffer = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsTypedArray.js
+// ../node_modules/lodash/_baseIsTypedArray.js
 var require_baseIsTypedArray = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsTypedArray.js"(exports, module) {
+  "../node_modules/lodash/_baseIsTypedArray.js"(exports, module) {
     var baseGetTag = require_baseGetTag();
     var isLength = require_isLength();
     var isObjectLike = require_isObjectLike();
@@ -5985,9 +6597,9 @@ var require_baseIsTypedArray = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseUnary.js
+// ../node_modules/lodash/_baseUnary.js
 var require_baseUnary = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseUnary.js"(exports, module) {
+  "../node_modules/lodash/_baseUnary.js"(exports, module) {
     function baseUnary(func) {
       return function(value) {
         return func(value);
@@ -5997,9 +6609,9 @@ var require_baseUnary = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nodeUtil.js
+// ../node_modules/lodash/_nodeUtil.js
 var require_nodeUtil = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nodeUtil.js"(exports, module) {
+  "../node_modules/lodash/_nodeUtil.js"(exports, module) {
     var freeGlobal = require_freeGlobal();
     var freeExports = typeof exports == "object" && exports && !exports.nodeType && exports;
     var freeModule = freeExports && typeof module == "object" && module && !module.nodeType && module;
@@ -6019,9 +6631,9 @@ var require_nodeUtil = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isTypedArray.js
+// ../node_modules/lodash/isTypedArray.js
 var require_isTypedArray = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isTypedArray.js"(exports, module) {
+  "../node_modules/lodash/isTypedArray.js"(exports, module) {
     var baseIsTypedArray = require_baseIsTypedArray();
     var baseUnary = require_baseUnary();
     var nodeUtil = require_nodeUtil();
@@ -6031,9 +6643,9 @@ var require_isTypedArray = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayLikeKeys.js
+// ../node_modules/lodash/_arrayLikeKeys.js
 var require_arrayLikeKeys = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayLikeKeys.js"(exports, module) {
+  "../node_modules/lodash/_arrayLikeKeys.js"(exports, module) {
     var baseTimes = require_baseTimes();
     var isArguments = require_isArguments();
     var isArray = require_isArray();
@@ -6059,9 +6671,9 @@ var require_arrayLikeKeys = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isPrototype.js
+// ../node_modules/lodash/_isPrototype.js
 var require_isPrototype = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isPrototype.js"(exports, module) {
+  "../node_modules/lodash/_isPrototype.js"(exports, module) {
     var objectProto = Object.prototype;
     function isPrototype(value) {
       var Ctor = value && value.constructor, proto = typeof Ctor == "function" && Ctor.prototype || objectProto;
@@ -6071,9 +6683,9 @@ var require_isPrototype = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nativeKeysIn.js
+// ../node_modules/lodash/_nativeKeysIn.js
 var require_nativeKeysIn = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nativeKeysIn.js"(exports, module) {
+  "../node_modules/lodash/_nativeKeysIn.js"(exports, module) {
     function nativeKeysIn(object) {
       var result = [];
       if (object != null) {
@@ -6087,9 +6699,9 @@ var require_nativeKeysIn = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseKeysIn.js
+// ../node_modules/lodash/_baseKeysIn.js
 var require_baseKeysIn = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseKeysIn.js"(exports, module) {
+  "../node_modules/lodash/_baseKeysIn.js"(exports, module) {
     var isObject = require_isObject();
     var isPrototype = require_isPrototype();
     var nativeKeysIn = require_nativeKeysIn();
@@ -6111,9 +6723,9 @@ var require_baseKeysIn = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/keysIn.js
+// ../node_modules/lodash/keysIn.js
 var require_keysIn = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/keysIn.js"(exports, module) {
+  "../node_modules/lodash/keysIn.js"(exports, module) {
     var arrayLikeKeys = require_arrayLikeKeys();
     var baseKeysIn = require_baseKeysIn();
     var isArrayLike = require_isArrayLike();
@@ -6124,9 +6736,9 @@ var require_keysIn = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/defaults.js
+// ../node_modules/lodash/defaults.js
 var require_defaults = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/defaults.js"(exports, module) {
+  "../node_modules/lodash/defaults.js"(exports, module) {
     var baseRest = require_baseRest();
     var eq = require_eq();
     var isIterateeCall = require_isIterateeCall();
@@ -6160,9 +6772,9 @@ var require_defaults = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/primordials.js
+// ../node_modules/readable-stream/lib/ours/primordials.js
 var require_primordials = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/primordials.js"(exports, module) {
+  "../node_modules/readable-stream/lib/ours/primordials.js"(exports, module) {
     "use strict";
     var AggregateError = class extends Error {
       constructor(errors) {
@@ -6281,9 +6893,9 @@ var require_primordials = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/util/inspect.js
+// ../node_modules/readable-stream/lib/ours/util/inspect.js
 var require_inspect = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/util/inspect.js"(exports, module) {
+  "../node_modules/readable-stream/lib/ours/util/inspect.js"(exports, module) {
     "use strict";
     module.exports = {
       format(format, ...args) {
@@ -6332,9 +6944,9 @@ var require_inspect = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/errors.js
+// ../node_modules/readable-stream/lib/ours/errors.js
 var require_errors = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/errors.js"(exports, module) {
+  "../node_modules/readable-stream/lib/ours/errors.js"(exports, module) {
     "use strict";
     var { format, inspect } = require_inspect();
     var { AggregateError: CustomAggregateError } = require_primordials();
@@ -6650,9 +7262,9 @@ var require_errors = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/event-target-shim@5.0.1/node_modules/event-target-shim/dist/event-target-shim.js
+// ../node_modules/event-target-shim/dist/event-target-shim.js
 var require_event_target_shim = __commonJS({
-  "../node_modules/.pnpm/event-target-shim@5.0.1/node_modules/event-target-shim/dist/event-target-shim.js"(exports, module) {
+  "../node_modules/event-target-shim/dist/event-target-shim.js"(exports, module) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var privateData = /* @__PURE__ */ new WeakMap();
@@ -7222,9 +7834,9 @@ var require_event_target_shim = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/abort-controller@3.0.0/node_modules/abort-controller/dist/abort-controller.js
+// ../node_modules/abort-controller/dist/abort-controller.js
 var require_abort_controller = __commonJS({
-  "../node_modules/.pnpm/abort-controller@3.0.0/node_modules/abort-controller/dist/abort-controller.js"(exports, module) {
+  "../node_modules/abort-controller/dist/abort-controller.js"(exports, module) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var eventTargetShim = require_event_target_shim();
@@ -7318,9 +7930,9 @@ var require_abort_controller = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/util.js
+// ../node_modules/readable-stream/lib/ours/util.js
 var require_util2 = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/util.js"(exports, module) {
+  "../node_modules/readable-stream/lib/ours/util.js"(exports, module) {
     "use strict";
     var bufferModule = __require("buffer");
     var { format, inspect } = require_inspect();
@@ -7457,9 +8069,9 @@ var require_util2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/validators.js
+// ../node_modules/readable-stream/lib/internal/validators.js
 var require_validators = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/validators.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/validators.js"(exports, module) {
     "use strict";
     var {
       ArrayIsArray,
@@ -7721,16 +8333,16 @@ var require_validators = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/process@0.11.10/node_modules/process/index.js
+// ../node_modules/process/index.js
 var require_process = __commonJS({
-  "../node_modules/.pnpm/process@0.11.10/node_modules/process/index.js"(exports, module) {
+  "../node_modules/process/index.js"(exports, module) {
     module.exports = global.process;
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/shims/process.js
+// ../node_modules/readable-stream/lib/internal/shims/process.js
 var require_process2 = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/shims/process.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/shims/process.js"(exports, module) {
     "use strict";
     var process2 = ((base, esmKey, keys, isValid) => {
       if (esmKey in base && base[esmKey] === true) {
@@ -7751,9 +8363,9 @@ var require_process2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/utils.js
+// ../node_modules/readable-stream/lib/internal/streams/utils.js
 var require_utils = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/utils.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/utils.js"(exports, module) {
     "use strict";
     var { SymbolAsyncIterator, SymbolIterator, SymbolFor } = require_primordials();
     var kIsDestroyed = SymbolFor("nodejs.stream.destroyed");
@@ -7960,9 +8572,9 @@ var require_utils = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/end-of-stream.js
+// ../node_modules/readable-stream/lib/internal/streams/end-of-stream.js
 var require_end_of_stream = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/end-of-stream.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/end-of-stream.js"(exports, module) {
     "use strict";
     var process2 = require_process2();
     var { AbortError, codes } = require_errors();
@@ -8212,9 +8824,9 @@ var require_end_of_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/destroy.js
-var require_destroy = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/destroy.js"(exports, module) {
+// ../node_modules/readable-stream/lib/internal/streams/destroy.js
+var require_destroy2 = __commonJS({
+  "../node_modules/readable-stream/lib/internal/streams/destroy.js"(exports, module) {
     "use strict";
     var process2 = require_process2();
     var {
@@ -8477,9 +9089,9 @@ var require_destroy = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/legacy.js
+// ../node_modules/readable-stream/lib/internal/streams/legacy.js
 var require_legacy = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/legacy.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/legacy.js"(exports, module) {
     "use strict";
     var { ArrayIsArray, ObjectSetPrototypeOf } = require_primordials();
     var { EventEmitter: EE } = __require("events");
@@ -8556,9 +9168,9 @@ var require_legacy = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/add-abort-signal.js
+// ../node_modules/readable-stream/lib/internal/streams/add-abort-signal.js
 var require_add_abort_signal = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/add-abort-signal.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/add-abort-signal.js"(exports, module) {
     "use strict";
     var { SymbolDispose } = require_primordials();
     var { AbortError, codes } = require_errors();
@@ -8607,9 +9219,9 @@ var require_add_abort_signal = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/buffer_list.js
+// ../node_modules/readable-stream/lib/internal/streams/buffer_list.js
 var require_buffer_list = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/buffer_list.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/buffer_list.js"(exports, module) {
     "use strict";
     var { StringPrototypeSlice, SymbolIterator, TypedArrayPrototypeSet, Uint8Array: Uint8Array2 } = require_primordials();
     var { Buffer: Buffer2 } = __require("buffer");
@@ -8762,9 +9374,9 @@ var require_buffer_list = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/state.js
+// ../node_modules/readable-stream/lib/internal/streams/state.js
 var require_state = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/state.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/state.js"(exports, module) {
     "use strict";
     var { MathFloor, NumberIsInteger } = require_primordials();
     var { validateInteger } = require_validators();
@@ -8804,9 +9416,9 @@ var require_state = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/safe-buffer@5.2.1/node_modules/safe-buffer/index.js
-var require_safe_buffer = __commonJS({
-  "../node_modules/.pnpm/safe-buffer@5.2.1/node_modules/safe-buffer/index.js"(exports, module) {
+// ../node_modules/safe-buffer/index.js
+var require_safe_buffer2 = __commonJS({
+  "../node_modules/safe-buffer/index.js"(exports, module) {
     var buffer = __require("buffer");
     var Buffer2 = buffer.Buffer;
     function copyProps(src, dst) {
@@ -8862,11 +9474,11 @@ var require_safe_buffer = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/string_decoder@1.3.0/node_modules/string_decoder/lib/string_decoder.js
+// ../node_modules/string_decoder/lib/string_decoder.js
 var require_string_decoder2 = __commonJS({
-  "../node_modules/.pnpm/string_decoder@1.3.0/node_modules/string_decoder/lib/string_decoder.js"(exports) {
+  "../node_modules/string_decoder/lib/string_decoder.js"(exports) {
     "use strict";
-    var Buffer2 = require_safe_buffer().Buffer;
+    var Buffer2 = require_safe_buffer2().Buffer;
     var isEncoding = Buffer2.isEncoding || function(encoding) {
       encoding = "" + encoding;
       switch (encoding && encoding.toLowerCase()) {
@@ -9100,9 +9712,9 @@ var require_string_decoder2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/from.js
+// ../node_modules/readable-stream/lib/internal/streams/from.js
 var require_from = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/from.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/from.js"(exports, module) {
     "use strict";
     var process2 = require_process2();
     var { PromisePrototypeThen, SymbolAsyncIterator, SymbolIterator } = require_primordials();
@@ -9195,9 +9807,9 @@ var require_from = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/readable.js
-var require_readable = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/readable.js"(exports, module) {
+// ../node_modules/readable-stream/lib/internal/streams/readable.js
+var require_readable2 = __commonJS({
+  "../node_modules/readable-stream/lib/internal/streams/readable.js"(exports, module) {
     "use strict";
     var process2 = require_process2();
     var {
@@ -9225,7 +9837,7 @@ var require_readable = __commonJS({
       debug = fn;
     });
     var BufferList = require_buffer_list();
-    var destroyImpl = require_destroy();
+    var destroyImpl = require_destroy2();
     var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
     var {
       aggregateTwoErrors,
@@ -10161,9 +10773,9 @@ var require_readable = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/writable.js
+// ../node_modules/readable-stream/lib/internal/streams/writable.js
 var require_writable = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/writable.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/writable.js"(exports, module) {
     "use strict";
     var process2 = require_process2();
     var {
@@ -10182,7 +10794,7 @@ var require_writable = __commonJS({
     var { EventEmitter: EE } = __require("events");
     var Stream = require_legacy().Stream;
     var { Buffer: Buffer2 } = __require("buffer");
-    var destroyImpl = require_destroy();
+    var destroyImpl = require_destroy2();
     var { addAbortSignal } = require_add_abort_signal();
     var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
     var {
@@ -10782,9 +11394,9 @@ var require_writable = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/duplexify.js
+// ../node_modules/readable-stream/lib/internal/streams/duplexify.js
 var require_duplexify = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/duplexify.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/duplexify.js"(exports, module) {
     var process2 = require_process2();
     var bufferModule = __require("buffer");
     var {
@@ -10803,9 +11415,9 @@ var require_duplexify = __commonJS({
       AbortError,
       codes: { ERR_INVALID_ARG_TYPE, ERR_INVALID_RETURN_VALUE }
     } = require_errors();
-    var { destroyer } = require_destroy();
+    var { destroyer } = require_destroy2();
     var Duplex = require_duplex();
-    var Readable = require_readable();
+    var Readable = require_readable2();
     var Writable = require_writable();
     var { createDeferredPromise } = require_util2();
     var from = require_from();
@@ -11129,9 +11741,9 @@ var require_duplexify = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/duplex.js
+// ../node_modules/readable-stream/lib/internal/streams/duplex.js
 var require_duplex = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/duplex.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/duplex.js"(exports, module) {
     "use strict";
     var {
       ObjectDefineProperties,
@@ -11140,7 +11752,7 @@ var require_duplex = __commonJS({
       ObjectSetPrototypeOf
     } = require_primordials();
     module.exports = Duplex;
-    var Readable = require_readable();
+    var Readable = require_readable2();
     var Writable = require_writable();
     ObjectSetPrototypeOf(Duplex.prototype, Readable.prototype);
     ObjectSetPrototypeOf(Duplex, Readable);
@@ -11246,9 +11858,9 @@ var require_duplex = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/transform.js
+// ../node_modules/readable-stream/lib/internal/streams/transform.js
 var require_transform = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/transform.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/transform.js"(exports, module) {
     "use strict";
     var { ObjectSetPrototypeOf, Symbol: Symbol2 } = require_primordials();
     module.exports = Transform;
@@ -11348,9 +11960,9 @@ var require_transform = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/passthrough.js
+// ../node_modules/readable-stream/lib/internal/streams/passthrough.js
 var require_passthrough2 = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/passthrough.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/passthrough.js"(exports, module) {
     "use strict";
     var { ObjectSetPrototypeOf } = require_primordials();
     module.exports = PassThrough;
@@ -11367,14 +11979,14 @@ var require_passthrough2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/pipeline.js
+// ../node_modules/readable-stream/lib/internal/streams/pipeline.js
 var require_pipeline = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/pipeline.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/pipeline.js"(exports, module) {
     var process2 = require_process2();
     var { ArrayIsArray, Promise: Promise2, SymbolAsyncIterator, SymbolDispose } = require_primordials();
     var eos = require_end_of_stream();
     var { once } = require_util2();
-    var destroyImpl = require_destroy();
+    var destroyImpl = require_destroy2();
     var Duplex = require_duplex();
     var {
       aggregateTwoErrors,
@@ -11440,7 +12052,7 @@ var require_pipeline = __commonJS({
     }
     async function* fromReadable(val) {
       if (!Readable) {
-        Readable = require_readable();
+        Readable = require_readable2();
       }
       yield* Readable.prototype[SymbolAsyncIterator].call(val);
     }
@@ -11795,13 +12407,13 @@ var require_pipeline = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/compose.js
+// ../node_modules/readable-stream/lib/internal/streams/compose.js
 var require_compose = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/compose.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/compose.js"(exports, module) {
     "use strict";
     var { pipeline } = require_pipeline();
     var Duplex = require_duplex();
-    var { destroyer } = require_destroy();
+    var { destroyer } = require_destroy2();
     var {
       isNodeStream,
       isReadable,
@@ -11988,9 +12600,9 @@ var require_compose = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/operators.js
+// ../node_modules/readable-stream/lib/internal/streams/operators.js
 var require_operators = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/internal/streams/operators.js"(exports, module) {
+  "../node_modules/readable-stream/lib/internal/streams/operators.js"(exports, module) {
     "use strict";
     var AbortController = globalThis.AbortController || require_abort_controller().AbortController;
     var {
@@ -12393,15 +13005,15 @@ var require_operators = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/stream/promises.js
+// ../node_modules/readable-stream/lib/stream/promises.js
 var require_promises = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/stream/promises.js"(exports, module) {
+  "../node_modules/readable-stream/lib/stream/promises.js"(exports, module) {
     "use strict";
     var { ArrayPrototypePop, Promise: Promise2 } = require_primordials();
     var { isIterable, isNodeStream, isWebStream } = require_utils();
     var { pipelineImpl: pl } = require_pipeline();
     var { finished } = require_end_of_stream();
-    require_stream();
+    require_stream2();
     function pipeline(...streams) {
       return new Promise2((resolve, reject) => {
         let signal;
@@ -12435,9 +13047,9 @@ var require_promises = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/stream.js
-var require_stream = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/stream.js"(exports, module) {
+// ../node_modules/readable-stream/lib/stream.js
+var require_stream2 = __commonJS({
+  "../node_modules/readable-stream/lib/stream.js"(exports, module) {
     "use strict";
     var { Buffer: Buffer2 } = __require("buffer");
     var { ObjectDefineProperty, ObjectKeys, ReflectApply } = require_primordials();
@@ -12451,7 +13063,7 @@ var require_stream = __commonJS({
     var compose = require_compose();
     var { setDefaultHighWaterMark, getDefaultHighWaterMark } = require_state();
     var { pipeline } = require_pipeline();
-    var { destroyer } = require_destroy();
+    var { destroyer } = require_destroy2();
     var eos = require_end_of_stream();
     var promises = require_promises();
     var utils = require_utils();
@@ -12461,7 +13073,7 @@ var require_stream = __commonJS({
     Stream.isErrored = utils.isErrored;
     Stream.isReadable = utils.isReadable;
     Stream.isWritable = utils.isWritable;
-    Stream.Readable = require_readable();
+    Stream.Readable = require_readable2();
     for (const key of ObjectKeys(streamReturningOperators)) {
       let fn = function(...args) {
         if (new.target) {
@@ -12554,9 +13166,9 @@ var require_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/index.js
+// ../node_modules/readable-stream/lib/ours/index.js
 var require_ours = __commonJS({
-  "../node_modules/.pnpm/readable-stream@4.8.0/node_modules/readable-stream/lib/ours/index.js"(exports, module) {
+  "../node_modules/readable-stream/lib/ours/index.js"(exports, module) {
     "use strict";
     var Stream = __require("stream");
     if (Stream && process.env.READABLE_STREAM === "disable") {
@@ -12585,7 +13197,7 @@ var require_ours = __commonJS({
       });
       module.exports.Stream = Stream.Stream;
     } else {
-      const CustomStream = require_stream();
+      const CustomStream = require_stream2();
       const promises = require_promises();
       const originalDestroy = CustomStream.Readable.destroy;
       module.exports = CustomStream.Readable;
@@ -12618,9 +13230,9 @@ var require_ours = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayPush.js
+// ../node_modules/lodash/_arrayPush.js
 var require_arrayPush = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayPush.js"(exports, module) {
+  "../node_modules/lodash/_arrayPush.js"(exports, module) {
     function arrayPush(array, values) {
       var index = -1, length = values.length, offset = array.length;
       while (++index < length) {
@@ -12632,9 +13244,9 @@ var require_arrayPush = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isFlattenable.js
+// ../node_modules/lodash/_isFlattenable.js
 var require_isFlattenable = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isFlattenable.js"(exports, module) {
+  "../node_modules/lodash/_isFlattenable.js"(exports, module) {
     var Symbol2 = require_Symbol();
     var isArguments = require_isArguments();
     var isArray = require_isArray();
@@ -12646,9 +13258,9 @@ var require_isFlattenable = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseFlatten.js
+// ../node_modules/lodash/_baseFlatten.js
 var require_baseFlatten = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseFlatten.js"(exports, module) {
+  "../node_modules/lodash/_baseFlatten.js"(exports, module) {
     var arrayPush = require_arrayPush();
     var isFlattenable = require_isFlattenable();
     function baseFlatten(array, depth, predicate, isStrict, result) {
@@ -12673,9 +13285,9 @@ var require_baseFlatten = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/flatten.js
+// ../node_modules/lodash/flatten.js
 var require_flatten = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/flatten.js"(exports, module) {
+  "../node_modules/lodash/flatten.js"(exports, module) {
     var baseFlatten = require_baseFlatten();
     function flatten(array) {
       var length = array == null ? 0 : array.length;
@@ -12685,18 +13297,18 @@ var require_flatten = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nativeCreate.js
+// ../node_modules/lodash/_nativeCreate.js
 var require_nativeCreate = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_nativeCreate.js"(exports, module) {
+  "../node_modules/lodash/_nativeCreate.js"(exports, module) {
     var getNative = require_getNative();
     var nativeCreate = getNative(Object, "create");
     module.exports = nativeCreate;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashClear.js
+// ../node_modules/lodash/_hashClear.js
 var require_hashClear = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashClear.js"(exports, module) {
+  "../node_modules/lodash/_hashClear.js"(exports, module) {
     var nativeCreate = require_nativeCreate();
     function hashClear() {
       this.__data__ = nativeCreate ? nativeCreate(null) : {};
@@ -12706,9 +13318,9 @@ var require_hashClear = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashDelete.js
+// ../node_modules/lodash/_hashDelete.js
 var require_hashDelete = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashDelete.js"(exports, module) {
+  "../node_modules/lodash/_hashDelete.js"(exports, module) {
     function hashDelete(key) {
       var result = this.has(key) && delete this.__data__[key];
       this.size -= result ? 1 : 0;
@@ -12718,9 +13330,9 @@ var require_hashDelete = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashGet.js
+// ../node_modules/lodash/_hashGet.js
 var require_hashGet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashGet.js"(exports, module) {
+  "../node_modules/lodash/_hashGet.js"(exports, module) {
     var nativeCreate = require_nativeCreate();
     var HASH_UNDEFINED = "__lodash_hash_undefined__";
     var objectProto = Object.prototype;
@@ -12737,9 +13349,9 @@ var require_hashGet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashHas.js
+// ../node_modules/lodash/_hashHas.js
 var require_hashHas = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashHas.js"(exports, module) {
+  "../node_modules/lodash/_hashHas.js"(exports, module) {
     var nativeCreate = require_nativeCreate();
     var objectProto = Object.prototype;
     var hasOwnProperty = objectProto.hasOwnProperty;
@@ -12751,9 +13363,9 @@ var require_hashHas = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashSet.js
+// ../node_modules/lodash/_hashSet.js
 var require_hashSet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_hashSet.js"(exports, module) {
+  "../node_modules/lodash/_hashSet.js"(exports, module) {
     var nativeCreate = require_nativeCreate();
     var HASH_UNDEFINED = "__lodash_hash_undefined__";
     function hashSet(key, value) {
@@ -12766,9 +13378,9 @@ var require_hashSet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Hash.js
+// ../node_modules/lodash/_Hash.js
 var require_Hash = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Hash.js"(exports, module) {
+  "../node_modules/lodash/_Hash.js"(exports, module) {
     var hashClear = require_hashClear();
     var hashDelete = require_hashDelete();
     var hashGet = require_hashGet();
@@ -12791,9 +13403,9 @@ var require_Hash = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheClear.js
+// ../node_modules/lodash/_listCacheClear.js
 var require_listCacheClear = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheClear.js"(exports, module) {
+  "../node_modules/lodash/_listCacheClear.js"(exports, module) {
     function listCacheClear() {
       this.__data__ = [];
       this.size = 0;
@@ -12802,9 +13414,9 @@ var require_listCacheClear = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_assocIndexOf.js
+// ../node_modules/lodash/_assocIndexOf.js
 var require_assocIndexOf = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_assocIndexOf.js"(exports, module) {
+  "../node_modules/lodash/_assocIndexOf.js"(exports, module) {
     var eq = require_eq();
     function assocIndexOf(array, key) {
       var length = array.length;
@@ -12819,9 +13431,9 @@ var require_assocIndexOf = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheDelete.js
+// ../node_modules/lodash/_listCacheDelete.js
 var require_listCacheDelete = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheDelete.js"(exports, module) {
+  "../node_modules/lodash/_listCacheDelete.js"(exports, module) {
     var assocIndexOf = require_assocIndexOf();
     var arrayProto = Array.prototype;
     var splice = arrayProto.splice;
@@ -12843,9 +13455,9 @@ var require_listCacheDelete = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheGet.js
+// ../node_modules/lodash/_listCacheGet.js
 var require_listCacheGet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheGet.js"(exports, module) {
+  "../node_modules/lodash/_listCacheGet.js"(exports, module) {
     var assocIndexOf = require_assocIndexOf();
     function listCacheGet(key) {
       var data = this.__data__, index = assocIndexOf(data, key);
@@ -12855,9 +13467,9 @@ var require_listCacheGet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheHas.js
+// ../node_modules/lodash/_listCacheHas.js
 var require_listCacheHas = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheHas.js"(exports, module) {
+  "../node_modules/lodash/_listCacheHas.js"(exports, module) {
     var assocIndexOf = require_assocIndexOf();
     function listCacheHas(key) {
       return assocIndexOf(this.__data__, key) > -1;
@@ -12866,9 +13478,9 @@ var require_listCacheHas = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheSet.js
+// ../node_modules/lodash/_listCacheSet.js
 var require_listCacheSet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_listCacheSet.js"(exports, module) {
+  "../node_modules/lodash/_listCacheSet.js"(exports, module) {
     var assocIndexOf = require_assocIndexOf();
     function listCacheSet(key, value) {
       var data = this.__data__, index = assocIndexOf(data, key);
@@ -12884,9 +13496,9 @@ var require_listCacheSet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_ListCache.js
+// ../node_modules/lodash/_ListCache.js
 var require_ListCache = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_ListCache.js"(exports, module) {
+  "../node_modules/lodash/_ListCache.js"(exports, module) {
     var listCacheClear = require_listCacheClear();
     var listCacheDelete = require_listCacheDelete();
     var listCacheGet = require_listCacheGet();
@@ -12909,9 +13521,9 @@ var require_ListCache = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Map.js
+// ../node_modules/lodash/_Map.js
 var require_Map = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Map.js"(exports, module) {
+  "../node_modules/lodash/_Map.js"(exports, module) {
     var getNative = require_getNative();
     var root = require_root();
     var Map2 = getNative(root, "Map");
@@ -12919,9 +13531,9 @@ var require_Map = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheClear.js
+// ../node_modules/lodash/_mapCacheClear.js
 var require_mapCacheClear = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheClear.js"(exports, module) {
+  "../node_modules/lodash/_mapCacheClear.js"(exports, module) {
     var Hash = require_Hash();
     var ListCache = require_ListCache();
     var Map2 = require_Map();
@@ -12937,9 +13549,9 @@ var require_mapCacheClear = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isKeyable.js
+// ../node_modules/lodash/_isKeyable.js
 var require_isKeyable = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_isKeyable.js"(exports, module) {
+  "../node_modules/lodash/_isKeyable.js"(exports, module) {
     function isKeyable(value) {
       var type = typeof value;
       return type == "string" || type == "number" || type == "symbol" || type == "boolean" ? value !== "__proto__" : value === null;
@@ -12948,9 +13560,9 @@ var require_isKeyable = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getMapData.js
+// ../node_modules/lodash/_getMapData.js
 var require_getMapData = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getMapData.js"(exports, module) {
+  "../node_modules/lodash/_getMapData.js"(exports, module) {
     var isKeyable = require_isKeyable();
     function getMapData(map, key) {
       var data = map.__data__;
@@ -12960,9 +13572,9 @@ var require_getMapData = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheDelete.js
+// ../node_modules/lodash/_mapCacheDelete.js
 var require_mapCacheDelete = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheDelete.js"(exports, module) {
+  "../node_modules/lodash/_mapCacheDelete.js"(exports, module) {
     var getMapData = require_getMapData();
     function mapCacheDelete(key) {
       var result = getMapData(this, key)["delete"](key);
@@ -12973,9 +13585,9 @@ var require_mapCacheDelete = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheGet.js
+// ../node_modules/lodash/_mapCacheGet.js
 var require_mapCacheGet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheGet.js"(exports, module) {
+  "../node_modules/lodash/_mapCacheGet.js"(exports, module) {
     var getMapData = require_getMapData();
     function mapCacheGet(key) {
       return getMapData(this, key).get(key);
@@ -12984,9 +13596,9 @@ var require_mapCacheGet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheHas.js
+// ../node_modules/lodash/_mapCacheHas.js
 var require_mapCacheHas = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheHas.js"(exports, module) {
+  "../node_modules/lodash/_mapCacheHas.js"(exports, module) {
     var getMapData = require_getMapData();
     function mapCacheHas(key) {
       return getMapData(this, key).has(key);
@@ -12995,9 +13607,9 @@ var require_mapCacheHas = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheSet.js
+// ../node_modules/lodash/_mapCacheSet.js
 var require_mapCacheSet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_mapCacheSet.js"(exports, module) {
+  "../node_modules/lodash/_mapCacheSet.js"(exports, module) {
     var getMapData = require_getMapData();
     function mapCacheSet(key, value) {
       var data = getMapData(this, key), size = data.size;
@@ -13009,9 +13621,9 @@ var require_mapCacheSet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_MapCache.js
+// ../node_modules/lodash/_MapCache.js
 var require_MapCache = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_MapCache.js"(exports, module) {
+  "../node_modules/lodash/_MapCache.js"(exports, module) {
     var mapCacheClear = require_mapCacheClear();
     var mapCacheDelete = require_mapCacheDelete();
     var mapCacheGet = require_mapCacheGet();
@@ -13034,9 +13646,9 @@ var require_MapCache = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setCacheAdd.js
+// ../node_modules/lodash/_setCacheAdd.js
 var require_setCacheAdd = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setCacheAdd.js"(exports, module) {
+  "../node_modules/lodash/_setCacheAdd.js"(exports, module) {
     var HASH_UNDEFINED = "__lodash_hash_undefined__";
     function setCacheAdd(value) {
       this.__data__.set(value, HASH_UNDEFINED);
@@ -13046,9 +13658,9 @@ var require_setCacheAdd = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setCacheHas.js
+// ../node_modules/lodash/_setCacheHas.js
 var require_setCacheHas = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setCacheHas.js"(exports, module) {
+  "../node_modules/lodash/_setCacheHas.js"(exports, module) {
     function setCacheHas(value) {
       return this.__data__.has(value);
     }
@@ -13056,9 +13668,9 @@ var require_setCacheHas = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_SetCache.js
+// ../node_modules/lodash/_SetCache.js
 var require_SetCache = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_SetCache.js"(exports, module) {
+  "../node_modules/lodash/_SetCache.js"(exports, module) {
     var MapCache = require_MapCache();
     var setCacheAdd = require_setCacheAdd();
     var setCacheHas = require_setCacheHas();
@@ -13075,9 +13687,9 @@ var require_SetCache = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseFindIndex.js
+// ../node_modules/lodash/_baseFindIndex.js
 var require_baseFindIndex = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseFindIndex.js"(exports, module) {
+  "../node_modules/lodash/_baseFindIndex.js"(exports, module) {
     function baseFindIndex(array, predicate, fromIndex, fromRight) {
       var length = array.length, index = fromIndex + (fromRight ? 1 : -1);
       while (fromRight ? index-- : ++index < length) {
@@ -13091,9 +13703,9 @@ var require_baseFindIndex = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsNaN.js
+// ../node_modules/lodash/_baseIsNaN.js
 var require_baseIsNaN = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIsNaN.js"(exports, module) {
+  "../node_modules/lodash/_baseIsNaN.js"(exports, module) {
     function baseIsNaN(value) {
       return value !== value;
     }
@@ -13101,9 +13713,9 @@ var require_baseIsNaN = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_strictIndexOf.js
+// ../node_modules/lodash/_strictIndexOf.js
 var require_strictIndexOf = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_strictIndexOf.js"(exports, module) {
+  "../node_modules/lodash/_strictIndexOf.js"(exports, module) {
     function strictIndexOf(array, value, fromIndex) {
       var index = fromIndex - 1, length = array.length;
       while (++index < length) {
@@ -13117,9 +13729,9 @@ var require_strictIndexOf = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIndexOf.js
+// ../node_modules/lodash/_baseIndexOf.js
 var require_baseIndexOf = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseIndexOf.js"(exports, module) {
+  "../node_modules/lodash/_baseIndexOf.js"(exports, module) {
     var baseFindIndex = require_baseFindIndex();
     var baseIsNaN = require_baseIsNaN();
     var strictIndexOf = require_strictIndexOf();
@@ -13130,9 +13742,9 @@ var require_baseIndexOf = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayIncludes.js
+// ../node_modules/lodash/_arrayIncludes.js
 var require_arrayIncludes = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayIncludes.js"(exports, module) {
+  "../node_modules/lodash/_arrayIncludes.js"(exports, module) {
     var baseIndexOf = require_baseIndexOf();
     function arrayIncludes(array, value) {
       var length = array == null ? 0 : array.length;
@@ -13142,9 +13754,9 @@ var require_arrayIncludes = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayIncludesWith.js
+// ../node_modules/lodash/_arrayIncludesWith.js
 var require_arrayIncludesWith = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayIncludesWith.js"(exports, module) {
+  "../node_modules/lodash/_arrayIncludesWith.js"(exports, module) {
     function arrayIncludesWith(array, value, comparator) {
       var index = -1, length = array == null ? 0 : array.length;
       while (++index < length) {
@@ -13158,9 +13770,9 @@ var require_arrayIncludesWith = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayMap.js
+// ../node_modules/lodash/_arrayMap.js
 var require_arrayMap = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_arrayMap.js"(exports, module) {
+  "../node_modules/lodash/_arrayMap.js"(exports, module) {
     function arrayMap(array, iteratee) {
       var index = -1, length = array == null ? 0 : array.length, result = Array(length);
       while (++index < length) {
@@ -13172,9 +13784,9 @@ var require_arrayMap = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_cacheHas.js
+// ../node_modules/lodash/_cacheHas.js
 var require_cacheHas = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_cacheHas.js"(exports, module) {
+  "../node_modules/lodash/_cacheHas.js"(exports, module) {
     function cacheHas(cache, key) {
       return cache.has(key);
     }
@@ -13182,9 +13794,9 @@ var require_cacheHas = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseDifference.js
+// ../node_modules/lodash/_baseDifference.js
 var require_baseDifference = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseDifference.js"(exports, module) {
+  "../node_modules/lodash/_baseDifference.js"(exports, module) {
     var SetCache = require_SetCache();
     var arrayIncludes = require_arrayIncludes();
     var arrayIncludesWith = require_arrayIncludesWith();
@@ -13230,9 +13842,9 @@ var require_baseDifference = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArrayLikeObject.js
+// ../node_modules/lodash/isArrayLikeObject.js
 var require_isArrayLikeObject = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isArrayLikeObject.js"(exports, module) {
+  "../node_modules/lodash/isArrayLikeObject.js"(exports, module) {
     var isArrayLike = require_isArrayLike();
     var isObjectLike = require_isObjectLike();
     function isArrayLikeObject(value) {
@@ -13242,9 +13854,9 @@ var require_isArrayLikeObject = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/difference.js
+// ../node_modules/lodash/difference.js
 var require_difference = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/difference.js"(exports, module) {
+  "../node_modules/lodash/difference.js"(exports, module) {
     var baseDifference = require_baseDifference();
     var baseFlatten = require_baseFlatten();
     var baseRest = require_baseRest();
@@ -13256,9 +13868,9 @@ var require_difference = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Set.js
+// ../node_modules/lodash/_Set.js
 var require_Set = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_Set.js"(exports, module) {
+  "../node_modules/lodash/_Set.js"(exports, module) {
     var getNative = require_getNative();
     var root = require_root();
     var Set2 = getNative(root, "Set");
@@ -13266,18 +13878,18 @@ var require_Set = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/noop.js
+// ../node_modules/lodash/noop.js
 var require_noop = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/noop.js"(exports, module) {
+  "../node_modules/lodash/noop.js"(exports, module) {
     function noop() {
     }
     module.exports = noop;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setToArray.js
+// ../node_modules/lodash/_setToArray.js
 var require_setToArray = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_setToArray.js"(exports, module) {
+  "../node_modules/lodash/_setToArray.js"(exports, module) {
     function setToArray(set) {
       var index = -1, result = Array(set.size);
       set.forEach(function(value) {
@@ -13289,9 +13901,9 @@ var require_setToArray = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_createSet.js
+// ../node_modules/lodash/_createSet.js
 var require_createSet = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_createSet.js"(exports, module) {
+  "../node_modules/lodash/_createSet.js"(exports, module) {
     var Set2 = require_Set();
     var noop = require_noop();
     var setToArray = require_setToArray();
@@ -13303,9 +13915,9 @@ var require_createSet = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseUniq.js
+// ../node_modules/lodash/_baseUniq.js
 var require_baseUniq = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_baseUniq.js"(exports, module) {
+  "../node_modules/lodash/_baseUniq.js"(exports, module) {
     var SetCache = require_SetCache();
     var arrayIncludes = require_arrayIncludes();
     var arrayIncludesWith = require_arrayIncludesWith();
@@ -13357,9 +13969,9 @@ var require_baseUniq = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/union.js
+// ../node_modules/lodash/union.js
 var require_union = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/union.js"(exports, module) {
+  "../node_modules/lodash/union.js"(exports, module) {
     var baseFlatten = require_baseFlatten();
     var baseRest = require_baseRest();
     var baseUniq = require_baseUniq();
@@ -13371,9 +13983,9 @@ var require_union = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_overArg.js
+// ../node_modules/lodash/_overArg.js
 var require_overArg = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_overArg.js"(exports, module) {
+  "../node_modules/lodash/_overArg.js"(exports, module) {
     function overArg(func, transform) {
       return function(arg) {
         return func(transform(arg));
@@ -13383,18 +13995,18 @@ var require_overArg = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getPrototype.js
+// ../node_modules/lodash/_getPrototype.js
 var require_getPrototype = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/_getPrototype.js"(exports, module) {
+  "../node_modules/lodash/_getPrototype.js"(exports, module) {
     var overArg = require_overArg();
     var getPrototype = overArg(Object.getPrototypeOf, Object);
     module.exports = getPrototype;
   }
 });
 
-// ../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isPlainObject.js
+// ../node_modules/lodash/isPlainObject.js
 var require_isPlainObject = __commonJS({
-  "../node_modules/.pnpm/lodash@4.18.1/node_modules/lodash/isPlainObject.js"(exports, module) {
+  "../node_modules/lodash/isPlainObject.js"(exports, module) {
     var baseGetTag = require_baseGetTag();
     var getPrototype = require_getPrototype();
     var isObjectLike = require_isObjectLike();
@@ -13419,9 +14031,309 @@ var require_isPlainObject = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/assert-valid-pattern.js
+// ../node_modules/glob/node_modules/balanced-match/index.js
+var require_balanced_match2 = __commonJS({
+  "../node_modules/glob/node_modules/balanced-match/index.js"(exports, module) {
+    "use strict";
+    module.exports = balanced;
+    function balanced(a, b, str) {
+      if (a instanceof RegExp) a = maybeMatch(a, str);
+      if (b instanceof RegExp) b = maybeMatch(b, str);
+      var r = range(a, b, str);
+      return r && {
+        start: r[0],
+        end: r[1],
+        pre: str.slice(0, r[0]),
+        body: str.slice(r[0] + a.length, r[1]),
+        post: str.slice(r[1] + b.length)
+      };
+    }
+    function maybeMatch(reg, str) {
+      var m = str.match(reg);
+      return m ? m[0] : null;
+    }
+    balanced.range = range;
+    function range(a, b, str) {
+      var begs, beg, left, right, result;
+      var ai = str.indexOf(a);
+      var bi = str.indexOf(b, ai + 1);
+      var i = ai;
+      if (ai >= 0 && bi > 0) {
+        if (a === b) {
+          return [ai, bi];
+        }
+        begs = [];
+        left = str.length;
+        while (i >= 0 && !result) {
+          if (i == ai) {
+            begs.push(i);
+            ai = str.indexOf(a, i + 1);
+          } else if (begs.length == 1) {
+            result = [begs.pop(), bi];
+          } else {
+            beg = begs.pop();
+            if (beg < left) {
+              left = beg;
+              right = bi;
+            }
+            bi = str.indexOf(b, i + 1);
+          }
+          i = ai < bi && ai >= 0 ? ai : bi;
+        }
+        if (begs.length) {
+          result = [left, right];
+        }
+      }
+      return result;
+    }
+  }
+});
+
+// ../node_modules/glob/node_modules/brace-expansion/index.js
+var require_brace_expansion2 = __commonJS({
+  "../node_modules/glob/node_modules/brace-expansion/index.js"(exports, module) {
+    var balanced = require_balanced_match2();
+    module.exports = expandTop;
+    var escSlash = "\0SLASH" + Math.random() + "\0";
+    var escOpen = "\0OPEN" + Math.random() + "\0";
+    var escClose = "\0CLOSE" + Math.random() + "\0";
+    var escComma = "\0COMMA" + Math.random() + "\0";
+    var escPeriod = "\0PERIOD" + Math.random() + "\0";
+    var EXPANSION_MAX = 1e5;
+    var EXPANSION_MAX_LENGTH = 4e6;
+    var EXPANSION_MAX_DEPTH = 1e3;
+    var EXPANSION_MAX_REWRITES = 1e3;
+    function numeric(str) {
+      return parseInt(str, 10) == str ? parseInt(str, 10) : str.charCodeAt(0);
+    }
+    function escapeBraces(str) {
+      return str.split("\\\\").join(escSlash).split("\\{").join(escOpen).split("\\}").join(escClose).split("\\,").join(escComma).split("\\.").join(escPeriod);
+    }
+    function unescapeBraces(str) {
+      return str.split(escSlash).join("\\").split(escOpen).join("{").split(escClose).join("}").split(escComma).join(",").split(escPeriod).join(".");
+    }
+    function pushAll(target, items) {
+      for (var i = 0; i < items.length; i++) {
+        target.push(items[i]);
+      }
+    }
+    function parseCommaParts(str) {
+      var parts = [];
+      var carry = "";
+      for (; ; ) {
+        var m = balanced("{", "}", str);
+        if (!m) {
+          var tail = str.split(",");
+          tail[0] = carry + tail[0];
+          pushAll(parts, tail);
+          return parts;
+        }
+        var pre = m.pre;
+        var body = m.body;
+        var post = m.post;
+        var p = pre.split(",");
+        p[0] = carry + p[0];
+        p[p.length - 1] += "{" + body + "}";
+        if (!post.length) {
+          pushAll(parts, p);
+          return parts;
+        }
+        carry = p.pop();
+        pushAll(parts, p);
+        str = post;
+      }
+    }
+    function expandTop(str, options) {
+      if (!str)
+        return [];
+      options = options || {};
+      var max = options.max == null ? EXPANSION_MAX : options.max;
+      var maxLength = options.maxLength == null ? EXPANSION_MAX_LENGTH : options.maxLength;
+      var maxDepth = options.maxDepth == null ? EXPANSION_MAX_DEPTH : options.maxDepth;
+      var maxRewrites = options.maxRewrites == null ? EXPANSION_MAX_REWRITES : options.maxRewrites;
+      if (str.substr(0, 2) === "{}") {
+        str = "\\{\\}" + str.substr(2);
+      }
+      return expand(escapeBraces(str), max, maxLength, maxDepth, 0, maxRewrites, true).map(unescapeBraces);
+    }
+    function embrace(str) {
+      return "{" + str + "}";
+    }
+    function isPadded(el) {
+      return /^-?0\d/.test(el);
+    }
+    function lte(i, y) {
+      return i <= y;
+    }
+    function gte(i, y) {
+      return i >= y;
+    }
+    function combine(acc, pre, values, max, maxLength, dropEmpties) {
+      var out = [];
+      var length = 0;
+      for (var a = 0; a < acc.length; a++) {
+        for (var v = 0; v < values.length; v++) {
+          if (out.length >= max) return out;
+          var expansion = acc[a] + pre + values[v];
+          if (dropEmpties && !expansion) continue;
+          if (length + expansion.length > maxLength) return out;
+          out.push(expansion);
+          length += expansion.length;
+        }
+      }
+      return out;
+    }
+    function expandSequence(body, isAlphaSequence, max, maxLength) {
+      var n = body.split(/\.\./);
+      var N = [];
+      if (n[0] === void 0 || n[1] === void 0) {
+        return N;
+      }
+      var x = numeric(n[0]);
+      var y = numeric(n[1]);
+      var width = Math.max(n[0].length, n[1].length);
+      var incr = n.length === 3 && n[2] !== void 0 ? Math.max(Math.abs(numeric(n[2])), 1) : 1;
+      var test = lte;
+      var reverse = y < x;
+      if (reverse) {
+        incr *= -1;
+        test = gte;
+      }
+      var pad = n.some(isPadded);
+      var length = 0;
+      for (var i = x; test(i, y) && N.length < max; i += incr) {
+        var c;
+        if (isAlphaSequence) {
+          c = String.fromCharCode(i);
+          if (c === "\\") {
+            c = "";
+          }
+        } else {
+          c = String(i);
+          if (pad) {
+            var need = width - c.length;
+            if (need > 0) {
+              var z2 = new Array(need + 1).join("0");
+              if (i < 0) {
+                c = "-" + z2 + c.slice(1);
+              } else {
+                c = z2 + c;
+              }
+            }
+          }
+        }
+        if (length + c.length > maxLength) break;
+        N.push(c);
+        length += c.length;
+      }
+      return N;
+    }
+    function expand(str, max, maxLength, maxDepth, depth, maxRewrites, isTop) {
+      if (depth > maxDepth) {
+        return [str];
+      }
+      var acc = [""];
+      var rewrites = 0;
+      var dropEmpties = false;
+      var firstGroup = true;
+      for (; ; ) {
+        const m = balanced("{", "}", str);
+        if (!m) {
+          return combine(acc, str, [""], max, maxLength, dropEmpties);
+        }
+        const pre = m.pre;
+        if (/\$$/.test(pre)) {
+          acc = combine(
+            acc,
+            pre + "{" + m.body + "}",
+            [""],
+            max,
+            maxLength,
+            dropEmpties && !m.post.length
+          );
+          firstGroup = false;
+          if (!m.post.length) break;
+          str = m.post;
+          continue;
+        }
+        var isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
+        var isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
+        var isSequence = isNumericSequence || isAlphaSequence;
+        var isOptions = m.body.indexOf(",") >= 0;
+        if (!isSequence && !isOptions) {
+          if (rewrites < maxRewrites && m.post.match(/,(?!,).*\}/)) {
+            rewrites++;
+            str = m.pre + "{" + m.body + escClose + m.post;
+            isTop = true;
+            continue;
+          }
+          return combine(
+            acc,
+            pre + "{" + m.body + "}" + m.post,
+            [""],
+            max,
+            maxLength,
+            dropEmpties
+          );
+        }
+        if (firstGroup) {
+          dropEmpties = isTop && !isSequence;
+          firstGroup = false;
+        }
+        var values;
+        if (isSequence) {
+          values = expandSequence(m.body, isAlphaSequence, max, maxLength);
+        } else {
+          var n = parseCommaParts(m.body);
+          if (n.length === 1 && n[0] !== void 0) {
+            n = expand(n[0], max, maxLength, maxDepth, depth + 1, maxRewrites, false).map(embrace);
+            if (n.length === 1) {
+              acc = combine(
+                acc,
+                pre + n[0],
+                [""],
+                max,
+                maxLength,
+                dropEmpties && !m.post.length
+              );
+              if (!m.post.length) break;
+              str = m.post;
+              continue;
+            }
+          }
+          var dropsEmpties = dropEmpties && !m.post.length && !pre;
+          for (var d = 0; dropsEmpties && d < acc.length; d++) {
+            if (acc[d]) {
+              dropsEmpties = false;
+            }
+          }
+          values = [];
+          var valuesLength = 0;
+          outer: for (var j = 0; j < n.length; j++) {
+            var expanded = expand(n[j], max, maxLength, maxDepth, depth + 1, maxRewrites, false);
+            for (var k = 0; k < expanded.length; k++) {
+              var v = expanded[k];
+              if (dropsEmpties && !v) continue;
+              if (values.length >= max || valuesLength + v.length > maxLength) {
+                break outer;
+              }
+              values.push(v);
+              valuesLength += v.length;
+            }
+          }
+        }
+        acc = combine(acc, pre, values, max, maxLength, dropEmpties && !m.post.length);
+        if (!m.post.length) break;
+        str = m.post;
+      }
+      return acc;
+    }
+  }
+});
+
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/assert-valid-pattern.js
 var require_assert_valid_pattern = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/assert-valid-pattern.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/assert-valid-pattern.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.assertValidPattern = void 0;
@@ -13438,9 +14350,9 @@ var require_assert_valid_pattern = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/brace-expressions.js
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/brace-expressions.js
 var require_brace_expressions = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/brace-expressions.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/brace-expressions.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.parseClass = void 0;
@@ -13555,9 +14467,9 @@ var require_brace_expressions = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/unescape.js
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/unescape.js
 var require_unescape = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/unescape.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/unescape.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.unescape = void 0;
@@ -13568,9 +14480,9 @@ var require_unescape = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/ast.js
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/ast.js
 var require_ast = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/ast.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/ast.js"(exports) {
     "use strict";
     var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -14190,9 +15102,9 @@ var require_ast = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/escape.js
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/escape.js
 var require_escape = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/escape.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/escape.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.escape = void 0;
@@ -14203,16 +15115,16 @@ var require_escape = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/index.js
+// ../node_modules/glob/node_modules/minimatch/dist/commonjs/index.js
 var require_commonjs = __commonJS({
-  "../node_modules/.pnpm/minimatch@9.0.9/node_modules/minimatch/dist/commonjs/index.js"(exports) {
+  "../node_modules/glob/node_modules/minimatch/dist/commonjs/index.js"(exports) {
     "use strict";
     var __importDefault = exports && exports.__importDefault || function(mod) {
       return mod && mod.__esModule ? mod : { "default": mod };
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.unescape = exports.escape = exports.AST = exports.Minimatch = exports.match = exports.makeRe = exports.braceExpand = exports.defaults = exports.filter = exports.GLOBSTAR = exports.sep = exports.minimatch = void 0;
-    var brace_expansion_1 = __importDefault(require_brace_expansion());
+    var brace_expansion_1 = __importDefault(require_brace_expansion2());
     var assert_valid_pattern_js_1 = require_assert_valid_pattern();
     var ast_js_1 = require_ast();
     var escape_js_1 = require_escape();
@@ -15025,9 +15937,9 @@ var require_commonjs = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/lru-cache@10.2.0/node_modules/lru-cache/dist/commonjs/index.js
+// ../node_modules/path-scurry/node_modules/lru-cache/dist/commonjs/index.js
 var require_commonjs2 = __commonJS({
-  "../node_modules/.pnpm/lru-cache@10.2.0/node_modules/lru-cache/dist/commonjs/index.js"(exports) {
+  "../node_modules/path-scurry/node_modules/lru-cache/dist/commonjs/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.LRUCache = void 0;
@@ -15112,14 +16024,13 @@ var require_commonjs2 = __commonJS({
       }
     };
     var LRUCache = class _LRUCache {
-      // properties coming in from the options of these, only max and maxSize
-      // really *need* to be protected. The rest can be modified, as they just
-      // set defaults for various methods.
+      // options that cannot be changed without disaster
       #max;
       #maxSize;
       #dispose;
       #disposeAfter;
       #fetchMethod;
+      #memoMethod;
       /**
        * {@link LRUCache.OptionsBase.ttl}
        */
@@ -15265,6 +16176,9 @@ var require_commonjs2 = __commonJS({
       get fetchMethod() {
         return this.#fetchMethod;
       }
+      get memoMethod() {
+        return this.#memoMethod;
+      }
       /**
        * {@link LRUCache.OptionsBase.dispose} (read-only)
        */
@@ -15278,7 +16192,7 @@ var require_commonjs2 = __commonJS({
         return this.#disposeAfter;
       }
       constructor(options) {
-        const { max = 0, ttl, ttlResolution = 1, ttlAutopurge, updateAgeOnGet, updateAgeOnHas, allowStale, dispose, disposeAfter, noDisposeOnSet, noUpdateTTL, maxSize = 0, maxEntrySize = 0, sizeCalculation, fetchMethod, noDeleteOnFetchRejection, noDeleteOnStaleGet, allowStaleOnFetchRejection, allowStaleOnFetchAbort, ignoreFetchAbort } = options;
+        const { max = 0, ttl, ttlResolution = 1, ttlAutopurge, updateAgeOnGet, updateAgeOnHas, allowStale, dispose, disposeAfter, noDisposeOnSet, noUpdateTTL, maxSize = 0, maxEntrySize = 0, sizeCalculation, fetchMethod, memoMethod, noDeleteOnFetchRejection, noDeleteOnStaleGet, allowStaleOnFetchRejection, allowStaleOnFetchAbort, ignoreFetchAbort } = options;
         if (max !== 0 && !isPosInt(max)) {
           throw new TypeError("max option must be a nonnegative integer");
         }
@@ -15298,6 +16212,10 @@ var require_commonjs2 = __commonJS({
             throw new TypeError("sizeCalculation set to non-function");
           }
         }
+        if (memoMethod !== void 0 && typeof memoMethod !== "function") {
+          throw new TypeError("memoMethod must be a function if defined");
+        }
+        this.#memoMethod = memoMethod;
         if (fetchMethod !== void 0 && typeof fetchMethod !== "function") {
           throw new TypeError("fetchMethod must be a function if specified");
         }
@@ -15368,7 +16286,8 @@ var require_commonjs2 = __commonJS({
         }
       }
       /**
-       * Return the remaining TTL time for a given entry key
+       * Return the number of ms left in the item's TTL. If item is not in cache,
+       * returns `0`. Returns `Infinity` if item is in cache without a defined TTL.
        */
       getRemainingTTL(key) {
         return this.#keyMap.has(key) ? Infinity : 0;
@@ -15384,7 +16303,7 @@ var require_commonjs2 = __commonJS({
           if (ttl !== 0 && this.ttlAutopurge) {
             const t = setTimeout(() => {
               if (this.#isStale(index)) {
-                this.delete(this.#keyList[index]);
+                this.#delete(this.#keyList[index], "expire");
               }
             }, ttl + 1);
             if (t.unref) {
@@ -15621,13 +16540,14 @@ var require_commonjs2 = __commonJS({
         return this.entries();
       }
       /**
-       * A String value that is used in the creation of the default string description of an object.
-       * Called by the built-in method Object.prototype.toString.
+       * A String value that is used in the creation of the default string
+       * description of an object. Called by the built-in method
+       * `Object.prototype.toString`.
        */
       [Symbol.toStringTag] = "LRUCache";
       /**
        * Find a value for which the supplied fn method returns a truthy value,
-       * similar to Array.find().  fn is called as fn(value, key, cache).
+       * similar to `Array.find()`. fn is called as `fn(value, key, cache)`.
        */
       find(fn, getOptions = {}) {
         for (const i of this.#indexes()) {
@@ -15641,10 +16561,15 @@ var require_commonjs2 = __commonJS({
         }
       }
       /**
-       * Call the supplied function on each item in the cache, in order from
-       * most recently used to least recently used.  fn is called as
-       * fn(value, key, cache).  Does not update age or recenty of use.
-       * Does not iterate over stale values.
+       * Call the supplied function on each item in the cache, in order from most
+       * recently used to least recently used.
+       *
+       * `fn` is called as `fn(value, key, cache)`.
+       *
+       * If `thisp` is provided, function will be called in the `this`-context of
+       * the provided object, or the cache if no `thisp` object is provided.
+       *
+       * Does not update age or recenty of use, or iterate over stale values.
        */
       forEach(fn, thisp = this) {
         for (const i of this.#indexes()) {
@@ -15676,7 +16601,7 @@ var require_commonjs2 = __commonJS({
         let deleted = false;
         for (const i of this.#rindexes({ allowStale: true })) {
           if (this.#isStale(i)) {
-            this.delete(this.#keyList[i]);
+            this.#delete(this.#keyList[i], "expire");
             deleted = true;
           }
         }
@@ -15684,9 +16609,15 @@ var require_commonjs2 = __commonJS({
       }
       /**
        * Get the extended info about a given entry, to get its value, size, and
-       * TTL info simultaneously. Like {@link LRUCache#dump}, but just for a
-       * single key. Always returns stale values, if their info is found in the
-       * cache, so be sure to check for expired TTLs if relevant.
+       * TTL info simultaneously. Returns `undefined` if the key is not present.
+       *
+       * Unlike {@link LRUCache#dump}, which is designed to be portable and survive
+       * serialization, the `start` value is always the current timestamp, and the
+       * `ttl` is a calculated remaining time to live (negative if expired).
+       *
+       * Always returns stale values, if their info is found in the cache, so be
+       * sure to check for expirations (ie, a negative {@link LRUCache.Entry#ttl})
+       * if relevant.
        */
       info(key) {
         const i = this.#keyMap.get(key);
@@ -15713,7 +16644,16 @@ var require_commonjs2 = __commonJS({
       }
       /**
        * Return an array of [key, {@link LRUCache.Entry}] tuples which can be
-       * passed to cache.load()
+       * passed to {@link LRLUCache#load}.
+       *
+       * The `start` fields are calculated relative to a portable `Date.now()`
+       * timestamp, even if `performance.now()` is available.
+       *
+       * Stale entries are always included in the `dump`, even if
+       * {@link LRUCache.OptionsBase.allowStale} is false.
+       *
+       * Note: this returns an actual array, not a generator, so it can be more
+       * easily passed around.
        */
       dump() {
         const arr = [];
@@ -15738,8 +16678,12 @@ var require_commonjs2 = __commonJS({
       }
       /**
        * Reset the cache and load in the items in entries in the order listed.
-       * Note that the shape of the resulting cache may be different if the
-       * same options are not used in both caches.
+       *
+       * The shape of the resulting cache may be different if the same options are
+       * not used in both caches.
+       *
+       * The `start` fields are assumed to be calculated relative to a portable
+       * `Date.now()` timestamp, even if `performance.now()` is available.
        */
       load(arr) {
         this.clear();
@@ -15756,6 +16700,30 @@ var require_commonjs2 = __commonJS({
        *
        * Note: if `undefined` is specified as a value, this is an alias for
        * {@link LRUCache#delete}
+       *
+       * Fields on the {@link LRUCache.SetOptions} options param will override
+       * their corresponding values in the constructor options for the scope
+       * of this single `set()` operation.
+       *
+       * If `start` is provided, then that will set the effective start
+       * time for the TTL calculation. Note that this must be a previous
+       * value of `performance.now()` if supported, or a previous value of
+       * `Date.now()` if not.
+       *
+       * Options object may also include `size`, which will prevent
+       * calling the `sizeCalculation` function and just use the specified
+       * number if it is a positive integer, and `noDisposeOnSet` which
+       * will prevent calling a `dispose` function in the case of
+       * overwrites.
+       *
+       * If the `size` (or return value of `sizeCalculation`) for a given
+       * entry is greater than `maxEntrySize`, then the item will not be
+       * added to the cache.
+       *
+       * Will update the recency of the entry.
+       *
+       * If the value is `undefined`, then this is an alias for
+       * `cache.delete(key)`. `undefined` is never stored in the cache.
        */
       set(k, v, setOptions = {}) {
         if (v === void 0) {
@@ -15770,7 +16738,7 @@ var require_commonjs2 = __commonJS({
             status.set = "miss";
             status.maxEntrySizeExceeded = true;
           }
-          this.delete(k);
+          this.#delete(k, "set");
           return this;
         }
         let index = this.#size === 0 ? void 0 : this.#keyMap.get(k);
@@ -15904,6 +16872,14 @@ var require_commonjs2 = __commonJS({
        * Will return false if the item is stale, even though it is technically
        * in the cache.
        *
+       * Check if a key is in the cache, without updating the recency of
+       * use. Age is updated if {@link LRUCache.OptionsBase.updateAgeOnHas} is set
+       * to `true` in either the options or the constructor.
+       *
+       * Will return `false` if the item is stale, even though it is technically in
+       * the cache. The difference can be determined (if it matters) by using a
+       * `status` argument, and inspecting the `has` field.
+       *
        * Will not update item age unless
        * {@link LRUCache.OptionsBase.updateAgeOnHas} is set.
        */
@@ -15986,7 +16962,7 @@ var require_commonjs2 = __commonJS({
               if (bf2.__staleWhileFetching) {
                 this.#valList[index] = bf2.__staleWhileFetching;
               } else {
-                this.delete(k);
+                this.#delete(k, "fetch");
               }
             } else {
               if (options.status)
@@ -16012,7 +16988,7 @@ var require_commonjs2 = __commonJS({
           if (this.#valList[index] === p) {
             const del = !noDelete || bf2.__staleWhileFetching === void 0;
             if (del) {
-              this.delete(k);
+              this.#delete(k, "fetch");
             } else if (!allowStaleAborted) {
               this.#valList[index] = bf2.__staleWhileFetching;
             }
@@ -16150,6 +17126,28 @@ var require_commonjs2 = __commonJS({
           return staleVal ? p.__staleWhileFetching : p.__returned = p;
         }
       }
+      async forceFetch(k, fetchOptions = {}) {
+        const v = await this.fetch(k, fetchOptions);
+        if (v === void 0)
+          throw new Error("fetch() returned undefined");
+        return v;
+      }
+      memo(k, memoOptions = {}) {
+        const memoMethod = this.#memoMethod;
+        if (!memoMethod) {
+          throw new Error("no memoMethod provided to constructor");
+        }
+        const { context, forceRefresh, ...options } = memoOptions;
+        const v = this.get(k, options);
+        if (!forceRefresh && v !== void 0)
+          return v;
+        const vv = memoMethod(k, v, {
+          options,
+          context
+        });
+        this.set(k, vv, options);
+        return vv;
+      }
       /**
        * Return a value from the cache. Will update the recency of the cache
        * entry found.
@@ -16169,7 +17167,7 @@ var require_commonjs2 = __commonJS({
               status.get = "stale";
             if (!fetching) {
               if (!noDeleteOnStaleGet) {
-                this.delete(k);
+                this.#delete(k, "expire");
               }
               if (status && allowStale)
                 status.returnedStale = true;
@@ -16213,16 +17211,20 @@ var require_commonjs2 = __commonJS({
       }
       /**
        * Deletes a key out of the cache.
+       *
        * Returns true if the key was deleted, false otherwise.
        */
       delete(k) {
+        return this.#delete(k, "delete");
+      }
+      #delete(k, reason) {
         let deleted = false;
         if (this.#size !== 0) {
           const index = this.#keyMap.get(k);
           if (index !== void 0) {
             deleted = true;
             if (this.#size === 1) {
-              this.clear();
+              this.#clear(reason);
             } else {
               this.#removeItemSize(index);
               const v = this.#valList[index];
@@ -16230,10 +17232,10 @@ var require_commonjs2 = __commonJS({
                 v.__abortController.abort(new Error("deleted"));
               } else if (this.#hasDispose || this.#hasDisposeAfter) {
                 if (this.#hasDispose) {
-                  this.#dispose?.(v, k, "delete");
+                  this.#dispose?.(v, k, reason);
                 }
                 if (this.#hasDisposeAfter) {
-                  this.#disposed?.push([v, k, "delete"]);
+                  this.#disposed?.push([v, k, reason]);
                 }
               }
               this.#keyMap.delete(k);
@@ -16267,6 +17269,9 @@ var require_commonjs2 = __commonJS({
        * Clear the cache entirely, throwing away all values.
        */
       clear() {
+        return this.#clear("delete");
+      }
+      #clear(reason) {
         for (const index of this.#rindexes({ allowStale: true })) {
           const v = this.#valList[index];
           if (this.#isBackgroundFetch(v)) {
@@ -16274,10 +17279,10 @@ var require_commonjs2 = __commonJS({
           } else {
             const k = this.#keyList[index];
             if (this.#hasDispose) {
-              this.#dispose?.(v, k, "delete");
+              this.#dispose?.(v, k, reason);
             }
             if (this.#hasDisposeAfter) {
-              this.#disposed?.push([v, k, "delete"]);
+              this.#disposed?.push([v, k, reason]);
             }
           }
         }
@@ -16309,9 +17314,9 @@ var require_commonjs2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/minipass@7.1.3/node_modules/minipass/dist/commonjs/index.js
+// ../node_modules/minipass/dist/commonjs/index.js
 var require_commonjs3 = __commonJS({
-  "../node_modules/.pnpm/minipass@7.1.3/node_modules/minipass/dist/commonjs/index.js"(exports) {
+  "../node_modules/minipass/dist/commonjs/index.js"(exports) {
     "use strict";
     var __importDefault = exports && exports.__importDefault || function(mod) {
       return mod && mod.__esModule ? mod : { "default": mod };
@@ -17205,9 +18210,9 @@ var require_commonjs3 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/path-scurry@1.11.1/node_modules/path-scurry/dist/commonjs/index.js
+// ../node_modules/path-scurry/dist/commonjs/index.js
 var require_commonjs4 = __commonJS({
-  "../node_modules/.pnpm/path-scurry@1.11.1/node_modules/path-scurry/dist/commonjs/index.js"(exports) {
+  "../node_modules/path-scurry/dist/commonjs/index.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -18366,8 +19371,8 @@ var require_commonjs4 = __commonJS({
        *
        * @internal
        */
-      constructor(cwd = process.cwd(), pathImpl, sep, { nocase, childrenCacheSize = 16 * 1024, fs: fs8 = defaultFS } = {}) {
-        this.#fs = fsFromOption(fs8);
+      constructor(cwd = process.cwd(), pathImpl, sep, { nocase, childrenCacheSize = 16 * 1024, fs: fs9 = defaultFS } = {}) {
+        this.#fs = fsFromOption(fs9);
         if (cwd instanceof URL || cwd.startsWith("file://")) {
           cwd = (0, node_url_1.fileURLToPath)(cwd);
         }
@@ -18926,8 +19931,8 @@ var require_commonjs4 = __commonJS({
       /**
        * @internal
        */
-      newRoot(fs8) {
-        return new PathWin32(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs8 });
+      newRoot(fs9) {
+        return new PathWin32(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs9 });
       }
       /**
        * Return true if the provided path string is an absolute path
@@ -18956,8 +19961,8 @@ var require_commonjs4 = __commonJS({
       /**
        * @internal
        */
-      newRoot(fs8) {
-        return new PathPosix(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs8 });
+      newRoot(fs9) {
+        return new PathPosix(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs9 });
       }
       /**
        * Return true if the provided path string is an absolute path
@@ -18979,9 +19984,9 @@ var require_commonjs4 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/pattern.js
+// ../node_modules/glob/dist/commonjs/pattern.js
 var require_pattern = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/pattern.js"(exports) {
+  "../node_modules/glob/dist/commonjs/pattern.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Pattern = void 0;
@@ -19153,9 +20158,9 @@ var require_pattern = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/ignore.js
+// ../node_modules/glob/dist/commonjs/ignore.js
 var require_ignore = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/ignore.js"(exports) {
+  "../node_modules/glob/dist/commonjs/ignore.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Ignore = void 0;
@@ -19250,9 +20255,9 @@ var require_ignore = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/processor.js
+// ../node_modules/glob/dist/commonjs/processor.js
 var require_processor = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/processor.js"(exports) {
+  "../node_modules/glob/dist/commonjs/processor.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Processor = exports.SubWalks = exports.MatchRecord = exports.HasWalkedCache = void 0;
@@ -19483,9 +20488,9 @@ var require_processor = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/walker.js
+// ../node_modules/glob/dist/commonjs/walker.js
 var require_walker = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/walker.js"(exports) {
+  "../node_modules/glob/dist/commonjs/walker.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.GlobStream = exports.GlobWalker = exports.GlobUtil = void 0;
@@ -19823,9 +20828,9 @@ var require_walker = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/glob.js
+// ../node_modules/glob/dist/commonjs/glob.js
 var require_glob = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/glob.js"(exports) {
+  "../node_modules/glob/dist/commonjs/glob.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Glob = void 0;
@@ -20036,9 +21041,9 @@ var require_glob = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/has-magic.js
+// ../node_modules/glob/dist/commonjs/has-magic.js
 var require_has_magic = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/has-magic.js"(exports) {
+  "../node_modules/glob/dist/commonjs/has-magic.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.hasMagic = void 0;
@@ -20057,9 +21062,9 @@ var require_has_magic = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/index.js
+// ../node_modules/glob/dist/commonjs/index.js
 var require_commonjs5 = __commonJS({
-  "../node_modules/.pnpm/glob@10.5.0/node_modules/glob/dist/commonjs/index.js"(exports) {
+  "../node_modules/glob/dist/commonjs/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.glob = exports.sync = exports.iterate = exports.iterateSync = exports.stream = exports.streamSync = exports.Ignore = exports.hasMagic = exports.Glob = exports.unescape = exports.escape = void 0;
@@ -20139,10 +21144,10 @@ var require_commonjs5 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver-utils@5.0.2/node_modules/archiver-utils/file.js
+// ../node_modules/archiver-utils/file.js
 var require_file = __commonJS({
-  "../node_modules/.pnpm/archiver-utils@5.0.2/node_modules/archiver-utils/file.js"(exports, module) {
-    var fs8 = require_graceful_fs();
+  "../node_modules/archiver-utils/file.js"(exports, module) {
+    var fs9 = require_graceful_fs();
     var path11 = __require("path");
     var flatten = require_flatten();
     var difference = require_difference();
@@ -20169,7 +21174,7 @@ var require_file = __commonJS({
     };
     file.exists = function() {
       var filepath = path11.join.apply(path11, arguments);
-      return fs8.existsSync(filepath);
+      return fs9.existsSync(filepath);
     };
     file.expand = function(...args) {
       var options = isPlainObject(args[0]) ? args.shift() : {};
@@ -20187,7 +21192,7 @@ var require_file = __commonJS({
             if (typeof options.filter === "function") {
               return options.filter(filepath);
             } else {
-              return fs8.statSync(filepath)[options.filter]();
+              return fs9.statSync(filepath)[options.filter]();
             }
           } catch (e) {
             return false;
@@ -20292,10 +21297,10 @@ var require_file = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver-utils@5.0.2/node_modules/archiver-utils/index.js
+// ../node_modules/archiver-utils/index.js
 var require_archiver_utils = __commonJS({
-  "../node_modules/.pnpm/archiver-utils@5.0.2/node_modules/archiver-utils/index.js"(exports, module) {
-    var fs8 = require_graceful_fs();
+  "../node_modules/archiver-utils/index.js"(exports, module) {
+    var fs9 = require_graceful_fs();
     var path11 = __require("path");
     var isStream = require_is_stream();
     var lazystream = require_lazystream();
@@ -20344,7 +21349,7 @@ var require_archiver_utils = __commonJS({
     };
     utils.lazyReadStream = function(filepath) {
       return new lazystream.Readable(function() {
-        return fs8.createReadStream(filepath);
+        return fs9.createReadStream(filepath);
       });
     };
     utils.normalizeInputSource = function(source) {
@@ -20372,7 +21377,7 @@ var require_archiver_utils = __commonJS({
         callback = base;
         base = dirpath;
       }
-      fs8.readdir(dirpath, function(err, list) {
+      fs9.readdir(dirpath, function(err, list) {
         var i = 0;
         var file;
         var filepath;
@@ -20385,7 +21390,7 @@ var require_archiver_utils = __commonJS({
             return callback(null, results);
           }
           filepath = path11.join(dirpath, file);
-          fs8.stat(filepath, function(err2, stats) {
+          fs9.stat(filepath, function(err2, stats) {
             results.push({
               path: filepath,
               relative: path11.relative(base, filepath).replace(/\\/g, "/"),
@@ -20411,9 +21416,9 @@ var require_archiver_utils = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/error.js
+// ../node_modules/archiver/lib/error.js
 var require_error = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/error.js"(exports, module) {
+  "../node_modules/archiver/lib/error.js"(exports, module) {
     var util = __require("util");
     var ERROR_CODES = {
       "ABORTED": "archive was aborted",
@@ -20444,10 +21449,10 @@ var require_error = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/core.js
+// ../node_modules/archiver/lib/core.js
 var require_core = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/core.js"(exports, module) {
-    var fs8 = __require("fs");
+  "../node_modules/archiver/lib/core.js"(exports, module) {
+    var fs9 = __require("fs");
     var glob = require_readdir_glob();
     var async = require_async();
     var path11 = __require("path");
@@ -20511,7 +21516,7 @@ var require_core = __commonJS({
       data.sourcePath = filepath;
       task.data = data;
       this._entriesCount++;
-      if (data.stats && data.stats instanceof fs8.Stats) {
+      if (data.stats && data.stats instanceof fs9.Stats) {
         task = this._updateQueueTaskWithStats(task, data.stats);
         if (task) {
           if (data.stats.size) {
@@ -20682,7 +21687,7 @@ var require_core = __commonJS({
         callback();
         return;
       }
-      fs8.lstat(task.filepath, function(err, stats) {
+      fs9.lstat(task.filepath, function(err, stats) {
         if (this._state.aborted) {
           setImmediate(callback);
           return;
@@ -20725,7 +21730,7 @@ var require_core = __commonJS({
         task.data.sourceType = "buffer";
         task.source = Buffer.concat([]);
       } else if (stats.isSymbolicLink() && this._moduleSupports("symlink")) {
-        var linkPath = fs8.readlinkSync(task.filepath);
+        var linkPath = fs9.readlinkSync(task.filepath);
         var dirName = path11.dirname(task.filepath);
         task.data.type = "symlink";
         task.data.linkname = path11.relative(dirName, path11.resolve(dirName, linkPath));
@@ -20979,9 +21984,9 @@ var require_core = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/archive-entry.js
+// ../node_modules/compress-commons/lib/archivers/archive-entry.js
 var require_archive_entry = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/archive-entry.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/archive-entry.js"(exports, module) {
     var ArchiveEntry = module.exports = function() {
     };
     ArchiveEntry.prototype.getName = function() {
@@ -20995,9 +22000,9 @@ var require_archive_entry = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/util.js
+// ../node_modules/compress-commons/lib/archivers/zip/util.js
 var require_util3 = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/util.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/util.js"(exports, module) {
     var util = module.exports = {};
     util.dateToDos = function(d, forceLocalTime) {
       forceLocalTime = forceLocalTime || false;
@@ -21051,9 +22056,9 @@ var require_util3 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/general-purpose-bit.js
+// ../node_modules/compress-commons/lib/archivers/zip/general-purpose-bit.js
 var require_general_purpose_bit = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/general-purpose-bit.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/general-purpose-bit.js"(exports, module) {
     var zipUtil = require_util3();
     var DATA_DESCRIPTOR_FLAG = 1 << 3;
     var ENCRYPTION_FLAG = 1 << 0;
@@ -21128,9 +22133,9 @@ var require_general_purpose_bit = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/unix-stat.js
+// ../node_modules/compress-commons/lib/archivers/zip/unix-stat.js
 var require_unix_stat = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/unix-stat.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/unix-stat.js"(exports, module) {
     module.exports = {
       /**
        * Bits used for permissions (and sticky bit)
@@ -21180,9 +22185,9 @@ var require_unix_stat = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/constants.js
+// ../node_modules/compress-commons/lib/archivers/zip/constants.js
 var require_constants = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/constants.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/constants.js"(exports, module) {
     module.exports = {
       WORD: 4,
       DWORD: 8,
@@ -21257,9 +22262,9 @@ var require_constants = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/zip-archive-entry.js
+// ../node_modules/compress-commons/lib/archivers/zip/zip-archive-entry.js
 var require_zip_archive_entry = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/zip-archive-entry.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/zip-archive-entry.js"(exports, module) {
     var inherits = __require("util").inherits;
     var normalizePath = require_normalize_path();
     var ArchiveEntry = require_archive_entry();
@@ -21432,9 +22437,9 @@ var require_zip_archive_entry = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/util/index.js
+// ../node_modules/compress-commons/lib/util/index.js
 var require_util4 = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/util/index.js"(exports, module) {
+  "../node_modules/compress-commons/lib/util/index.js"(exports, module) {
     var Stream = __require("stream").Stream;
     var PassThrough = require_ours().PassThrough;
     var isStream = require_is_stream();
@@ -21454,9 +22459,9 @@ var require_util4 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/archive-output-stream.js
+// ../node_modules/compress-commons/lib/archivers/archive-output-stream.js
 var require_archive_output_stream = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/archive-output-stream.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/archive-output-stream.js"(exports, module) {
     var inherits = __require("util").inherits;
     var isStream = require_is_stream();
     var Transform = require_ours().Transform;
@@ -21542,9 +22547,9 @@ var require_archive_output_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/crc-32@1.2.2/node_modules/crc-32/crc32.js
+// ../node_modules/crc-32/crc32.js
 var require_crc32 = __commonJS({
-  "../node_modules/.pnpm/crc-32@1.2.2/node_modules/crc-32/crc32.js"(exports) {
+  "../node_modules/crc-32/crc32.js"(exports) {
     var CRC32;
     (function(factory) {
       if (typeof DO_NOT_EXPORT_CRC === "undefined") {
@@ -21640,9 +22645,9 @@ var require_crc32 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/crc32-stream.js
+// ../node_modules/crc32-stream/lib/crc32-stream.js
 var require_crc32_stream = __commonJS({
-  "../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/crc32-stream.js"(exports, module) {
+  "../node_modules/crc32-stream/lib/crc32-stream.js"(exports, module) {
     "use strict";
     var { Transform } = require_ours();
     var crc32 = require_crc32();
@@ -21676,9 +22681,9 @@ var require_crc32_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/deflate-crc32-stream.js
+// ../node_modules/crc32-stream/lib/deflate-crc32-stream.js
 var require_deflate_crc32_stream = __commonJS({
-  "../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/deflate-crc32-stream.js"(exports, module) {
+  "../node_modules/crc32-stream/lib/deflate-crc32-stream.js"(exports, module) {
     "use strict";
     var { DeflateRaw } = __require("zlib");
     var crc32 = require_crc32();
@@ -21723,9 +22728,9 @@ var require_deflate_crc32_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/index.js
+// ../node_modules/crc32-stream/lib/index.js
 var require_lib = __commonJS({
-  "../node_modules/.pnpm/crc32-stream@6.0.0/node_modules/crc32-stream/lib/index.js"(exports, module) {
+  "../node_modules/crc32-stream/lib/index.js"(exports, module) {
     "use strict";
     module.exports = {
       CRC32Stream: require_crc32_stream(),
@@ -21734,9 +22739,9 @@ var require_lib = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/zip-archive-output-stream.js
+// ../node_modules/compress-commons/lib/archivers/zip/zip-archive-output-stream.js
 var require_zip_archive_output_stream = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/archivers/zip/zip-archive-output-stream.js"(exports, module) {
+  "../node_modules/compress-commons/lib/archivers/zip/zip-archive-output-stream.js"(exports, module) {
     var inherits = __require("util").inherits;
     var crc32 = require_crc32();
     var { CRC32Stream } = require_lib();
@@ -22019,9 +23024,9 @@ var require_zip_archive_output_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/compress-commons.js
+// ../node_modules/compress-commons/lib/compress-commons.js
 var require_compress_commons = __commonJS({
-  "../node_modules/.pnpm/compress-commons@6.0.2/node_modules/compress-commons/lib/compress-commons.js"(exports, module) {
+  "../node_modules/compress-commons/lib/compress-commons.js"(exports, module) {
     module.exports = {
       ArchiveEntry: require_archive_entry(),
       ZipArchiveEntry: require_zip_archive_entry(),
@@ -22031,9 +23036,9 @@ var require_compress_commons = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/zip-stream@6.0.1/node_modules/zip-stream/index.js
+// ../node_modules/zip-stream/index.js
 var require_zip_stream = __commonJS({
-  "../node_modules/.pnpm/zip-stream@6.0.1/node_modules/zip-stream/index.js"(exports, module) {
+  "../node_modules/zip-stream/index.js"(exports, module) {
     var inherits = __require("util").inherits;
     var ZipArchiveOutputStream = require_compress_commons().ZipArchiveOutputStream;
     var ZipArchiveEntry = require_compress_commons().ZipArchiveEntry;
@@ -22134,9 +23139,9 @@ var require_zip_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/zip.js
+// ../node_modules/archiver/lib/plugins/zip.js
 var require_zip = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/zip.js"(exports, module) {
+  "../node_modules/archiver/lib/plugins/zip.js"(exports, module) {
     var engine = require_zip_stream();
     var util = require_archiver_utils();
     var Zip = function(options) {
@@ -22174,16 +23179,16 @@ var require_zip = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/events-universal@1.0.1/node_modules/events-universal/default.js
+// ../node_modules/events-universal/default.js
 var require_default = __commonJS({
-  "../node_modules/.pnpm/events-universal@1.0.1/node_modules/events-universal/default.js"(exports, module) {
+  "../node_modules/events-universal/default.js"(exports, module) {
     module.exports = __require("events");
   }
 });
 
-// ../node_modules/.pnpm/fast-fifo@1.3.2/node_modules/fast-fifo/fixed-size.js
+// ../node_modules/fast-fifo/fixed-size.js
 var require_fixed_size = __commonJS({
-  "../node_modules/.pnpm/fast-fifo@1.3.2/node_modules/fast-fifo/fixed-size.js"(exports, module) {
+  "../node_modules/fast-fifo/fixed-size.js"(exports, module) {
     module.exports = class FixedFIFO {
       constructor(hwm) {
         if (!(hwm > 0) || (hwm - 1 & hwm) !== 0) throw new Error("Max size for a FixedFIFO should be a power of two");
@@ -22221,9 +23226,9 @@ var require_fixed_size = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/fast-fifo@1.3.2/node_modules/fast-fifo/index.js
+// ../node_modules/fast-fifo/index.js
 var require_fast_fifo = __commonJS({
-  "../node_modules/.pnpm/fast-fifo@1.3.2/node_modules/fast-fifo/index.js"(exports, module) {
+  "../node_modules/fast-fifo/index.js"(exports, module) {
     var FixedFIFO = require_fixed_size();
     module.exports = class FastFIFO {
       constructor(hwm) {
@@ -22268,9 +23273,9 @@ var require_fast_fifo = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/b4a@1.9.0/node_modules/b4a/index.js
+// ../node_modules/text-decoder/node_modules/b4a/index.js
 var require_b4a = __commonJS({
-  "../node_modules/.pnpm/b4a@1.9.0/node_modules/b4a/index.js"(exports, module) {
+  "../node_modules/text-decoder/node_modules/b4a/index.js"(exports, module) {
     function isBuffer(value) {
       return Buffer.isBuffer(value) || value instanceof Uint8Array;
     }
@@ -22429,9 +23434,9 @@ var require_b4a = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/lib/pass-through-decoder.js
+// ../node_modules/text-decoder/lib/pass-through-decoder.js
 var require_pass_through_decoder = __commonJS({
-  "../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/lib/pass-through-decoder.js"(exports, module) {
+  "../node_modules/text-decoder/lib/pass-through-decoder.js"(exports, module) {
     var b4a = require_b4a();
     module.exports = class PassThroughDecoder {
       constructor(encoding) {
@@ -22450,9 +23455,9 @@ var require_pass_through_decoder = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/lib/utf8-decoder.js
+// ../node_modules/text-decoder/lib/utf8-decoder.js
 var require_utf8_decoder = __commonJS({
-  "../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/lib/utf8-decoder.js"(exports, module) {
+  "../node_modules/text-decoder/lib/utf8-decoder.js"(exports, module) {
     var b4a = require_b4a();
     module.exports = class UTF8Decoder {
       constructor() {
@@ -22597,9 +23602,9 @@ var require_utf8_decoder = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/index.js
+// ../node_modules/text-decoder/index.js
 var require_text_decoder = __commonJS({
-  "../node_modules/.pnpm/text-decoder@1.2.7/node_modules/text-decoder/index.js"(exports, module) {
+  "../node_modules/text-decoder/index.js"(exports, module) {
     var PassThroughDecoder = require_pass_through_decoder();
     var UTF8Decoder = require_utf8_decoder();
     module.exports = class TextDecoder {
@@ -22659,9 +23664,9 @@ var require_text_decoder = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/streamx@2.28.1/node_modules/streamx/lib/errors.js
+// ../node_modules/streamx/lib/errors.js
 var require_errors2 = __commonJS({
-  "../node_modules/.pnpm/streamx@2.28.1/node_modules/streamx/lib/errors.js"(exports, module) {
+  "../node_modules/streamx/lib/errors.js"(exports, module) {
     module.exports = class StreamError extends Error {
       constructor(msg, code, fn = StreamError) {
         super(msg);
@@ -22701,9 +23706,9 @@ var require_errors2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/streamx@2.28.1/node_modules/streamx/index.js
+// ../node_modules/streamx/index.js
 var require_streamx = __commonJS({
-  "../node_modules/.pnpm/streamx@2.28.1/node_modules/streamx/index.js"(exports, module) {
+  "../node_modules/streamx/index.js"(exports, module) {
     var { EventEmitter } = require_default();
     var FIFO = require_fast_fifo();
     var TextDecoder = require_text_decoder();
@@ -23732,10 +24737,171 @@ var require_streamx = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/headers.js
+// ../node_modules/tar-stream/node_modules/b4a/index.js
+var require_b4a2 = __commonJS({
+  "../node_modules/tar-stream/node_modules/b4a/index.js"(exports, module) {
+    function isBuffer(value) {
+      return Buffer.isBuffer(value) || value instanceof Uint8Array;
+    }
+    function isEncoding(encoding) {
+      return Buffer.isEncoding(encoding);
+    }
+    function alloc(size, fill2, encoding) {
+      return Buffer.alloc(size, fill2, encoding);
+    }
+    function allocUnsafe(size) {
+      return Buffer.allocUnsafe(size);
+    }
+    function allocUnsafeSlow(size) {
+      return Buffer.allocUnsafeSlow(size);
+    }
+    function byteLength(string, encoding) {
+      return Buffer.byteLength(string, encoding);
+    }
+    function compare(a, b) {
+      return Buffer.compare(a, b);
+    }
+    function concat(buffers, totalLength) {
+      return Buffer.concat(buffers, totalLength);
+    }
+    function copy(source, target, targetStart, start, end) {
+      return toBuffer(source).copy(target, targetStart, start, end);
+    }
+    function equals2(a, b) {
+      return toBuffer(a).equals(b);
+    }
+    function fill(buffer, value, offset, end, encoding) {
+      return toBuffer(buffer).fill(value, offset, end, encoding);
+    }
+    function from(value, encodingOrOffset, length) {
+      return Buffer.from(value, encodingOrOffset, length);
+    }
+    function includes(buffer, value, byteOffset, encoding) {
+      return toBuffer(buffer).includes(value, byteOffset, encoding);
+    }
+    function indexOf(buffer, value, byfeOffset, encoding) {
+      return toBuffer(buffer).indexOf(value, byfeOffset, encoding);
+    }
+    function lastIndexOf(buffer, value, byteOffset, encoding) {
+      return toBuffer(buffer).lastIndexOf(value, byteOffset, encoding);
+    }
+    function swap16(buffer) {
+      return toBuffer(buffer).swap16();
+    }
+    function swap32(buffer) {
+      return toBuffer(buffer).swap32();
+    }
+    function swap64(buffer) {
+      return toBuffer(buffer).swap64();
+    }
+    function toBuffer(buffer) {
+      if (Buffer.isBuffer(buffer)) return buffer;
+      return Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    }
+    function toString(buffer, encoding, start, end) {
+      return toBuffer(buffer).toString(encoding, start, end);
+    }
+    function toHex(buffer, start, end) {
+      return toBuffer(buffer).toString("hex", start, end);
+    }
+    function write(buffer, string, offset, length, encoding) {
+      return toBuffer(buffer).write(string, offset, length, encoding);
+    }
+    function readDoubleBE(buffer, offset) {
+      return toBuffer(buffer).readDoubleBE(offset);
+    }
+    function readDoubleLE(buffer, offset) {
+      return toBuffer(buffer).readDoubleLE(offset);
+    }
+    function readFloatBE(buffer, offset) {
+      return toBuffer(buffer).readFloatBE(offset);
+    }
+    function readFloatLE(buffer, offset) {
+      return toBuffer(buffer).readFloatLE(offset);
+    }
+    function readInt32BE(buffer, offset) {
+      return toBuffer(buffer).readInt32BE(offset);
+    }
+    function readInt32LE(buffer, offset) {
+      return toBuffer(buffer).readInt32LE(offset);
+    }
+    function readUInt32BE(buffer, offset) {
+      return toBuffer(buffer).readUInt32BE(offset);
+    }
+    function readUInt32LE(buffer, offset) {
+      return toBuffer(buffer).readUInt32LE(offset);
+    }
+    function writeDoubleBE(buffer, value, offset) {
+      return toBuffer(buffer).writeDoubleBE(value, offset);
+    }
+    function writeDoubleLE(buffer, value, offset) {
+      return toBuffer(buffer).writeDoubleLE(value, offset);
+    }
+    function writeFloatBE(buffer, value, offset) {
+      return toBuffer(buffer).writeFloatBE(value, offset);
+    }
+    function writeFloatLE(buffer, value, offset) {
+      return toBuffer(buffer).writeFloatLE(value, offset);
+    }
+    function writeInt32BE(buffer, value, offset) {
+      return toBuffer(buffer).writeInt32BE(value, offset);
+    }
+    function writeInt32LE(buffer, value, offset) {
+      return toBuffer(buffer).writeInt32LE(value, offset);
+    }
+    function writeUInt32BE(buffer, value, offset) {
+      return toBuffer(buffer).writeUInt32BE(value, offset);
+    }
+    function writeUInt32LE(buffer, value, offset) {
+      return toBuffer(buffer).writeUInt32LE(value, offset);
+    }
+    module.exports = {
+      isBuffer,
+      isEncoding,
+      alloc,
+      allocUnsafe,
+      allocUnsafeSlow,
+      byteLength,
+      compare,
+      concat,
+      copy,
+      equals: equals2,
+      fill,
+      from,
+      includes,
+      indexOf,
+      lastIndexOf,
+      swap16,
+      swap32,
+      swap64,
+      toBuffer,
+      toString,
+      toHex,
+      write,
+      readDoubleBE,
+      readDoubleLE,
+      readFloatBE,
+      readFloatLE,
+      readInt32BE,
+      readInt32LE,
+      readUInt32BE,
+      readUInt32LE,
+      writeDoubleBE,
+      writeDoubleLE,
+      writeFloatBE,
+      writeFloatLE,
+      writeInt32BE,
+      writeInt32LE,
+      writeUInt32BE,
+      writeUInt32LE
+    };
+  }
+});
+
+// ../node_modules/tar-stream/headers.js
 var require_headers = __commonJS({
-  "../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/headers.js"(exports) {
-    var b4a = require_b4a();
+  "../node_modules/tar-stream/headers.js"(exports) {
+    var b4a = require_b4a2();
     var ZEROS = "0000000000000000000";
     var SEVENS = "7777777777777777777";
     var ZERO_OFFSET = "0".charCodeAt(0);
@@ -23994,12 +25160,12 @@ var require_headers = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/extract.js
+// ../node_modules/tar-stream/extract.js
 var require_extract = __commonJS({
-  "../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/extract.js"(exports, module) {
+  "../node_modules/tar-stream/extract.js"(exports, module) {
     var { Writable, Readable, getStreamError } = require_streamx();
     var FIFO = require_fast_fifo();
-    var b4a = require_b4a();
+    var b4a = require_b4a2();
     var headers = require_headers();
     var EMPTY = b4a.alloc(0);
     var MAX_HEADER_SIZE = 4 * 1024 * 1024;
@@ -24338,9 +25504,9 @@ var require_extract = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/constants.js
+// ../node_modules/tar-stream/constants.js
 var require_constants2 = __commonJS({
-  "../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/constants.js"(exports, module) {
+  "../node_modules/tar-stream/constants.js"(exports, module) {
     var constants = {
       // just for envs without fs
       S_IFMT: 61440,
@@ -24358,11 +25524,11 @@ var require_constants2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/pack.js
+// ../node_modules/tar-stream/pack.js
 var require_pack = __commonJS({
-  "../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/pack.js"(exports, module) {
+  "../node_modules/tar-stream/pack.js"(exports, module) {
     var { Readable, Writable, getStreamError } = require_streamx();
-    var b4a = require_b4a();
+    var b4a = require_b4a2();
     var constants = require_constants2();
     var headers = require_headers();
     var DMODE = 493;
@@ -24592,17 +25758,17 @@ var require_pack = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/index.js
+// ../node_modules/tar-stream/index.js
 var require_tar_stream = __commonJS({
-  "../node_modules/.pnpm/tar-stream@3.2.2/node_modules/tar-stream/index.js"(exports) {
+  "../node_modules/tar-stream/index.js"(exports) {
     exports.extract = require_extract();
     exports.pack = require_pack();
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/tar.js
+// ../node_modules/archiver/lib/plugins/tar.js
 var require_tar = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/tar.js"(exports, module) {
+  "../node_modules/archiver/lib/plugins/tar.js"(exports, module) {
     var zlib = __require("zlib");
     var engine = require_tar_stream();
     var util = require_archiver_utils();
@@ -24678,9 +25844,9 @@ var require_tar = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/buffer-crc32@1.0.0/node_modules/buffer-crc32/dist/index.cjs
+// ../node_modules/buffer-crc32/dist/index.cjs
 var require_dist = __commonJS({
-  "../node_modules/.pnpm/buffer-crc32@1.0.0/node_modules/buffer-crc32/dist/index.cjs"(exports, module) {
+  "../node_modules/buffer-crc32/dist/index.cjs"(exports, module) {
     "use strict";
     function getDefaultExportFromCjs(x) {
       return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
@@ -24986,9 +26152,9 @@ var require_dist = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/json.js
+// ../node_modules/archiver/lib/plugins/json.js
 var require_json = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/lib/plugins/json.js"(exports, module) {
+  "../node_modules/archiver/lib/plugins/json.js"(exports, module) {
     var inherits = __require("util").inherits;
     var Transform = require_ours().Transform;
     var crc32 = require_dist();
@@ -25040,9 +26206,9 @@ var require_json = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/index.js
+// ../node_modules/archiver/index.js
 var require_archiver = __commonJS({
-  "../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/index.js"(exports, module) {
+  "../node_modules/archiver/index.js"(exports, module) {
     var Archiver = require_core();
     var formats = {};
     var vending = function(format, options) {
@@ -25095,7 +26261,11 @@ async function fetchWebContent(url, intranetMode, opts) {
   assertSafeFetchUrl(url);
   const timeout = intranetMode ? Math.max(opts.timeout, 15e3) : opts.timeout;
   const ua = intranetMode ? "Mozilla/5.0 (DSH-Wiki-RAG/Intranet)" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-  const body = await rawFetchWithRetry(url, { ua, timeout });
+  const body = await rawFetchWithRetry(url, {
+    ua,
+    timeout,
+    maxBytes: opts.maxBytes ?? DEFAULT_MAX_BYTES
+  });
   return htmlToText(body);
 }
 function assertSafeFetchUrl(url) {
@@ -25138,6 +26308,13 @@ async function rawFetchWithRetry(url, opts) {
 function rawFetch(url, opts) {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith("https:") ? get2 : getHttp;
+    let settled = false;
+    const finish = (err, val) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(val ?? "");
+    };
     const req = mod(
       url,
       {
@@ -25151,18 +26328,28 @@ function rawFetch(url, opts) {
         const status = res.statusCode || 0;
         if (status >= 400) {
           res.resume();
-          reject(new Error(`HTTP ${status}`));
+          finish(new Error(`HTTP ${status}`));
           return;
         }
         const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+        let total = 0;
+        res.on("data", (c) => {
+          total += c.length;
+          if (opts.maxBytes && total > opts.maxBytes) {
+            req.destroy();
+            finish(new Error(`\u7F51\u9875\u5185\u5BB9\u8D85\u8FC7\u5927\u5C0F\u9650\u5236 ${opts.maxBytes} \u5B57\u8282`));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on("end", () => finish(void 0, Buffer.concat(chunks).toString("utf-8")));
       }
     );
     req.on("timeout", () => {
       req.destroy(new Error("\u8BF7\u6C42\u8D85\u65F6"));
+      finish(new Error("\u8BF7\u6C42\u8D85\u65F6"));
     });
-    req.on("error", reject);
+    req.on("error", (e) => finish(e));
   });
 }
 function htmlToText(html) {
@@ -25170,15 +26357,17 @@ function htmlToText(html) {
 ${t}
 `).replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
 }
+var DEFAULT_MAX_BYTES;
 var init_web_crawler = __esm({
   "../src/main/network/web-crawler.ts"() {
     "use strict";
+    DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/constants.js
+// ../node_modules/picomatch/lib/constants.js
 var require_constants3 = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/constants.js"(exports, module) {
+  "../node_modules/picomatch/lib/constants.js"(exports, module) {
     "use strict";
     var path11 = __require("path");
     var WIN_SLASH = "\\\\/";
@@ -25377,9 +26566,9 @@ var require_constants3 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/utils.js
+// ../node_modules/picomatch/lib/utils.js
 var require_utils2 = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/utils.js"(exports) {
+  "../node_modules/picomatch/lib/utils.js"(exports) {
     "use strict";
     var path11 = __require("path");
     var win32 = process.platform === "win32";
@@ -25438,9 +26627,9 @@ var require_utils2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/scan.js
+// ../node_modules/picomatch/lib/scan.js
 var require_scan = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/scan.js"(exports, module) {
+  "../node_modules/picomatch/lib/scan.js"(exports, module) {
     "use strict";
     var utils = require_utils2();
     var {
@@ -25768,9 +26957,9 @@ var require_scan = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/parse.js
+// ../node_modules/picomatch/lib/parse.js
 var require_parse = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/parse.js"(exports, module) {
+  "../node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
     var constants = require_constants3();
     var utils = require_utils2();
@@ -26770,9 +27959,9 @@ var require_parse = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/picomatch.js
+// ../node_modules/picomatch/lib/picomatch.js
 var require_picomatch = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/lib/picomatch.js"(exports, module) {
+  "../node_modules/picomatch/lib/picomatch.js"(exports, module) {
     "use strict";
     var path11 = __require("path");
     var scan = require_scan();
@@ -26911,27 +28100,27 @@ var require_picomatch = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/index.js
+// ../node_modules/picomatch/index.js
 var require_picomatch2 = __commonJS({
-  "../node_modules/.pnpm/picomatch@2.3.2/node_modules/picomatch/index.js"(exports, module) {
+  "../node_modules/picomatch/index.js"(exports, module) {
     "use strict";
     module.exports = require_picomatch();
   }
 });
 
-// ../node_modules/.pnpm/readdirp@3.6.0/node_modules/readdirp/index.js
+// ../node_modules/readdirp/index.js
 var require_readdirp = __commonJS({
-  "../node_modules/.pnpm/readdirp@3.6.0/node_modules/readdirp/index.js"(exports, module) {
+  "../node_modules/readdirp/index.js"(exports, module) {
     "use strict";
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var { Readable } = __require("stream");
     var sysPath = __require("path");
     var { promisify } = __require("util");
     var picomatch = require_picomatch2();
-    var readdir = promisify(fs8.readdir);
-    var stat = promisify(fs8.stat);
-    var lstat = promisify(fs8.lstat);
-    var realpath = promisify(fs8.realpath);
+    var readdir = promisify(fs9.readdir);
+    var stat = promisify(fs9.stat);
+    var lstat = promisify(fs9.lstat);
+    var realpath = promisify(fs9.realpath);
     var BANG = "!";
     var RECURSIVE_ERROR_CODE = "READDIRP_RECURSIVE_ERROR";
     var NORMAL_FLOW_ERRORS = /* @__PURE__ */ new Set(["ENOENT", "EPERM", "EACCES", "ELOOP", RECURSIVE_ERROR_CODE]);
@@ -27005,7 +28194,7 @@ var require_readdirp = __commonJS({
         this._wantsFile = [FILE_TYPE, FILE_DIR_TYPE, EVERYTHING_TYPE].includes(type);
         this._wantsEverything = type === EVERYTHING_TYPE;
         this._root = sysPath.resolve(root);
-        this._isDirent = "Dirent" in fs8 && !opts.alwaysStat;
+        this._isDirent = "Dirent" in fs9 && !opts.alwaysStat;
         this._statsProp = this._isDirent ? "dirent" : "stats";
         this._rdOptions = { encoding: "utf8", withFileTypes: this._isDirent };
         this.parents = [this._exploreDir(root, 1)];
@@ -27149,9 +28338,9 @@ var require_readdirp = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/anymatch@3.1.3/node_modules/anymatch/index.js
+// ../node_modules/anymatch/index.js
 var require_anymatch = __commonJS({
-  "../node_modules/.pnpm/anymatch@3.1.3/node_modules/anymatch/index.js"(exports, module) {
+  "../node_modules/anymatch/index.js"(exports, module) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var picomatch = require_picomatch2();
@@ -27216,9 +28405,9 @@ var require_anymatch = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/is-extglob@2.1.1/node_modules/is-extglob/index.js
+// ../node_modules/is-extglob/index.js
 var require_is_extglob = __commonJS({
-  "../node_modules/.pnpm/is-extglob@2.1.1/node_modules/is-extglob/index.js"(exports, module) {
+  "../node_modules/is-extglob/index.js"(exports, module) {
     module.exports = function isExtglob(str) {
       if (typeof str !== "string" || str === "") {
         return false;
@@ -27233,9 +28422,9 @@ var require_is_extglob = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/is-glob@4.0.3/node_modules/is-glob/index.js
+// ../node_modules/is-glob/index.js
 var require_is_glob = __commonJS({
-  "../node_modules/.pnpm/is-glob@4.0.3/node_modules/is-glob/index.js"(exports, module) {
+  "../node_modules/is-glob/index.js"(exports, module) {
     var isExtglob = require_is_extglob();
     var chars = { "{": "}", "(": ")", "[": "]" };
     var strictCheck = function(str) {
@@ -27364,9 +28553,9 @@ var require_is_glob = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/glob-parent@5.1.2/node_modules/glob-parent/index.js
+// ../node_modules/glob-parent/index.js
 var require_glob_parent = __commonJS({
-  "../node_modules/.pnpm/glob-parent@5.1.2/node_modules/glob-parent/index.js"(exports, module) {
+  "../node_modules/glob-parent/index.js"(exports, module) {
     "use strict";
     var isGlob = require_is_glob();
     var pathPosixDirname = __require("path").posix.dirname;
@@ -27393,9 +28582,9 @@ var require_glob_parent = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/utils.js
+// ../node_modules/braces/lib/utils.js
 var require_utils3 = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/utils.js"(exports) {
+  "../node_modules/braces/lib/utils.js"(exports) {
     "use strict";
     exports.isInteger = (num) => {
       if (typeof num === "number") {
@@ -27475,9 +28664,9 @@ var require_utils3 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/stringify.js
+// ../node_modules/braces/lib/stringify.js
 var require_stringify = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/stringify.js"(exports, module) {
+  "../node_modules/braces/lib/stringify.js"(exports, module) {
     "use strict";
     var utils = require_utils3();
     module.exports = (ast, options = {}) => {
@@ -27506,9 +28695,9 @@ var require_stringify = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/is-number@7.0.0/node_modules/is-number/index.js
+// ../node_modules/is-number/index.js
 var require_is_number = __commonJS({
-  "../node_modules/.pnpm/is-number@7.0.0/node_modules/is-number/index.js"(exports, module) {
+  "../node_modules/is-number/index.js"(exports, module) {
     "use strict";
     module.exports = function(num) {
       if (typeof num === "number") {
@@ -27522,9 +28711,9 @@ var require_is_number = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/to-regex-range@5.0.1/node_modules/to-regex-range/index.js
+// ../node_modules/to-regex-range/index.js
 var require_to_regex_range = __commonJS({
-  "../node_modules/.pnpm/to-regex-range@5.0.1/node_modules/to-regex-range/index.js"(exports, module) {
+  "../node_modules/to-regex-range/index.js"(exports, module) {
     "use strict";
     var isNumber = require_is_number();
     var toRegexRange = (min, max, options) => {
@@ -27733,9 +28922,9 @@ var require_to_regex_range = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/fill-range@7.1.1/node_modules/fill-range/index.js
+// ../node_modules/fill-range/index.js
 var require_fill_range = __commonJS({
-  "../node_modules/.pnpm/fill-range@7.1.1/node_modules/fill-range/index.js"(exports, module) {
+  "../node_modules/fill-range/index.js"(exports, module) {
     "use strict";
     var util = __require("util");
     var toRegexRange = require_to_regex_range();
@@ -27927,9 +29116,9 @@ var require_fill_range = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/compile.js
+// ../node_modules/braces/lib/compile.js
 var require_compile = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/compile.js"(exports, module) {
+  "../node_modules/braces/lib/compile.js"(exports, module) {
     "use strict";
     var fill = require_fill_range();
     var utils = require_utils3();
@@ -27979,9 +29168,9 @@ var require_compile = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/expand.js
+// ../node_modules/braces/lib/expand.js
 var require_expand = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/expand.js"(exports, module) {
+  "../node_modules/braces/lib/expand.js"(exports, module) {
     "use strict";
     var fill = require_fill_range();
     var stringify = require_stringify();
@@ -28073,9 +29262,9 @@ var require_expand = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/constants.js
+// ../node_modules/braces/lib/constants.js
 var require_constants4 = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/constants.js"(exports, module) {
+  "../node_modules/braces/lib/constants.js"(exports, module) {
     "use strict";
     module.exports = {
       MAX_LENGTH: 1e4,
@@ -28174,9 +29363,9 @@ var require_constants4 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/parse.js
+// ../node_modules/braces/lib/parse.js
 var require_parse2 = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/lib/parse.js"(exports, module) {
+  "../node_modules/braces/lib/parse.js"(exports, module) {
     "use strict";
     var stringify = require_stringify();
     var {
@@ -28412,9 +29601,9 @@ var require_parse2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/braces@3.0.3/node_modules/braces/index.js
+// ../node_modules/braces/index.js
 var require_braces = __commonJS({
-  "../node_modules/.pnpm/braces@3.0.3/node_modules/braces/index.js"(exports, module) {
+  "../node_modules/braces/index.js"(exports, module) {
     "use strict";
     var stringify = require_stringify();
     var compile = require_compile();
@@ -28475,9 +29664,9 @@ var require_braces = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/binary-extensions@2.0.0/node_modules/binary-extensions/binary-extensions.json
+// ../node_modules/binary-extensions/binary-extensions.json
 var require_binary_extensions = __commonJS({
-  "../node_modules/.pnpm/binary-extensions@2.0.0/node_modules/binary-extensions/binary-extensions.json"(exports, module) {
+  "../node_modules/binary-extensions/binary-extensions.json"(exports, module) {
     module.exports = [
       "3dm",
       "3ds",
@@ -28487,12 +29676,16 @@ var require_binary_extensions = __commonJS({
       "a",
       "aac",
       "adp",
+      "afdesign",
+      "afphoto",
+      "afpub",
       "ai",
       "aif",
       "aiff",
       "alz",
       "ape",
       "apk",
+      "appimage",
       "ar",
       "arj",
       "asf",
@@ -28549,6 +29742,7 @@ var require_binary_extensions = __commonJS({
       "fh",
       "fla",
       "flac",
+      "flatpak",
       "fli",
       "flv",
       "fpx",
@@ -28612,10 +29806,14 @@ var require_binary_extensions = __commonJS({
       "numbers",
       "nupkg",
       "o",
+      "odp",
+      "ods",
+      "odt",
       "oga",
       "ogg",
       "ogv",
       "otf",
+      "ott",
       "pages",
       "pbm",
       "pcx",
@@ -28653,6 +29851,7 @@ var require_binary_extensions = __commonJS({
       "rlc",
       "rmf",
       "rmvb",
+      "rpm",
       "rtf",
       "rz",
       "s3m",
@@ -28660,6 +29859,7 @@ var require_binary_extensions = __commonJS({
       "scpt",
       "sgi",
       "shar",
+      "snap",
       "sil",
       "sketch",
       "slk",
@@ -28733,16 +29933,16 @@ var require_binary_extensions = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/binary-extensions@2.0.0/node_modules/binary-extensions/index.js
+// ../node_modules/binary-extensions/index.js
 var require_binary_extensions2 = __commonJS({
-  "../node_modules/.pnpm/binary-extensions@2.0.0/node_modules/binary-extensions/index.js"(exports, module) {
+  "../node_modules/binary-extensions/index.js"(exports, module) {
     module.exports = require_binary_extensions();
   }
 });
 
-// ../node_modules/.pnpm/is-binary-path@2.1.0/node_modules/is-binary-path/index.js
+// ../node_modules/is-binary-path/index.js
 var require_is_binary_path = __commonJS({
-  "../node_modules/.pnpm/is-binary-path@2.1.0/node_modules/is-binary-path/index.js"(exports, module) {
+  "../node_modules/is-binary-path/index.js"(exports, module) {
     "use strict";
     var path11 = __require("path");
     var binaryExtensions = require_binary_extensions2();
@@ -28751,9 +29951,9 @@ var require_is_binary_path = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/constants.js
+// ../node_modules/chokidar/lib/constants.js
 var require_constants5 = __commonJS({
-  "../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/constants.js"(exports) {
+  "../node_modules/chokidar/lib/constants.js"(exports) {
     "use strict";
     var { sep } = __require("path");
     var { platform } = process;
@@ -28815,11 +30015,11 @@ var require_constants5 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/nodefs-handler.js
+// ../node_modules/chokidar/lib/nodefs-handler.js
 var require_nodefs_handler = __commonJS({
-  "../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/nodefs-handler.js"(exports, module) {
+  "../node_modules/chokidar/lib/nodefs-handler.js"(exports, module) {
     "use strict";
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var sysPath = __require("path");
     var { promisify } = __require("util");
     var isBinaryPath = require_is_binary_path();
@@ -28842,11 +30042,11 @@ var require_nodefs_handler = __commonJS({
       STAR
     } = require_constants5();
     var THROTTLE_MODE_WATCH = "watch";
-    var open = promisify(fs8.open);
-    var stat = promisify(fs8.stat);
-    var lstat = promisify(fs8.lstat);
-    var close = promisify(fs8.close);
-    var fsrealpath = promisify(fs8.realpath);
+    var open = promisify(fs9.open);
+    var stat = promisify(fs9.stat);
+    var lstat = promisify(fs9.lstat);
+    var close = promisify(fs9.close);
+    var fsrealpath = promisify(fs9.realpath);
     var statMethods = { lstat, stat };
     var foreach = (val, fn) => {
       if (val instanceof Set) {
@@ -28893,7 +30093,7 @@ var require_nodefs_handler = __commonJS({
         }
       };
       try {
-        return fs8.watch(path11, options, handleEvent);
+        return fs9.watch(path11, options, handleEvent);
       } catch (error) {
         errHandler(error);
       }
@@ -28978,7 +30178,7 @@ var require_nodefs_handler = __commonJS({
       if (copts && (copts.persistent < options.persistent || copts.interval > options.interval)) {
         listeners = cont.listeners;
         rawEmitters = cont.rawEmitters;
-        fs8.unwatchFile(fullPath);
+        fs9.unwatchFile(fullPath);
         cont = void 0;
       }
       if (cont) {
@@ -28989,7 +30189,7 @@ var require_nodefs_handler = __commonJS({
           listeners: listener,
           rawEmitters: rawEmitter,
           options,
-          watcher: fs8.watchFile(fullPath, options, (curr, prev) => {
+          watcher: fs9.watchFile(fullPath, options, (curr, prev) => {
             foreach(cont.rawEmitters, (rawEmitter2) => {
               rawEmitter2(EV_CHANGE, fullPath, { curr, prev });
             });
@@ -29006,7 +30206,7 @@ var require_nodefs_handler = __commonJS({
         delFromSet(cont, KEY_RAW, rawEmitter);
         if (isEmptySet(cont.listeners)) {
           FsWatchFileInstances.delete(fullPath);
-          fs8.unwatchFile(fullPath);
+          fs9.unwatchFile(fullPath);
           cont.options = cont.watcher = void 0;
           Object.freeze(cont);
         }
@@ -29306,11 +30506,11 @@ var require_nodefs_handler = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/fsevents-handler.js
+// ../node_modules/chokidar/lib/fsevents-handler.js
 var require_fsevents_handler = __commonJS({
-  "../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/lib/fsevents-handler.js"(exports, module) {
+  "../node_modules/chokidar/lib/fsevents-handler.js"(exports, module) {
     "use strict";
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var sysPath = __require("path");
     var { promisify } = __require("util");
     var fsevents;
@@ -29355,9 +30555,9 @@ var require_fsevents_handler = __commonJS({
       IDENTITY_FN
     } = require_constants5();
     var Depth = (value) => isNaN(value) ? {} : { depth: value };
-    var stat = promisify(fs8.stat);
-    var lstat = promisify(fs8.lstat);
-    var realpath = promisify(fs8.realpath);
+    var stat = promisify(fs9.stat);
+    var lstat = promisify(fs9.lstat);
+    var realpath = promisify(fs9.realpath);
     var statMethods = { stat, lstat };
     var FSEventsWatchers = /* @__PURE__ */ new Map();
     var consolidateThreshhold = 10;
@@ -29702,12 +30902,12 @@ var require_fsevents_handler = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/index.js
+// ../node_modules/chokidar/index.js
 var require_chokidar = __commonJS({
-  "../node_modules/.pnpm/chokidar@3.6.0/node_modules/chokidar/index.js"(exports) {
+  "../node_modules/chokidar/index.js"(exports) {
     "use strict";
     var { EventEmitter } = __require("events");
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var sysPath = __require("path");
     var { promisify } = __require("util");
     var readdirp = require_readdirp();
@@ -29752,8 +30952,8 @@ var require_chokidar = __commonJS({
       isMacos,
       isIBMi
     } = require_constants5();
-    var stat = promisify(fs8.stat);
-    var readdir = promisify(fs8.readdir);
+    var stat = promisify(fs9.stat);
+    var readdir = promisify(fs9.readdir);
     var arrify = (value = []) => Array.isArray(value) ? value : [value];
     var flatten = (list, result = []) => {
       list.forEach((item) => {
@@ -30247,7 +31447,7 @@ var require_chokidar = __commonJS({
         }
         const now = /* @__PURE__ */ new Date();
         const awaitWriteFinish = (prevStat) => {
-          fs8.stat(fullPath, (err, curStat) => {
+          fs9.stat(fullPath, (err, curStat) => {
             if (err || !this._pendingWrites.has(path11)) {
               if (err && err.code !== "ENOENT") awfEmit(err);
               return;
@@ -30447,9 +31647,9 @@ var require_chokidar = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/ms@2.1.3/node_modules/ms/index.js
+// ../node_modules/ms/index.js
 var require_ms = __commonJS({
-  "../node_modules/.pnpm/ms@2.1.3/node_modules/ms/index.js"(exports, module) {
+  "../node_modules/ms/index.js"(exports, module) {
     var s = 1e3;
     var m = s * 60;
     var h = m * 60;
@@ -30563,9 +31763,9 @@ var require_ms = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/common.js
+// ../node_modules/debug/src/common.js
 var require_common = __commonJS({
-  "../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/common.js"(exports, module) {
+  "../node_modules/debug/src/common.js"(exports, module) {
     function setup(env) {
       createDebug.debug = createDebug;
       createDebug.default = createDebug;
@@ -30740,9 +31940,9 @@ var require_common = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/browser.js
+// ../node_modules/debug/src/browser.js
 var require_browser = __commonJS({
-  "../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/browser.js"(exports, module) {
+  "../node_modules/debug/src/browser.js"(exports, module) {
     exports.formatArgs = formatArgs;
     exports.save = save;
     exports.load = load;
@@ -30910,9 +32110,9 @@ var require_browser = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/has-flag@4.0.0/node_modules/has-flag/index.js
+// ../node_modules/has-flag/index.js
 var require_has_flag = __commonJS({
-  "../node_modules/.pnpm/has-flag@4.0.0/node_modules/has-flag/index.js"(exports, module) {
+  "../node_modules/has-flag/index.js"(exports, module) {
     "use strict";
     module.exports = (flag, argv = process.argv) => {
       const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
@@ -30923,9 +32123,9 @@ var require_has_flag = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/supports-color@7.1.0/node_modules/supports-color/index.js
+// ../node_modules/supports-color/index.js
 var require_supports_color = __commonJS({
-  "../node_modules/.pnpm/supports-color@7.1.0/node_modules/supports-color/index.js"(exports, module) {
+  "../node_modules/supports-color/index.js"(exports, module) {
     "use strict";
     var os = __require("os");
     var tty = __require("tty");
@@ -30982,16 +32182,13 @@ var require_supports_color = __commonJS({
         return 1;
       }
       if ("CI" in env) {
-        if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
+        if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
           return 1;
         }
         return min;
       }
       if ("TEAMCITY_VERSION" in env) {
         return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
-      }
-      if ("GITHUB_ACTIONS" in env) {
-        return 1;
       }
       if (env.COLORTERM === "truecolor") {
         return 3;
@@ -31028,9 +32225,9 @@ var require_supports_color = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/node.js
+// ../node_modules/debug/src/node.js
 var require_node2 = __commonJS({
-  "../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/node.js"(exports, module) {
+  "../node_modules/debug/src/node.js"(exports, module) {
     var tty = __require("tty");
     var util = __require("util");
     exports.init = init;
@@ -31202,9 +32399,9 @@ var require_node2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/index.js
+// ../node_modules/debug/src/index.js
 var require_src = __commonJS({
-  "../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/index.js"(exports, module) {
+  "../node_modules/debug/src/index.js"(exports, module) {
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
       module.exports = require_browser();
     } else {
@@ -31213,9 +32410,9 @@ var require_src = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/wrappy@1.0.2/node_modules/wrappy/wrappy.js
+// ../node_modules/wrappy/wrappy.js
 var require_wrappy = __commonJS({
-  "../node_modules/.pnpm/wrappy@1.0.2/node_modules/wrappy/wrappy.js"(exports, module) {
+  "../node_modules/wrappy/wrappy.js"(exports, module) {
     module.exports = wrappy;
     function wrappy(fn, cb) {
       if (fn && cb) return wrappy(fn)(cb);
@@ -31243,9 +32440,9 @@ var require_wrappy = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/once@1.4.0/node_modules/once/once.js
+// ../node_modules/once/once.js
 var require_once = __commonJS({
-  "../node_modules/.pnpm/once@1.4.0/node_modules/once/once.js"(exports, module) {
+  "../node_modules/once/once.js"(exports, module) {
     var wrappy = require_wrappy();
     module.exports = wrappy(once);
     module.exports.strict = wrappy(onceStrict);
@@ -31287,9 +32484,9 @@ var require_once = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/end-of-stream@1.4.5/node_modules/end-of-stream/index.js
+// ../node_modules/end-of-stream/index.js
 var require_end_of_stream2 = __commonJS({
-  "../node_modules/.pnpm/end-of-stream@1.4.5/node_modules/end-of-stream/index.js"(exports, module) {
+  "../node_modules/end-of-stream/index.js"(exports, module) {
     var once = require_once();
     var noop = function() {
     };
@@ -31370,14 +32567,14 @@ var require_end_of_stream2 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/pump@3.0.4/node_modules/pump/index.js
+// ../node_modules/pump/index.js
 var require_pump = __commonJS({
-  "../node_modules/.pnpm/pump@3.0.4/node_modules/pump/index.js"(exports, module) {
+  "../node_modules/pump/index.js"(exports, module) {
     var once = require_once();
     var eos = require_end_of_stream2();
-    var fs8;
+    var fs9;
     try {
-      fs8 = __require("fs");
+      fs9 = __require("fs");
     } catch (e) {
     }
     var noop = function() {
@@ -31388,8 +32585,8 @@ var require_pump = __commonJS({
     };
     var isFS = function(stream) {
       if (!ancient) return false;
-      if (!fs8) return false;
-      return (stream instanceof (fs8.ReadStream || noop) || stream instanceof (fs8.WriteStream || noop)) && isFn(stream.close);
+      if (!fs9) return false;
+      return (stream instanceof (fs9.ReadStream || noop) || stream instanceof (fs9.WriteStream || noop)) && isFn(stream.close);
     };
     var isRequest = function(stream) {
       return stream.setHeader && isFn(stream.abort);
@@ -31445,9 +32642,9 @@ var require_pump = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/get-stream@5.2.0/node_modules/get-stream/buffer-stream.js
+// ../node_modules/get-stream/buffer-stream.js
 var require_buffer_stream = __commonJS({
-  "../node_modules/.pnpm/get-stream@5.2.0/node_modules/get-stream/buffer-stream.js"(exports, module) {
+  "../node_modules/get-stream/buffer-stream.js"(exports, module) {
     "use strict";
     var { PassThrough: PassThroughStream } = __require("stream");
     module.exports = (options) => {
@@ -31490,9 +32687,9 @@ var require_buffer_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/get-stream@5.2.0/node_modules/get-stream/index.js
+// ../node_modules/get-stream/index.js
 var require_get_stream = __commonJS({
-  "../node_modules/.pnpm/get-stream@5.2.0/node_modules/get-stream/index.js"(exports, module) {
+  "../node_modules/get-stream/index.js"(exports, module) {
     "use strict";
     var { constants: BufferConstants } = __require("buffer");
     var pump = require_pump();
@@ -31543,9 +32740,9 @@ var require_get_stream = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/pend@1.2.0/node_modules/pend/index.js
+// ../node_modules/pend/index.js
 var require_pend = __commonJS({
-  "../node_modules/.pnpm/pend@1.2.0/node_modules/pend/index.js"(exports, module) {
+  "../node_modules/pend/index.js"(exports, module) {
     module.exports = Pend;
     function Pend() {
       this.pending = 0;
@@ -31598,10 +32795,10 @@ var require_pend = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/fd-slicer@1.1.0/node_modules/fd-slicer/index.js
+// ../node_modules/fd-slicer/index.js
 var require_fd_slicer = __commonJS({
-  "../node_modules/.pnpm/fd-slicer@1.1.0/node_modules/fd-slicer/index.js"(exports) {
-    var fs8 = __require("fs");
+  "../node_modules/fd-slicer/index.js"(exports) {
+    var fs9 = __require("fs");
     var util = __require("util");
     var stream = __require("stream");
     var Readable = stream.Readable;
@@ -31626,7 +32823,7 @@ var require_fd_slicer = __commonJS({
     FdSlicer.prototype.read = function(buffer, offset, length, position, callback) {
       var self2 = this;
       self2.pend.go(function(cb) {
-        fs8.read(self2.fd, buffer, offset, length, position, function(err, bytesRead, buffer2) {
+        fs9.read(self2.fd, buffer, offset, length, position, function(err, bytesRead, buffer2) {
           cb();
           callback(err, bytesRead, buffer2);
         });
@@ -31635,7 +32832,7 @@ var require_fd_slicer = __commonJS({
     FdSlicer.prototype.write = function(buffer, offset, length, position, callback) {
       var self2 = this;
       self2.pend.go(function(cb) {
-        fs8.write(self2.fd, buffer, offset, length, position, function(err, written, buffer2) {
+        fs9.write(self2.fd, buffer, offset, length, position, function(err, written, buffer2) {
           cb();
           callback(err, written, buffer2);
         });
@@ -31656,7 +32853,7 @@ var require_fd_slicer = __commonJS({
       if (self2.refCount > 0) return;
       if (self2.refCount < 0) throw new Error("invalid unref");
       if (self2.autoClose) {
-        fs8.close(self2.fd, onCloseDone);
+        fs9.close(self2.fd, onCloseDone);
       }
       function onCloseDone(err) {
         if (err) {
@@ -31693,7 +32890,7 @@ var require_fd_slicer = __commonJS({
       self2.context.pend.go(function(cb) {
         if (self2.destroyed) return cb();
         var buffer = new Buffer(toRead);
-        fs8.read(self2.context.fd, buffer, 0, toRead, self2.pos, function(err, bytesRead) {
+        fs9.read(self2.context.fd, buffer, 0, toRead, self2.pos, function(err, bytesRead) {
           if (err) {
             self2.destroy(err);
           } else if (bytesRead === 0) {
@@ -31740,7 +32937,7 @@ var require_fd_slicer = __commonJS({
       }
       self2.context.pend.go(function(cb) {
         if (self2.destroyed) return cb();
-        fs8.write(self2.context.fd, buffer, 0, buffer.length, self2.pos, function(err2, bytes) {
+        fs9.write(self2.context.fd, buffer, 0, buffer.length, self2.pos, function(err2, bytes) {
           if (err2) {
             self2.destroy();
             cb();
@@ -31857,9 +33054,9 @@ var require_fd_slicer = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/buffer-crc32@0.2.13/node_modules/buffer-crc32/index.js
+// ../node_modules/yauzl/node_modules/buffer-crc32/index.js
 var require_buffer_crc32 = __commonJS({
-  "../node_modules/.pnpm/buffer-crc32@0.2.13/node_modules/buffer-crc32/index.js"(exports, module) {
+  "../node_modules/yauzl/node_modules/buffer-crc32/index.js"(exports, module) {
     var Buffer2 = __require("buffer").Buffer;
     var CRC_TABLE = [
       0,
@@ -32164,10 +33361,10 @@ var require_buffer_crc32 = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/yauzl@2.10.0/node_modules/yauzl/index.js
+// ../node_modules/yauzl/index.js
 var require_yauzl = __commonJS({
-  "../node_modules/.pnpm/yauzl@2.10.0/node_modules/yauzl/index.js"(exports) {
-    var fs8 = __require("fs");
+  "../node_modules/yauzl/index.js"(exports) {
+    var fs9 = __require("fs");
     var zlib = __require("zlib");
     var fd_slicer = require_fd_slicer();
     var crc32 = require_buffer_crc32();
@@ -32197,10 +33394,10 @@ var require_yauzl = __commonJS({
       if (options.validateEntrySizes == null) options.validateEntrySizes = true;
       if (options.strictFileNames == null) options.strictFileNames = false;
       if (callback == null) callback = defaultCallback;
-      fs8.open(path11, "r", function(err, fd) {
+      fs9.open(path11, "r", function(err, fd) {
         if (err) return callback(err);
         fromFd(fd, options, function(err2, zipfile) {
-          if (err2) fs8.close(fd, defaultCallback);
+          if (err2) fs9.close(fd, defaultCallback);
           callback(err2, zipfile);
         });
       });
@@ -32217,7 +33414,7 @@ var require_yauzl = __commonJS({
       if (options.validateEntrySizes == null) options.validateEntrySizes = true;
       if (options.strictFileNames == null) options.strictFileNames = false;
       if (callback == null) callback = defaultCallback;
-      fs8.fstat(fd, function(err, stats) {
+      fs9.fstat(fd, function(err, stats) {
         if (err) return callback(err);
         var reader = fd_slicer.createFromFd(fd, { autoClose: true });
         fromRandomAccessReader(reader, stats.size, options, callback);
@@ -32793,11 +33990,11 @@ var require_yauzl = __commonJS({
   }
 });
 
-// ../node_modules/.pnpm/extract-zip@2.0.1/node_modules/extract-zip/index.js
+// ../node_modules/extract-zip/index.js
 var require_extract_zip = __commonJS({
-  "../node_modules/.pnpm/extract-zip@2.0.1/node_modules/extract-zip/index.js"(exports, module) {
+  "../node_modules/extract-zip/index.js"(exports, module) {
     var debug = require_src()("extract-zip");
-    var { createWriteStream: createWriteStream3, promises: fs8 } = __require("fs");
+    var { createWriteStream: createWriteStream3, promises: fs9 } = __require("fs");
     var getStream = require_get_stream();
     var path11 = __require("path");
     var { promisify } = __require("util");
@@ -32838,8 +34035,8 @@ var require_extract_zip = __commonJS({
             }
             const destDir = path11.dirname(path11.join(this.opts.dir, entry.fileName));
             try {
-              await fs8.mkdir(destDir, { recursive: true });
-              const canonicalDestDir = await fs8.realpath(destDir);
+              await fs9.mkdir(destDir, { recursive: true });
+              const canonicalDestDir = await fs9.realpath(destDir);
               const relativeDestDir = path11.relative(this.opts.dir, canonicalDestDir);
               if (relativeDestDir.split(path11.sep).includes("..")) {
                 throw new Error(`Out of bound path "${canonicalDestDir}" found while processing file ${entry.fileName}`);
@@ -32883,14 +34080,14 @@ var require_extract_zip = __commonJS({
           mkdirOptions.mode = procMode;
         }
         debug("mkdir", { dir: destDir, ...mkdirOptions });
-        await fs8.mkdir(destDir, mkdirOptions);
+        await fs9.mkdir(destDir, mkdirOptions);
         if (isDir) return;
         debug("opening read stream", dest);
         const readStream = await promisify(this.zipfile.openReadStream.bind(this.zipfile))(entry);
         if (symlink) {
           const link = await getStream(readStream);
           debug("creating symlink", link, dest);
-          await fs8.symlink(link, dest);
+          await fs9.symlink(link, dest);
         } else {
           await pipeline(readStream, createWriteStream3(dest, { mode: procMode }));
         }
@@ -32922,115 +34119,29 @@ var require_extract_zip = __commonJS({
       if (!path11.isAbsolute(opts.dir)) {
         throw new Error("Target directory is expected to be absolute");
       }
-      await fs8.mkdir(opts.dir, { recursive: true });
-      opts.dir = await fs8.realpath(opts.dir);
+      await fs9.mkdir(opts.dir, { recursive: true });
+      opts.dir = await fs9.realpath(opts.dir);
       return new Extractor(zipPath, opts).extract();
     };
   }
 });
 
 // src/host/index.ts
+init_sqlite_init();
 import path10 from "node:path";
-import { promises as fs7, readFileSync } from "node:fs";
+import { promises as fs8, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomUUID as randomUUID2 } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
-// ../src/main/db/sqlite-init.ts
-import Database from "better-sqlite3";
-import { promises as fs } from "fs";
-import path from "path";
-var db = null;
-var dbPath = "";
-var SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS knowledge_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_name TEXT NOT NULL,
-    source_path TEXT NOT NULL,
-    md_path TEXT NOT NULL,
-    zip_archive_path TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    create_time INTEGER NOT NULL,
-    last_sync_time INTEGER NOT NULL DEFAULT 0,
-    folder_id INTEGER DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS folders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    parent_id INTEGER,
-    create_time INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS vector_chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id INTEGER NOT NULL,
-    chunk_text TEXT NOT NULL,
-    vector_blob BLOB NOT NULL,
-    FOREIGN KEY(file_id) REFERENCES knowledge_files(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_vector_file_id ON vector_chunks(file_id);
-
-CREATE TABLE IF NOT EXISTS operation_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT NOT NULL,
-    detail TEXT,
-    time INTEGER NOT NULL
-);
-`;
-function getDbPath() {
-  return dbPath;
-}
-async function initDatabase(filePath) {
-  dbPath = filePath || path.join(process.cwd(), ".dsh-wiki-rag", "wiki.db");
-  if (db) return;
-  const dir = path.dirname(dbPath);
-  await fs.mkdir(dir, { recursive: true });
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  runSchema();
-}
-function runSchema() {
-  const statements = SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean);
-  for (const stmt of statements) {
-    run(stmt);
-  }
-}
-function getDb() {
-  if (!db) throw new Error("\u6570\u636E\u5E93\u5C1A\u672A\u521D\u59CB\u5316\uFF0C\u8BF7\u5148\u8C03\u7528 initDatabase()");
-  return db;
-}
-function run(sql, params = []) {
-  getDb().prepare(sql).run(...params);
-}
-function get(sql, params = []) {
-  return getDb().prepare(sql).get(...params);
-}
-function all(sql, params = []) {
-  return getDb().prepare(sql).all(...params);
-}
-function lastInsertId() {
-  const row = get("SELECT last_insert_rowid() AS id");
-  return row?.id ?? 0;
-}
-function closeDatabase() {
-  if (!db) return;
-  db.close();
-  db = null;
-}
-function walCheckpoint(mode = "TRUNCATE") {
-  if (!db) return;
-  db.pragma(`wal_checkpoint(${mode})`);
-}
-
 // ../src/main/file/file-importer.ts
-import { promises as fs4 } from "fs";
+import { promises as fs5 } from "fs";
 import path6 from "path";
 import { randomUUID } from "crypto";
 
 // ../src/main/db/knowledge-db.ts
+init_sqlite_init();
 async function insertKnowledgeFile(record) {
   await run(
     `INSERT INTO knowledge_files
@@ -33134,19 +34245,11 @@ async function moveFileToFolder(fileId, folderId) {
   await run("UPDATE knowledge_files SET folder_id = ? WHERE id = ?", [folderId, fileId]);
 }
 
-// ../src/main/db/log-db.ts
-async function writeLog(action, detail) {
-  await run("INSERT INTO operation_log (action, detail, time) VALUES (?, ?, ?)", [
-    action,
-    detail,
-    Date.now()
-  ]);
-}
-async function listLogs(limit = 100) {
-  return all("SELECT * FROM operation_log ORDER BY id DESC LIMIT ?", [limit]);
-}
+// ../src/main/file/file-importer.ts
+init_log_db();
 
 // ../src/main/db/vector-db.ts
+init_sqlite_init();
 async function insertVectorChunk(fileId, chunkText2, vector) {
   if (!chunkText2 || !chunkText2.trim()) return;
   if (!vector || vector.length === 0) return;
@@ -33352,18 +34455,78 @@ function isUncPath(p) {
   return p.startsWith("\\\\") || p.startsWith("//");
 }
 
+// ../src/main/file/unc-retry.ts
+import { promises as fs2 } from "fs";
+var RETRYABLE_CODES = /* @__PURE__ */ new Set([
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ECONNABORTED",
+  "EAI_AGAIN",
+  "EPIPE",
+  "EAGAIN",
+  "ECONNREFUSED"
+]);
+function isNetworkRetryableError(err) {
+  const code = err?.code ?? "";
+  return RETRYABLE_CODES.has(code);
+}
+async function withNetworkRetry(fn, opts = {}) {
+  const attempts = opts.attempts ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 500;
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (!isNetworkRetryableError(e) || i === attempts - 1) throw e;
+      const delay = baseDelayMs * 2 ** i;
+      await new Promise((r) => setTimeout(r, delay));
+      const { writeLog: writeLog2 } = await Promise.resolve().then(() => (init_log_db(), log_db_exports));
+      await writeLog2(
+        "network-retry",
+        `${opts.label ?? "\u7F51\u7EDC\u64CD\u4F5C"} \u91CD\u8BD5 ${i + 1}/${attempts - 1}\uFF08${delay}ms\uFF09\uFF1A${e.message}`
+      ).catch(() => {
+      });
+    }
+  }
+  throw lastErr;
+}
+async function checkUncAccess(p) {
+  if (!isUncPath(p)) return { ok: true, reason: "\u975E UNC \u8DEF\u5F84\uFF0C\u8DF3\u8FC7\u6743\u9650\u68C0\u6D4B" };
+  try {
+    await fs2.access(p, fs2.constants.R_OK);
+    await fs2.stat(p);
+    return { ok: true, reason: "\u53EF\u8BBF\u95EE" };
+  } catch (e) {
+    const code = e?.code ?? "";
+    if (code === "EACCES" || code === "EPERM") {
+      return { ok: false, reason: `\u65E0\u6743\u9650\u8BBF\u95EE\u5171\u4EAB\u8DEF\u5F84: ${p}\uFF08${code}\uFF09` };
+    }
+    if (isNetworkRetryableError(e)) {
+      return { ok: false, reason: `\u5171\u4EAB\u8DEF\u5F84\u4E0D\u53EF\u8FBE\uFF08\u7F51\u7EDC\uFF09: ${p}\uFF08${code}\uFF09` };
+    }
+    if (code === "ENOENT") {
+      return { ok: false, reason: `\u5171\u4EAB\u8DEF\u5F84\u4E0D\u5B58\u5728: ${p}` };
+    }
+    return { ok: false, reason: `\u5171\u4EAB\u8DEF\u5F84\u68C0\u6D4B\u5931\u8D25: ${p}\uFF08${code || e.message}\uFF09` };
+  }
+}
+
 // ../src/main/file/zip-archive.ts
 var import_archiver = __toESM(require_archiver(), 1);
-import { promises as fs3 } from "fs";
+import { promises as fs4 } from "fs";
 import path4 from "path";
 import { createWriteStream } from "fs";
 
 // ../src/main/file/file-utils.ts
-import { promises as fs2 } from "fs";
+import { promises as fs3 } from "fs";
 import path3 from "path";
 import { createHash as createHash2 } from "crypto";
 async function sha256File(filePath) {
-  const data = await fs2.readFile(filePath);
+  const data = await fs3.readFile(filePath);
   return createHash2("sha256").update(data).digest("hex");
 }
 function sha256Text(text) {
@@ -33385,13 +34548,13 @@ function detectFileType(filePath) {
   }
 }
 function isOversize(filePath, thresholdMb = 100) {
-  return fs2.stat(filePath).then((st) => st.size > thresholdMb * 1024 * 1024);
+  return fs3.stat(filePath).then((st) => st.size > thresholdMb * 1024 * 1024);
 }
 async function extractTextToMarkdown(filePath) {
   const type = detectFileType(filePath);
   const fileName = path3.basename(filePath);
   if (type === "md" || type === "txt") {
-    return await fs2.readFile(filePath, "utf-8");
+    return await fs3.readFile(filePath, "utf-8");
   }
   const note = type === "unknown" ? "\uFF08\u672A\u77E5/\u4E0D\u652F\u6301\u683C\u5F0F\uFF0C\u672A\u63D0\u53D6\u6B63\u6587\uFF09" : `\uFF08${type.toUpperCase()} \u683C\u5F0F\uFF0C\u6B63\u6587\u7531 DSH \u5BBF\u4E3B\u89E3\u6790\u5668\u6CE8\u5165\uFF09`;
   return `# ${fileName}
@@ -33401,10 +34564,15 @@ ${note}
 > \u6E90\u6587\u4EF6\uFF1A\`${filePath}\`
 `;
 }
+function isLocalFsPath(p) {
+  if (!p) return false;
+  if (/^[A-Za-z]:[\\/]/.test(p)) return true;
+  return p.startsWith("/") || p.startsWith("\\\\") || p.startsWith("//");
+}
 
 // ../src/main/file/zip-archive.ts
 async function archiveSourceFile(sourcePath, zipDir, baseName) {
-  await fs3.mkdir(zipDir, { recursive: true });
+  await fs4.mkdir(zipDir, { recursive: true });
   const zipPath = path4.join(zipDir, `${baseName}.zip`);
   await new Promise((resolve, reject) => {
     const output = createWriteStream(zipPath);
@@ -33457,7 +34625,22 @@ var FileImporter = class {
     if (await isOversize(resolved, 10)) {
       return { fileId: 0, fileName, mdPath: "", skipped: true, reason: "\u6587\u4EF6\u8D85\u8FC7 10MB \u5927\u5C0F\u9608\u503C\uFF0C\u5DF2\u62E6\u622A" };
     }
-    const mdText = await extractTextToMarkdown(resolved);
+    if (isUncPath(resolved)) {
+      const acc = await checkUncAccess(resolved);
+      if (!acc.ok) {
+        await writeLog("unc-permission-denied", `\u5BFC\u5165\u88AB\u62D2 file=${fileName} ${acc.reason}`);
+        return { fileId: 0, fileName, mdPath: "", skipped: true, reason: acc.reason };
+      }
+    }
+    let mdText;
+    try {
+      mdText = await withNetworkRetry(() => extractTextToMarkdown(resolved), {
+        label: `\u5BFC\u5165\u8BFB\u53D6 ${fileName}`
+      });
+    } catch (e) {
+      await writeLog("import-read-error", `${fileName}: ${e.message}`);
+      return { fileId: 0, fileName, mdPath: "", skipped: true, reason: e.message };
+    }
     const type = detectFileType(resolved) === "unknown" ? "md" : detectFileType(resolved);
     return this.commitImport(resolved, fileName, mdText, type);
   }
@@ -33500,17 +34683,29 @@ ${content}`;
     const fileName = `${this.safeNameFromUrl(url)}.md`;
     return this.commitImport(url, fileName, mdText, "url");
   }
-  /** 笔记文本直接新建 MD 知识库文档 */
+  /** 笔记文本直接新建 MD 知识库文档；原始笔记 TXT 归档作证据层凭证 */
   async importNote(title, noteText) {
     const mdText = `# ${title}
 
 ${noteText}`;
     const fileName = `${title}.md`;
-    return this.commitImport(`note://${title}`, fileName, mdText, "note");
+    let noteZip = "";
+    try {
+      await fs5.mkdir(this.ctx.zipDir, { recursive: true });
+      const base = sanitizeFileName(fileName.replace(/\.md$/i, "")) || "note";
+      const tmpTxt = path6.join(this.ctx.zipDir, `_note_src_${Date.now()}_${randomUUID().slice(0, 6)}.txt`);
+      await fs5.writeFile(tmpTxt, noteText, "utf-8");
+      noteZip = await archiveSourceFile(tmpTxt, this.ctx.zipDir, `${base}-note`);
+      await fs5.unlink(tmpTxt).catch(() => {
+      });
+    } catch (e) {
+      await writeLog("note-archive-degraded", `\u7B14\u8BB0\u539F\u6587\u5F52\u6863\u5931\u8D25\uFF08\u964D\u7EA7\u4E3A\u4EC5 MD \u5165\u5E93\uFF09: ${e.message}`);
+    }
+    return this.commitImport(`note://${title}`, fileName, mdText, "note", noteZip);
   }
   /** 核心入库流程 */
-  async commitImport(sourceRef, rawFileName, mdText, fileType) {
-    const isLocalRef = sourceRef.startsWith("/") || isUncPath(sourceRef);
+  async commitImport(sourceRef, rawFileName, mdText, fileType, presetZipPath = "") {
+    const isLocalRef = isLocalFsPath(sourceRef);
     const storedSourcePath = isLocalRef ? sourceRef : `ref://${sourceRef}`;
     const existing = await findKnowledgeFileBySourcePath(storedSourcePath);
     if (existing) {
@@ -33523,8 +34718,8 @@ ${noteText}`;
         reason: "duplicate source"
       };
     }
-    await fs4.mkdir(this.ctx.mdDir, { recursive: true });
-    await fs4.mkdir(this.ctx.zipDir, { recursive: true });
+    await fs5.mkdir(this.ctx.mdDir, { recursive: true });
+    await fs5.mkdir(this.ctx.zipDir, { recursive: true });
     const safeRawName = sanitizeFileName(rawFileName) || "untitled.md";
     const mdSuffix = safeRawName.toLowerCase().endsWith(".md") ? "" : ".md";
     const baseNameForDedupe = safeRawName + mdSuffix;
@@ -33532,11 +34727,13 @@ ${noteText}`;
     const finalMdName = resolveUniqueFileName(baseNameForDedupe, existingNames);
     const mdPath = path6.join(this.ctx.mdDir, finalMdName);
     assertInsideDir(mdPath, this.ctx.mdDir);
-    await fs4.writeFile(mdPath, mdText, "utf-8");
+    await fs5.writeFile(mdPath, mdText, "utf-8");
     const baseName = finalMdName.replace(/\.md$/i, "");
     let zipPath = "";
     try {
-      if (isLocalRef) {
+      if (presetZipPath) {
+        zipPath = presetZipPath;
+      } else if (isLocalRef) {
         zipPath = await archiveSourceFile(sourceRef, this.ctx.zipDir, `${baseName}-src`);
       } else {
         zipPath = await archiveSourceFile(mdPath, this.ctx.zipDir, `${baseName}-meta`);
@@ -33562,7 +34759,7 @@ ${noteText}`;
     await deleteChunksByFileId(fileId);
     const chunks = chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, this.ctx.chunkMode);
     for (const c of chunks) {
-      const vec = embedText(c);
+      const vec = await embedText(c);
       await insertVectorChunk(fileId, c, vec);
     }
   }
@@ -33570,7 +34767,7 @@ ${noteText}`;
   async scanParseableFiles(folderPath) {
     const out = [];
     const walk = async (dir) => {
-      const entries = await fs4.readdir(dir, { withFileTypes: true });
+      const entries = await fs5.readdir(dir, { withFileTypes: true });
       for (const e of entries) {
         const full = path6.join(dir, e.name);
         if (e.isDirectory()) {
@@ -33596,6 +34793,7 @@ ${noteText}`;
 
 // ../src/main/file/file-watcher.ts
 var import_chokidar = __toESM(require_chokidar(), 1);
+init_log_db();
 var DEBOUNCE_MS = 500;
 var FileWatcher = class {
   watcher = null;
@@ -33635,7 +34833,7 @@ var FileWatcher = class {
   }
   /** 启动对某知识条目的源文件监听；重复监听同一路径幂等 */
   watchSource(fileId) {
-    void getKnowledgeFileById(fileId).then((file) => {
+    void getKnowledgeFileById(fileId).then(async (file) => {
       if (!file) return;
       const existing = this.watched.get(file.source_path);
       if (existing) {
@@ -33647,6 +34845,12 @@ var FileWatcher = class {
         fileId,
         fileName: file.file_name
       });
+      if (isUncPath(file.source_path)) {
+        const acc = await checkUncAccess(file.source_path);
+        if (!acc.ok) {
+          void writeLog("watch-unc-access", `\u76D1\u542C ${file.source_path}: ${acc.reason}`);
+        }
+      }
       this.ensureWatcher().add(file.source_path);
     });
   }
@@ -33767,6 +34971,7 @@ async function rerankLocal(query, results) {
 }
 
 // ../src/main/rag/rag-search.ts
+init_log_db();
 var MAX_QUERY_LEN = 4e3;
 var MIN_TOPK = 1;
 var MAX_TOPK = 50;
@@ -33826,11 +35031,15 @@ async function ragSearch(query, topK = 5, keywordWeight = 0.3) {
   return results;
 }
 
-// ../src/main/file/source-sync.ts
-import { promises as fs5 } from "fs";
-import path7 from "path";
+// src/host/index.ts
+init_log_db();
 
-// ../node_modules/.pnpm/diff@5.2.2/node_modules/diff/lib/index.mjs
+// ../src/main/file/source-sync.ts
+import { promises as fs6 } from "fs";
+import path7 from "path";
+init_log_db();
+
+// ../node_modules/diff/lib/index.mjs
 function Diff() {
 }
 Diff.prototype = {
@@ -34210,27 +35419,37 @@ async function triggerSourceSync(fileId, zipArchivePath, mdPath) {
     return { status: "source-lost", reason: "\u77E5\u8BC6\u6761\u76EE\u4E0D\u5B58\u5728" };
   }
   const sourcePath = record.source_path;
-  const isLocalRef = sourcePath.startsWith("/") || sourcePath.startsWith("\\\\") || sourcePath.startsWith("//");
+  const isLocalRef = isLocalFsPath(sourcePath);
   if (!isLocalRef) {
     return { status: "no-change", reason: "\u8BE5\u6761\u76EE\u65E0\u672C\u5730\u6E90\u6587\u4EF6\uFF08\u7F51\u9875/\u7B14\u8BB0\uFF09\uFF0C\u65E0\u9700\u540C\u6B65" };
   }
+  if (isUncPath(sourcePath)) {
+    const acc = await checkUncAccess(sourcePath);
+    if (!acc.ok) {
+      await writeLog("unc-access-denied", `\u540C\u6B65 fileId=${fileId} ${acc.reason}`);
+      return { status: "source-lost", reason: acc.reason };
+    }
+  }
   let sourceHash;
   try {
-    await fs5.access(sourcePath);
-    sourceHash = await sha256File(sourcePath);
-  } catch {
-    return { status: "source-lost", reason: `\u6E90\u6587\u4EF6\u4E22\u5931: ${sourcePath}` };
+    await fs6.access(sourcePath);
+    sourceHash = await withNetworkRetry(() => sha256File(sourcePath), {
+      label: `\u540C\u6B65\u8BFB\u53D6 ${sourcePath}`
+    });
+  } catch (e) {
+    const reason = isNetworkRetryableError(e) ? `\u6E90\u6587\u4EF6\u4E0D\u53EF\u8FBE\uFF08\u7F51\u7EDC\uFF09: ${sourcePath}` : `\u6E90\u6587\u4EF6\u4E22\u5931: ${sourcePath}`;
+    return { status: "source-lost", reason };
   }
   let archiveHash = null;
   try {
-    await fs5.access(zipArchivePath);
+    await fs6.access(zipArchivePath);
     archiveHash = await sha256File(zipArchivePath);
   } catch {
     archiveHash = null;
   }
   let oldText = "";
   try {
-    oldText = await fs5.readFile(mdPath, "utf-8");
+    oldText = await fs6.readFile(mdPath, "utf-8");
   } catch {
     oldText = "";
   }
@@ -34246,12 +35465,12 @@ async function triggerSourceSync(fileId, zipArchivePath, mdPath) {
 async function applySourceUpdate(fileId, newText, mdPath, reindex) {
   let oldText = "";
   try {
-    oldText = await fs5.readFile(mdPath, "utf-8");
+    oldText = await fs6.readFile(mdPath, "utf-8");
   } catch {
     oldText = "";
   }
-  await fs5.mkdir(path7.dirname(mdPath), { recursive: true });
-  await fs5.writeFile(mdPath, newText, "utf-8");
+  await fs6.mkdir(path7.dirname(mdPath), { recursive: true });
+  await fs6.writeFile(mdPath, newText, "utf-8");
   await reindex(fileId, newText);
   await updateSyncTime(fileId, Date.now());
   await writeLog(
@@ -34262,11 +35481,12 @@ async function applySourceUpdate(fileId, newText, mdPath, reindex) {
 
 // ../src/main/snapshot/snapshot-backup.ts
 var import_archiver2 = __toESM(require_archiver(), 1);
-import { promises as fs6 } from "fs";
+init_log_db();
+import { promises as fs7 } from "fs";
 import path8 from "path";
 import { createWriteStream as createWriteStream2 } from "fs";
 async function createSnapshot(mdDir, zipDir, snapshotDir) {
-  await fs6.mkdir(snapshotDir, { recursive: true });
+  await fs7.mkdir(snapshotDir, { recursive: true });
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const outPath = path8.join(snapshotDir, `snapshot-${stamp}.zip`);
   await new Promise((resolve, reject) => {
@@ -34284,7 +35504,7 @@ async function createSnapshot(mdDir, zipDir, snapshotDir) {
 }
 async function listSnapshots(snapshotDir) {
   try {
-    const files = await fs6.readdir(snapshotDir);
+    const files = await fs7.readdir(snapshotDir);
     return files.filter((f) => f.endsWith(".zip")).sort().reverse();
   } catch {
     return [];
@@ -34292,33 +35512,33 @@ async function listSnapshots(snapshotDir) {
 }
 async function restoreSnapshot(snapshotZip, targetDir) {
   const { default: extract } = await Promise.resolve().then(() => __toESM(require_extract_zip(), 1));
-  await fs6.mkdir(targetDir, { recursive: true });
+  await fs7.mkdir(targetDir, { recursive: true });
   await extract(snapshotZip, {
     dir: targetDir,
     onEntry: (entry) => {
       assertZipEntryInside(entry.fileName, targetDir);
     }
   });
-  const restored = await fs6.readdir(targetDir);
+  const restored = await fs7.readdir(targetDir);
   await writeLog("snapshot-restore", snapshotZip);
   return restored;
 }
 async function previewRestore(snapshotZip, currentMdDir) {
   const { default: extract } = await Promise.resolve().then(() => __toESM(require_extract_zip(), 1));
   const os = await import("os");
-  const tmpDir = await fs6.mkdtemp(path8.join(os.tmpdir(), "snapshot-preview-"));
+  const tmpDir = await fs7.mkdtemp(path8.join(os.tmpdir(), "snapshot-preview-"));
   try {
     await extract(snapshotZip, { dir: tmpDir });
     const snapshotMdDir = path8.join(tmpDir, "md");
     let currentFiles = [];
     try {
-      currentFiles = await fs6.readdir(currentMdDir);
+      currentFiles = await fs7.readdir(currentMdDir);
     } catch {
       currentFiles = [];
     }
     let snapshotFiles = [];
     try {
-      snapshotFiles = await fs6.readdir(snapshotMdDir);
+      snapshotFiles = await fs7.readdir(snapshotMdDir);
     } catch {
       snapshotFiles = [];
     }
@@ -34333,8 +35553,8 @@ async function previewRestore(snapshotZip, currentMdDir) {
     }
     for (const f of snapshotFiles) {
       if (currentFiles.includes(f)) {
-        const currentContent = await fs6.readFile(path8.join(currentMdDir, f)).catch(() => null);
-        const snapshotContent = await fs6.readFile(path8.join(snapshotMdDir, f)).catch(() => null);
+        const currentContent = await fs7.readFile(path8.join(currentMdDir, f)).catch(() => null);
+        const snapshotContent = await fs7.readFile(path8.join(snapshotMdDir, f)).catch(() => null);
         if (currentContent && snapshotContent && !currentContent.equals(snapshotContent)) {
           modified.push(f);
         }
@@ -34342,7 +35562,7 @@ async function previewRestore(snapshotZip, currentMdDir) {
     }
     return { added, removed, modified };
   } finally {
-    await fs6.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    await fs7.rm(tmpDir, { recursive: true, force: true }).catch(() => {
     });
   }
 }
@@ -34483,8 +35703,8 @@ function sendHttpError(res, error) {
 }
 
 // src/host/index.ts
-var logger = createLogger("wiki-rag-host");
-var name = "wiki-rag-host";
+var logger = createLogger("dsh-wiki-rag");
+var name = "dsh-wiki-rag";
 var inject = ["tools"];
 var Config = z.object({
   mdStoragePath: z.string().default(".dsh-wiki-rag/md"),
@@ -34575,14 +35795,14 @@ function apply(ctx, config) {
   ctx.effect(async () => {
     await initDatabase(path10.join(dataDir, "dsh-wiki-rag.db"));
     logger.info("plugin activated", { dbPath: getDbPath() });
-    await writeLog("plugin-activate", `wiki-rag-host DB=${getDbPath()}`);
+    await writeLog("plugin-activate", `dsh-wiki-rag DB=${getDbPath()}`);
     watcher.setCallback(async (change) => {
       let oldText = "";
       try {
         const rec = await getKnowledgeFileById(change.fileId);
         if (rec) {
           try {
-            oldText = await fs7.readFile(rec.md_path, "utf-8");
+            oldText = await fs8.readFile(rec.md_path, "utf-8");
           } catch {
             oldText = "";
           }
@@ -34619,7 +35839,7 @@ function apply(ctx, config) {
   async function readSnapshotList() {
     let names = [];
     try {
-      names = (await fs7.readdir(snapshotStoragePath)).filter((n) => n.endsWith(".zip")).sort().reverse();
+      names = (await fs8.readdir(snapshotStoragePath)).filter((n) => n.endsWith(".zip")).sort().reverse();
     } catch {
       names = [];
     }
@@ -34638,7 +35858,7 @@ function apply(ctx, config) {
     const list = await readSnapshotList();
     for (const s of list.slice(keep)) {
       try {
-        await fs7.unlink(path10.join(snapshotStoragePath, s.file));
+        await fs8.unlink(path10.join(snapshotStoragePath, s.file));
       } catch {
       }
     }
@@ -34667,7 +35887,7 @@ function apply(ctx, config) {
       case "file":
       default: {
         try {
-          const st = await fs7.stat(source);
+          const st = await fs8.stat(source);
           if (st.isDirectory()) {
             return { summary: importer.summarize(await importer.importFolder(source)) };
           }
@@ -34680,7 +35900,7 @@ function apply(ctx, config) {
   async function walkParseableFiles(dir) {
     const out = [];
     const walk = async (d) => {
-      const entries = await fs7.readdir(d, { withFileTypes: true });
+      const entries = await fs8.readdir(d, { withFileTypes: true });
       for (const e of entries) {
         const full = path10.join(d, e.name);
         if (e.isDirectory()) await walk(full);
@@ -34740,7 +35960,7 @@ function apply(ctx, config) {
       return r2;
     }
     try {
-      const st = await fs7.stat(source);
+      const st = await fs8.stat(source);
       if (st.isDirectory()) return importFolderProgressive(source);
     } catch {
     }
@@ -34834,20 +36054,20 @@ function apply(ctx, config) {
     }
     if (nextSnap !== oldSnap) {
       try {
-        for (const n of await fs7.readdir(oldSnap)) {
+        for (const n of await fs8.readdir(oldSnap)) {
           moves.push({ from: path10.join(oldSnap, n), to: path10.join(nextSnap, n) });
         }
       } catch {
       }
     }
-    if (nextMd !== oldMd) await fs7.mkdir(nextMd, { recursive: true });
-    if (nextZip !== oldZip) await fs7.mkdir(nextZip, { recursive: true });
-    if (nextSnap !== oldSnap) await fs7.mkdir(nextSnap, { recursive: true });
+    if (nextMd !== oldMd) await fs8.mkdir(nextMd, { recursive: true });
+    if (nextZip !== oldZip) await fs8.mkdir(nextZip, { recursive: true });
+    if (nextSnap !== oldSnap) await fs8.mkdir(nextSnap, { recursive: true });
     const movedSoFar = [];
     try {
       for (const m of moves) {
         try {
-          await fs7.rename(m.from, m.to);
+          await fs8.rename(m.from, m.to);
           movedSoFar.push(m);
         } catch {
         }
@@ -34857,7 +36077,7 @@ function apply(ctx, config) {
     } catch (e) {
       for (const m of movedSoFar.reverse()) {
         try {
-          await fs7.rename(m.to, m.from);
+          await fs8.rename(m.to, m.from);
         } catch {
         }
       }
@@ -35148,12 +36368,12 @@ function apply(ctx, config) {
           }
           const existingNames = (await listKnowledgeFiles()).map((f) => f.file_name);
           const finalName = resolveUniqueFileName(title.endsWith(".md") ? title : `${title}.md`, existingNames);
-          await fs7.mkdir(settings3.mdStoragePath, { recursive: true });
+          await fs8.mkdir(settings3.mdStoragePath, { recursive: true });
           const mdPath = path10.join(settings3.mdStoragePath, finalName);
           const content = `# ${finalName.replace(/\.md$/i, "")}
 
 `;
-          await fs7.writeFile(mdPath, content, "utf-8");
+          await fs8.writeFile(mdPath, content, "utf-8");
           const fileId = await insertKnowledgeFile({
             file_name: finalName,
             source_path: "manual://" + title,
@@ -35165,7 +36385,7 @@ function apply(ctx, config) {
             folder_id: folderId
           });
           await importer.reindex(fileId, content);
-          await writeLog("create-blank-md", `\u65B0\u5EFA\u7A7A\u767DMD fileId=${fileId} name=${finalName}`);
+          await writeLog("create-blank-md", `\u65B0\u5EFA\u6587\u6863 fileId=${fileId} name=${finalName}`);
           return json(200, { fileId, fileName: finalName, mdPath });
         }
         if (req.method === "GET" && seg.length === 5 && seg[2] === "files" && seg[4] === "content") {
@@ -35175,7 +36395,7 @@ function apply(ctx, config) {
           if (!rec) return json(404, { error: "\u6761\u76EE\u4E0D\u5B58\u5728" });
           let content = "";
           try {
-            content = await fs7.readFile(rec.md_path, "utf-8");
+            content = await fs8.readFile(rec.md_path, "utf-8");
           } catch {
             content = "";
           }
@@ -35195,18 +36415,90 @@ function apply(ctx, config) {
           const content = typeof parsed?.content === "string" ? parsed.content : "";
           let oldContent = "";
           try {
-            oldContent = await fs7.readFile(rec.md_path, "utf-8");
+            oldContent = await fs8.readFile(rec.md_path, "utf-8");
           } catch {
             oldContent = "";
           }
-          await fs7.mkdir(path10.dirname(rec.md_path), { recursive: true });
-          await fs7.writeFile(rec.md_path, content, "utf-8");
+          await fs8.mkdir(path10.dirname(rec.md_path), { recursive: true });
+          await fs8.writeFile(rec.md_path, content, "utf-8");
           await importer.reindex(fileId, content);
           await writeLog(
             "manual_edit",
             `\u4EBA\u5DE5\u7F16\u8F91 fileId=${fileId} old=${sha256Text(oldContent)} new=${sha256Text(content)}`
           );
           return json(200, { status: "saved" });
+        }
+        if (req.method === "POST" && seg.length === 5 && seg[2] === "folders" && seg[4] === "rebind-source") {
+          const fid = parseInt(seg[3] || "");
+          if (Number.isNaN(fid)) return json(400, { error: "\u975E\u6CD5\u6587\u4EF6\u5939 id" });
+          if (!await getFolderById(fid)) return json(404, { error: "\u6587\u4EF6\u5939\u4E0D\u5B58\u5728" });
+          let parsed;
+          try {
+            parsed = JSON.parse(body || "{}");
+          } catch {
+            return json(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON" });
+          }
+          const newDir = typeof parsed?.sourceDir === "string" ? parsed.sourceDir.trim() : "";
+          if (!newDir) return json(400, { error: "\u7F3A\u5C11 sourceDir" });
+          if (!(newDir.startsWith("/") || isUncPath(newDir))) return json(400, { error: "sourceDir \u5FC5\u987B\u662F\u672C\u5730\u76EE\u5F55\u6216 UNC \u8DEF\u5F84" });
+          const allFolders = await listFolders();
+          const allFiles = await listKnowledgeFiles();
+          const childIds = /* @__PURE__ */ new Set([fid]);
+          const stack = [fid];
+          while (stack.length) {
+            const pid = stack.pop();
+            for (const f of allFolders) {
+              if (f.parent_id === pid && !childIds.has(f.id)) {
+                childIds.add(f.id);
+                stack.push(f.id);
+              }
+            }
+          }
+          const files = allFiles.filter((f) => f.folder_id !== null && childIds.has(f.folder_id));
+          const localFiles = files.filter((f) => f.source_path.startsWith("/") || isUncPath(f.source_path));
+          if (!localFiles.length) {
+            return json(200, { status: "rebounded", count: 0, reason: "\u8BE5\u6587\u4EF6\u5939\uFF08\u542B\u5B50\u6587\u4EF6\u5939\uFF09\u4E0B\u65E0\u672C\u5730\u6E90\u6587\u4EF6\u6761\u76EE" });
+          }
+          const splitP = (p) => p.replace(/\\/g, "/").replace(/\/+$/, "").split("/").filter(Boolean);
+          const groups = localFiles.map((f) => splitP(f.source_path));
+          const first = groups[0];
+          let i = 0;
+          while (i < first.length && groups.every((g) => g[i] === first[i])) i++;
+          let segs = first.slice(0, i);
+          if (segs.length && localFiles.length === 1) segs = segs.slice(0, -1);
+          const isUnc = localFiles[0].source_path.startsWith("\\\\");
+          const common = isUnc ? "\\\\" + segs.join("\\") : localFiles[0].source_path.startsWith("/") ? "/" + segs.join("/") : segs.join("/");
+          const newDirClean = newDir.replace(/[\\/]+$/, "");
+          let count = 0;
+          const rebound = [];
+          for (const f of localFiles) {
+            const rel = splitP(f.source_path).slice(segs.length).join("/");
+            const to = newDirClean + (rel ? isUnc ? "\\" + rel.replace(/\//g, "\\") : "/" + rel : "");
+            const oldSource = f.source_path;
+            try {
+              watcher.unwatchPath(oldSource);
+            } catch {
+            }
+            await updateSourcePath(f.id, to);
+            try {
+              watcher.watchSource(f.id);
+            } catch {
+            }
+            try {
+              const newZip = await archiveSourceFile(to, settings3.zipStoragePath, `${f.file_name.replace(/\.md$/i, "")}-src`);
+              try {
+                if (f.zip_archive_path) await fs8.unlink(f.zip_archive_path);
+              } catch {
+              }
+              await updateZipPath(f.id, newZip);
+            } catch (e) {
+              await writeLog("folder-rebind-archive-error", `fileId=${f.id}: ${e.message}`);
+            }
+            rebound.push({ fileId: f.id, from: oldSource, to });
+            count++;
+          }
+          await writeLog("folder-rebind-source", `\u6587\u4EF6\u5939\u91CD\u9009\u6E90 id=${fid} common=${common} -> ${newDir} count=${count}`);
+          return json(200, { status: "rebounded", count, common, newDir: newDirClean, rebound });
         }
         if (req.method === "POST" && seg.length === 5 && seg[2] === "folders" && seg[4] === "sync") {
           const fid = parseInt(seg[3] || "");
@@ -35308,11 +36600,11 @@ function apply(ctx, config) {
             try {
               if (record) {
                 try {
-                  await fs7.unlink(record.md_path);
+                  await fs8.unlink(record.md_path);
                 } catch {
                 }
                 try {
-                  if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
+                  if (record.zip_archive_path) await fs8.unlink(record.zip_archive_path);
                 } catch {
                 }
                 try {
@@ -35377,7 +36669,7 @@ function apply(ctx, config) {
             const finalName = resolveUniqueFileName(desired, existing);
             const newMdPath = path10.join(mdDir, finalName);
             try {
-              await fs7.rename(record.md_path, newMdPath);
+              await fs8.rename(record.md_path, newMdPath);
             } catch {
             }
             await updateMdPath(id, finalName, newMdPath);
@@ -35421,7 +36713,7 @@ function apply(ctx, config) {
                   `${record.file_name.replace(/\.md$/i, "")}-src`
                 );
                 try {
-                  if (record.zip_archive_path) await fs7.unlink(record.zip_archive_path);
+                  if (record.zip_archive_path) await fs8.unlink(record.zip_archive_path);
                 } catch {
                 }
                 await updateZipPath(id, newZipPath);
@@ -35556,11 +36848,11 @@ function apply(ctx, config) {
       const file = await getKnowledgeFileById(args.fileId);
       if (!file) return { status: "error", reason: "\u6761\u76EE\u4E0D\u5B58\u5728" };
       try {
-        await fs7.unlink(file.md_path);
+        await fs8.unlink(file.md_path);
       } catch {
       }
       try {
-        if (file.zip_archive_path) await fs7.unlink(file.zip_archive_path);
+        if (file.zip_archive_path) await fs8.unlink(file.zip_archive_path);
       } catch {
       }
       await deleteKnowledgeFile(args.fileId);

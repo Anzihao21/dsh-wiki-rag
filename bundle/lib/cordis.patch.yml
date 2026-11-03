@@ -1,7 +1,7 @@
 # dsh-wiki-rag bundle patch 层
-# 声明本 bundle 贡献的插件行：宿主工具插件（wiki-rag-host）
+# 声明本 bundle 贡献的插件行：宿主插件（dsh-wiki-rag）
 - insert:
-    - id: wiki-rag-host
+    - id: dsh-wiki-rag
       name: 'dsh-wiki-rag'
       config:
         mdStoragePath: '.dsh-wiki-rag/md'

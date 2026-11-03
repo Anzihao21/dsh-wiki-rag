@@ -6,7 +6,8 @@ import { writeLog } from '../db/log-db';
 import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
 import { chunkTextSmart } from '../rag/text-chunk';
 import { embedText } from '../rag/embedding';
-import { resolveUniqueFileName } from './name-auto-rename';
+import { resolveUniqueFileName, isUncPath } from './name-auto-rename';
+import { checkUncAccess, withNetworkRetry } from './unc-retry';
 import { archiveSourceFile } from './zip-archive';
 import { extractTextToMarkdown, isOversize, toMdFileName, detectFileType, isLocalFsPath } from './file-utils';
 import { sanitizeFileName, assertInsideDir } from './path-guard';
@@ -53,7 +54,25 @@ export class FileImporter {
       return { fileId: 0, fileName, mdPath: '', skipped: true, reason: '文件超过 10MB 大小阈值，已拦截' };
     }
 
-    const mdText = await extractTextToMarkdown(resolved);
+    // 局域网共享路径：显式权限 / 可达性检测，无权限或不可达则拒绝导入
+    if (isUncPath(resolved)) {
+      const acc = await checkUncAccess(resolved);
+      if (!acc.ok) {
+        await writeLog('unc-permission-denied', `导入被拒 file=${fileName} ${acc.reason}`);
+        return { fileId: 0, fileName, mdPath: '', skipped: true, reason: acc.reason };
+      }
+    }
+
+    // 断网自动重试：网络类错误重试后再失败才按导入失败处理
+    let mdText: string;
+    try {
+      mdText = await withNetworkRetry(() => extractTextToMarkdown(resolved), {
+        label: `导入读取 ${fileName}`,
+      });
+    } catch (e) {
+      await writeLog('import-read-error', `${fileName}: ${(e as Error).message}`);
+      return { fileId: 0, fileName, mdPath: '', skipped: true, reason: (e as Error).message };
+    }
     const type = detectFileType(resolved) === 'unknown' ? 'md' : detectFileType(resolved);
     return this.commitImport(resolved, fileName, mdText, type as FileType);
   }
@@ -103,11 +122,23 @@ export class FileImporter {
     return this.commitImport(url, fileName, mdText, 'url');
   }
 
-  /** 笔记文本直接新建 MD 知识库文档 */
+  /** 笔记文本直接新建 MD 知识库文档；原始笔记 TXT 归档作证据层凭证 */
   async importNote(title: string, noteText: string): Promise<ImportResult> {
     const mdText = `# ${title}\n\n${noteText}`;
     const fileName = `${title}.md`;
-    return this.commitImport(`note://${title}`, fileName, mdText, 'note');
+    // 原始笔记 TXT 归档：先写入临时 TXT，再压入 zip，最后删除临时文件
+    let noteZip = '';
+    try {
+      await fs.mkdir(this.ctx.zipDir, { recursive: true });
+      const base = sanitizeFileName(fileName.replace(/\.md$/i, '')) || 'note';
+      const tmpTxt = path.join(this.ctx.zipDir, `_note_src_${Date.now()}_${randomUUID().slice(0, 6)}.txt`);
+      await fs.writeFile(tmpTxt, noteText, 'utf-8');
+      noteZip = await archiveSourceFile(tmpTxt, this.ctx.zipDir, `${base}-note`);
+      await fs.unlink(tmpTxt).catch(() => {});
+    } catch (e) {
+      await writeLog('note-archive-degraded', `笔记原文归档失败（降级为仅 MD 入库）: ${(e as Error).message}`);
+    }
+    return this.commitImport(`note://${title}`, fileName, mdText, 'note', noteZip);
   }
 
   /** 核心入库流程 */
@@ -115,7 +146,8 @@ export class FileImporter {
     sourceRef: string,
     rawFileName: string,
     mdText: string,
-    fileType: FileType
+    fileType: FileType,
+    presetZipPath = ''
   ): Promise<ImportResult> {
     // 计算入库时实际写入的 source_path（与下方 insert 保持一致）
     const isLocalRef = isLocalFsPath(sourceRef);
@@ -156,7 +188,10 @@ export class FileImporter {
     const baseName = finalMdName.replace(/\.md$/i, '');
     let zipPath = '';
     try {
-      if (isLocalRef) {
+      if (presetZipPath) {
+        // 调用方已预归档（如笔记原文 TXT），直接采用
+        zipPath = presetZipPath;
+      } else if (isLocalRef) {
         zipPath = await archiveSourceFile(sourceRef, this.ctx.zipDir, `${baseName}-src`);
       } else {
         zipPath = await archiveSourceFile(mdPath, this.ctx.zipDir, `${baseName}-meta`);

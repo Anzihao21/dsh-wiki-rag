@@ -4,7 +4,12 @@ import { get as getHttp } from 'http';
 export interface WebFetchOptions {
   intranetMode: boolean;
   timeout: number;
+  /** 网页抓取大小上限（字节），默认 5MB */
+  maxBytes?: number;
 }
+
+/** 默认网页抓取大小上限：5MB（防止超大页面拖垮内存/索引） */
+const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
  * 网页抓取模块。
@@ -25,7 +30,11 @@ export async function fetchWebContent(
     ? 'Mozilla/5.0 (DSH-Wiki-RAG/Intranet)'
     : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
-  const body = await rawFetchWithRetry(url, { ua, timeout });
+  const body = await rawFetchWithRetry(url, {
+    ua,
+    timeout,
+    maxBytes: opts.maxBytes ?? DEFAULT_MAX_BYTES,
+  });
 
   // 简单 HTML 转纯文本
   return htmlToText(body);
@@ -66,7 +75,7 @@ export function assertSafeFetchUrl(url: string): void {
 /** 失败重试：最多 2 次重试（共 3 次请求），间隔 500ms；超时同样计入重试 */
 async function rawFetchWithRetry(
   url: string,
-  opts: { ua: string; timeout: number }
+  opts: { ua: string; timeout: number; maxBytes?: number }
 ): Promise<string> {
   const MAX_ATTEMPTS = 3;
   const RETRY_DELAY_MS = 500;
@@ -86,10 +95,18 @@ async function rawFetchWithRetry(
 
 function rawFetch(
   url: string,
-  opts: { ua: string; timeout: number }
+  opts: { ua: string; timeout: number; maxBytes?: number }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https:') ? get : getHttp;
+    // 统一结算：防止 'end' 与 'error'/'timeout' 竞争导致双重结算（resolve 后被 reject → unhandled）
+    let settled = false;
+    const finish = (err?: Error, val?: string) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(val ?? '');
+    };
     const req = mod(
       url,
       {
@@ -103,18 +120,29 @@ function rawFetch(
         const status = res.statusCode || 0;
         if (status >= 400) {
           res.resume();
-          reject(new Error(`HTTP ${status}`));
+          finish(new Error(`HTTP ${status}`));
           return;
         }
         const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        let total = 0;
+        res.on('data', (c: Buffer) => {
+          total += c.length;
+          // 大小限制：超过上限即中断抓取，阻止超大响应进入内存
+          if (opts.maxBytes && total > opts.maxBytes) {
+            req.destroy();
+            finish(new Error(`网页内容超过大小限制 ${opts.maxBytes} 字节`));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on('end', () => finish(undefined, Buffer.concat(chunks).toString('utf-8')));
       }
     );
     req.on('timeout', () => {
       req.destroy(new Error('请求超时'));
+      finish(new Error('请求超时'));
     });
-    req.on('error', reject);
+    req.on('error', (e) => finish(e));
   });
 }
 

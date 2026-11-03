@@ -4,6 +4,8 @@ import { getKnowledgeFileById, updateSyncTime } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
 import { sha256File, extractTextToMarkdown, sha256Text, isLocalFsPath } from './file-utils';
 import { buildDiffResult } from './diff-compare';
+import { isUncPath } from './name-auto-rename';
+import { checkUncAccess, withNetworkRetry, isNetworkRetryableError } from './unc-retry';
 import type { DiffResult } from '../types';
 
 export interface SourceSyncOutcome {
@@ -36,13 +38,27 @@ export async function triggerSourceSync(
     return { status: 'no-change', reason: '该条目无本地源文件（网页/笔记），无需同步' };
   }
 
-  // 源文件是否仍存在
+  // 源文件是否仍存在（局域网共享路径先做权限/可达性检测）
+  if (isUncPath(sourcePath)) {
+    const acc = await checkUncAccess(sourcePath);
+    if (!acc.ok) {
+      await writeLog('unc-access-denied', `同步 fileId=${fileId} ${acc.reason}`);
+      return { status: 'source-lost', reason: acc.reason };
+    }
+  }
+
+  // 读取源哈希；断网类错误自动重试（withNetworkRetry）
   let sourceHash: string;
   try {
     await fs.access(sourcePath);
-    sourceHash = await sha256File(sourcePath);
-  } catch {
-    return { status: 'source-lost', reason: `源文件丢失: ${sourcePath}` };
+    sourceHash = await withNetworkRetry(() => sha256File(sourcePath), {
+      label: `同步读取 ${sourcePath}`,
+    });
+  } catch (e) {
+    const reason = isNetworkRetryableError(e)
+      ? `源文件不可达（网络）: ${sourcePath}`
+      : `源文件丢失: ${sourcePath}`;
+    return { status: 'source-lost', reason };
   }
 
   // 归档包哈希对比（此处以磁盘 MD 哈希作为变更判据，归档对比见 zip-archive）

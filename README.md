@@ -2,8 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/dsh-wiki-rag.svg)](https://www.npmjs.com/package/dsh-wiki-rag)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.5-blue.svg)](https://github.com/deepseek-ai/deepseek-harness)
-[![CI](https://github.com/<your-org>/dsh-wiki-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-org>/dsh-wiki-rag/actions/workflows/ci.yml)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1-rc.5-blue.svg)](https://github.com/deepseek-ai/deepseek-harness)
+[![CI](https://github.com/Anzihao21/dsh-wiki-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Anzihao21/dsh-wiki-rag/actions/workflows/ci.yml)
 
 DeepSeek Harness（DSH）Wiki 风格知识库 RAG 插件。本地优先的 Markdown Wiki 知识库 + 混合检索（向量 + 关键词 + 重排），把本地文件、网页、笔记统一抽取为 Markdown 归档入库，供 Agent 通过 `wiki_rag_search` 工具检索。
 
@@ -32,7 +32,7 @@ dsh plugin --profile web add dsh-wiki-rag
 或从 npm 安装指定版本：
 
 ```bash
-dsh plugin --profile web add dsh-wiki-rag@1.9.2
+dsh plugin --profile web add dsh-wiki-rag@0.0.1
 ```
 
 ## 开发构建

@@ -1,6 +1,8 @@
 import chokidar, { type FSWatcher } from 'chokidar';
 import { getKnowledgeFileById } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
+import { isUncPath } from './name-auto-rename';
+import { checkUncAccess } from './unc-retry';
 
 export type WatchCallback = (change: {
   fileId: number;
@@ -60,7 +62,7 @@ export class FileWatcher {
 
   /** 启动对某知识条目的源文件监听；重复监听同一路径幂等 */
   watchSource(fileId: number): void {
-    void getKnowledgeFileById(fileId).then((file) => {
+    void getKnowledgeFileById(fileId).then(async (file) => {
       if (!file) return;
       // 已监听：若 fileId 变了则更新映射，不重复 add
       const existing = this.watched.get(file.source_path);
@@ -73,6 +75,13 @@ export class FileWatcher {
         fileId,
         fileName: file.file_name,
       });
+      // 局域网共享路径：挂载前做权限 / 可达性检测并记日志（容错，不阻塞监听，chokidar 自行处理重连）
+      if (isUncPath(file.source_path)) {
+        const acc = await checkUncAccess(file.source_path);
+        if (!acc.ok) {
+          void writeLog('watch-unc-access', `监听 ${file.source_path}: ${acc.reason}`);
+        }
+      }
       this.ensureWatcher().add(file.source_path);
     });
   }

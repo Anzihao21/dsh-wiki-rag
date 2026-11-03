@@ -11,6 +11,16 @@
  * esbuild 不做类型检查；React / jsx-runtime 由宿主外部化提供。
  */
 import { useState, useEffect, useRef, useCallback, useMemo, Component, Fragment } from "react";
+import { marked } from "marked";
+import TurndownService from "turndown";
+import DOMPurify from "dompurify";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
+import Table from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableHeader from "@tiptap/extension-table-header";
+import TableCell from "@tiptap/extension-table-cell";
 
 /** cordis 插件依赖的服务名（运行时由客户端 runtime 注入到 ctx）。 */
 export const inject = ["slots", "locale"];
@@ -55,8 +65,14 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.rebindSource": "重新绑定源路径",
   "wiki.rebindSourcePrompt": "输入新的源路径…",
   "wiki.folderSync": "从源文件夹批量同步",
+  "wiki.folderRebindSource": "重新选择源文件夹",
+  "wiki.folderRebindSourcePrompt": "输入新的源文件夹路径…",
+  "wiki.folderRebound": "已重新选择源文件夹",
   "wiki.shelve": "暂存",
   "wiki.shelved": "已暂存",
+  "wiki.moved": "已移动",
+  "wiki.created": "已创建",
+  "wiki.dismissed": "已忽略更新",
   "wiki.zipStorage": "压缩包存储目录",
   "wiki.snapshotStorage": "快照存储目录",
   "wiki.snapshotKeep": "快照保留份数",
@@ -248,6 +264,8 @@ const apiSaveContent = (id: string, content: string) =>
   request(`/files/${id}/content`, { method: "POST", body: JSON.stringify({ content }) });
 const apiRebindSource = (id: string, sourcePath: string) =>
   request(`/${id}/rebind-source`, { method: "POST", body: JSON.stringify({ sourcePath }) });
+const apiFolderRebindSource = (id: number, sourceDir: string) =>
+  request(`/folders/${id}/rebind-source`, { method: "POST", body: JSON.stringify({ sourceDir }) });
 const apiFolderSync = (id: number) => request(`/folders/${id}/sync`, { method: "POST" });
 const apiShelve = (id: string) => request(`/${id}/shelve`, { method: "POST" });
 const apiPendingChanges = () => request("/pending-changes");
@@ -298,6 +316,40 @@ function renderMdSafe(md: string) {
     }}><code>{codeBuf.join("\n")}</code></pre>);
   }
   return out;
+}
+
+// ---------- MD <-> HTML 富文本转换（所见即所得编辑器） ----------
+let _td: TurndownService | null = null;
+function mdToHtml(md: string): string {
+  const html = marked.parse(String(md || ""), { breaks: true }) as string;
+  return DOMPurify.sanitize(html);
+}
+function htmlToMd(html: string): string {
+  if (!_td) {
+    _td = new TurndownService({
+      headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-",
+      emDelimiter: "*", strongDelimiter: "**",
+    });
+    // 删除线：del/s/strike → ~~文本~~（默认会丢）
+    _td.addRule("strikethrough", {
+      filter: ["del", "s", "strike"],
+      replacement: (content: string) => "~~" + content + "~~",
+    });
+    // 表格：保留 HTML（富文本往返不丢结构，避免降级成纯文本）
+    _td.keep(["table", "thead", "tbody", "tfoot", "tr", "th", "td"]);
+  }
+  return _td.turndown(html);
+}
+
+// 格式工具栏小按钮
+function ToolBtn({ label, title, onClick, active }: { label: string; title: string; onClick: () => void; active?: boolean }) {
+  return (
+    <button title={title} onClick={onClick} style={{
+      padding: "2px 9px", fontSize: 12, lineHeight: "20px", border: "1px solid var(--dsw-alias-border-l2)",
+      borderRadius: "var(--dsw-radius-sm)", background: active ? "var(--dsw-alias-bg-layer-2)" : "transparent",
+      color: active ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-primary)", cursor: "pointer",
+    }}>{label}</button>
+  );
 }
 
 // ============================================================================
@@ -505,8 +557,29 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
   const [activeId, setActiveId] = useState<string>("");
   const [view, setView] = useState<"list" | "editor" | "settings" | "snapshots" | "logs">("list");
-  const [editTab, setEditTab] = useState<"edit" | "preview">("edit");
   const [mdContent, setMdContent] = useState<string>("");
+  const [savedContent, setSavedContent] = useState<string>("");
+  const [selToolbar, setSelToolbar] = useState<{ x: number; y: number } | null>(null);
+  // Tiptap 富文本内核：StarterKit + Link + Table；onUpdate 同步回 MD、选区驱动浮动工具栏
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Link.configure({ openOnClick: false }),
+      Table.configure({ resizable: false }),
+      TableRow, TableHeader, TableCell,
+    ],
+    content: "",
+    onUpdate: ({ editor }) => setMdContent(htmlToMd(editor.getHTML())),
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to, empty } = editor.state.selection;
+      if (!empty && from !== to) {
+        const a = editor.view.coordsAtPos(from);
+        const b = editor.view.coordsAtPos(to);
+        setSelToolbar({ x: (a.left + b.left) / 2, y: a.top });
+      } else setSelToolbar(null);
+    },
+    editorProps: { attributes: { class: "dsh-wiki-editor" } },
+  });
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [importType, setImportType] = useState<"file" | "url" | "note">("file");
@@ -532,9 +605,10 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [offline, setOffline] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
-  // 新增：待确认变更 / 重绑定源路径
+  // 新增：待确认变更 / 重绑定源路径（文件级 + 文件夹级）
   const [pendingChanges, setPendingChanges] = useState<any[]>([]);
   const [rebindState, setRebindState] = useState<{ fileId: string; value: string } | null>(null);
+  const [folderRebindState, setFolderRebindState] = useState<{ folderId: number; value: string } | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -623,7 +697,9 @@ function WikiSidebar(props: WikiSidebarProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, mdContent, activeId]);
+  }, [view, activeId]);
+
+
 
   // ---------- 导入（async 任务 + 进度条） ----------
   const pollJob = useCallback((jobId: string) => {
@@ -731,7 +807,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     refreshList();
   };
   const doMoveDoc = async (fileId: string, folderId: number | null) => {
-    try { await apiMoveFile(fileId, folderId); refreshList(); }
+    try { await apiMoveFile(fileId, folderId); notify("success", t ? t("wiki.moved") : "已移动"); refreshList(); }
     catch (e: any) { notify("error", e?.message || "移动失败"); }
   };
 
@@ -748,29 +824,36 @@ function WikiSidebar(props: WikiSidebarProps) {
   // ---------- 保存编辑（真实写回 API） ----------
   const saveEdit = useCallback(async () => {
     if (!activeId) return;
+    const finalMd = editor ? htmlToMd(editor.getHTML()) : mdContent;
     try {
-      await apiSaveContent(activeId, mdContent);
+      await apiSaveContent(activeId, finalMd);
+      setMdContent(finalMd);
+      setSavedContent(finalMd);
       notify("success", t ? t("wiki.contentSaved") : "内容已保存");
       refreshList();
     } catch (e: any) { notify("error", e?.message || "保存失败"); }
-  }, [activeId, mdContent, notify, refreshList, t]);
+  }, [activeId, mdContent, editor, notify, refreshList, t]);
 
   // ---------- 加载文档真实内容 ----------
   const openDoc = useCallback(async (id: string) => {
     setActiveId(id);
     setView("editor");
-    setEditTab("edit");
     setMdContent("");
+    setSavedContent("");
     try {
       const r = await apiGetContent(id);
-      setMdContent(r?.content || "");
+      const c = r?.content || "";
+      setMdContent(c);
+      setSavedContent(c);
+      if (editor) editor.commands.setContent(mdToHtml(c));
     } catch (e: any) {
-      if (e?.offline) setMdContent(SAMPLE_MD[id] || "# 离线\n\n无法加载内容");
-      else setMdContent("# 加载失败\n\n" + (e?.message || ""));
+      const c = e?.offline ? (SAMPLE_MD[id] || "# 离线\n\n无法加载内容") : "# 加载失败\n\n" + (e?.message || "");
+      setMdContent(c); setSavedContent(c);
+      if (editor) editor.commands.setContent(mdToHtml(c));
     }
-  }, []);
+  }, [editor]);
 
-  // ---------- 新建空白 MD ----------
+  // ---------- 新建文档（空白 MD，人工创作链路） ----------
   const doNewDoc = async () => {
     if (!newMdTitle.trim()) return;
     try {
@@ -778,6 +861,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       const r = await apiNewFile(newMdTitle.trim(), null);
       setShowNewMd(false); setNewMdTitle("");
       refreshList();
+      notify("success", t ? t("wiki.created") : "已创建");
       if (r && r.fileId) openDoc(String(r.fileId));
     } catch (e: any) { notify("error", e?.message || "创建失败"); }
   };
@@ -815,6 +899,19 @@ function WikiSidebar(props: WikiSidebarProps) {
       }
       refreshList();
     } catch (e: any) { notify("error", e?.message || "同步失败"); }
+  };
+
+  // ---------- 文件夹重新选择源文件夹 ----------
+  const doFolderRebindSource = async () => {
+    if (!folderRebindState) return;
+    const dir = folderRebindState.value.trim();
+    if (!dir) { notify("error", t ? t("wiki.rebindSourcePrompt") : "请输入新的源文件夹路径"); return; }
+    try {
+      const r = await apiFolderRebindSource(folderRebindState.folderId, dir);
+      notify("success", `${t ? t("wiki.folderRebound") : "已重新选择源文件夹"}：${r?.count || 0} 个文件`);
+      refreshList();
+    } catch (e: any) { notify("error", e?.message || "重选源失败"); }
+    setFolderRebindState(null);
   };
 
   // ---------- 暂存变更 ----------
@@ -960,7 +1057,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       </div>
 
-      {/* 新建空白 MD 对话框 */}
+      {/* 新建文档对话框 */}
       {showNewMd && (
         <div style={{ display: "flex", gap: 4 }}>
           <input value={newMdTitle} onChange={(e) => setNewMdTitle(e.target.value)}
@@ -1239,29 +1336,44 @@ function WikiSidebar(props: WikiSidebarProps) {
           ) : activeDoc ? (
             /* MD 编辑器 */
             <>
+              {/* 标题 + 保存（有改动才可用） */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeDoc.title}</span>
                 <span style={typeBadge}>{activeDoc.type}</span>
-                <button onClick={saveEdit} style={primaryBtn}>{t ? t("wiki.save") : "保存"}</button>
+                <button onClick={saveEdit} disabled={mdContent === savedContent} style={{ ...primaryBtn, opacity: mdContent === savedContent ? 0.4 : 1, cursor: mdContent === savedContent ? "not-allowed" : "pointer" }}>
+                  {t ? t("wiki.save") : "保存"}
+                </button>
               </div>
-              <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }}>
-                {(["edit", "preview"] as const).map((tab) => (
-                  <button key={tab} onClick={() => setEditTab(tab)} style={{
-                    padding: "6px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: 12,
-                    color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-                    borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
-                    fontWeight: editTab === tab ? 600 : 400,
-                  }}>{tab === "edit" ? (t ? t("wiki.edit") : "编辑") : (t ? t("wiki.preview") : "预览")}</button>
-                ))}
+              {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得 */}
+              <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+                <EditorContent editor={editor} />
               </div>
-              {editTab === "edit" ? (
-                <textarea value={mdContent} onChange={(e) => setMdContent(e.target.value)}
-                  style={{
-                    flex: 1, width: "100%", boxSizing: "border-box", padding: 12, border: "none", outline: "none", resize: "none",
-                    background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 13, fontFamily: "var(--dsw-font-family-mono, monospace)", lineHeight: 1.6,
+              {/* 浮动格式工具栏：选中文本时在选区上方弹出，无选中自动隐藏 */}
+              {selToolbar && (
+                <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10002, display: "flex", gap: 2, padding: 4,
+                  transform: `translate(${Math.max(10, Math.min(selToolbar.x, window.innerWidth - 10))}px, ${Math.max(4, selToolbar.y - 38)}px) translateX(-50%)`,
+                  background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
+                  borderRadius: "var(--dsw-radius-md)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <ToolBtn label="B" title="粗体" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
+                  <ToolBtn label="I" title="斜体" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+                  <ToolBtn label="S" title="删除线" active={editor?.isActive("strike")} onClick={() => editor?.chain().focus().toggleStrike().run()} />
+                  <ToolBtn label="H1" title="一级标题" active={editor?.isActive("heading", { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} />
+                  <ToolBtn label="H2" title="二级标题" active={editor?.isActive("heading", { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} />
+                  <ToolBtn label="H3" title="三级标题" active={editor?.isActive("heading", { level: 3 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
+                  <ToolBtn label="•" title="无序列表" active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()} />
+                  <ToolBtn label="1." title="有序列表" active={editor?.isActive("orderedList")} onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
+                  <ToolBtn label="❝" title="引用" active={editor?.isActive("blockquote")} onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
+                  <ToolBtn label="</>" title="代码块" active={editor?.isActive("codeBlock")} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
+                  <ToolBtn label="—" title="分隔线" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
+                  <ToolBtn label="链接" title="链接" active={editor?.isActive("link")} onClick={() => {
+                    if (!editor) return;
+                    const url = prompt("链接地址 URL：");
+                    if (url) editor.chain().focus().setLink({ href: url }).run();
+                    else editor.chain().focus().unsetLink().run();
                   }} />
-              ) : (
-                <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>{renderMdSafe(mdContent)}</div>
+                </div>
               )}
             </>
           ) : (
@@ -1311,6 +1423,12 @@ function WikiSidebar(props: WikiSidebarProps) {
                 doFolderSync(fid);
               }} style={menuItem}>{t ? t("wiki.folderSync") : "从源文件夹批量同步"}</div>
             )}
+            {contextMenu.kind === "folder" && (
+              <div onClick={() => {
+                setFolderRebindState({ folderId: Number(contextMenu.id), value: "" });
+                setContextMenu(null);
+              }} style={menuItem}>{t ? t("wiki.folderRebindSource") : "重新选择源文件夹"}</div>
+            )}
             <div onClick={() => {
               if (contextMenu.kind === "doc") doDelete(String(contextMenu.id));
               else doDeleteFolder(Number(contextMenu.id));
@@ -1326,7 +1444,8 @@ function WikiSidebar(props: WikiSidebarProps) {
         catch (e: any) { notify("error", e?.message || "接受失败"); }
         setDiffModal(null);
       }} onReject={async (ft) => {
-        try { await apiDismiss(ft); } catch { /* ignore */ }
+        try { await apiDismiss(ft); notify("success", t ? t("wiki.dismissed") : "已忽略更新"); }
+        catch (e: any) { notify("error", e?.message || "忽略失败"); }
         setDiffModal(null);
       }} onShelve={(ft) => doShelve(ft)} />}
 
@@ -1405,6 +1524,27 @@ function WikiSidebar(props: WikiSidebarProps) {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setRebindState(null)} style={ghostBtn}>{t ? t("wiki.cancel") : "取消"}</button>
               <button onClick={doRebindSource} style={primaryBtn}>{t ? t("wiki.confirm") : "确定"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 文件夹重新选择源对话框 */}
+      {folderRebindState && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{
+            width: "90%", maxWidth: 420, background: "var(--dsw-alias-bg-layer-1)",
+            borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{t ? t("wiki.folderRebindSource") : "重新选择源文件夹"}</div>
+            <input autoFocus value={folderRebindState.value}
+              onChange={(e) => setFolderRebindState({ ...folderRebindState, value: e.target.value })}
+              onKeyDown={(e) => { if (e.key === "Enter") doFolderRebindSource(); if (e.key === "Escape") setFolderRebindState(null); }}
+              placeholder={t ? t("wiki.folderRebindSourcePrompt") : "输入新的源文件夹路径…"}
+              style={{ ...smallInput, flex: "none" }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setFolderRebindState(null)} style={ghostBtn}>{t ? t("wiki.cancel") : "取消"}</button>
+              <button onClick={doFolderRebindSource} style={primaryBtn}>{t ? t("wiki.confirm") : "确定"}</button>
             </div>
           </div>
         </div>
@@ -1553,7 +1693,9 @@ function apply(ctx: any): void {
       "wiki.newDoc": "新建文档", "wiki.newDocTitle": "新文档标题…",
       "wiki.rebindSource": "重新绑定源路径", "wiki.rebindSourcePrompt": "输入新的源路径…",
       "wiki.folderSync": "从源文件夹批量同步",
+      "wiki.folderRebindSource": "重新选择源文件夹", "wiki.folderRebindSourcePrompt": "输入新的源文件夹路径…", "wiki.folderRebound": "已重新选择源文件夹",
       "wiki.shelve": "暂存", "wiki.shelved": "已暂存",
+      "wiki.moved": "已移动", "wiki.created": "已创建", "wiki.dismissed": "已忽略更新",
       "wiki.zipStorage": "压缩包存储目录", "wiki.snapshotStorage": "快照存储目录",
       "wiki.snapshotKeep": "快照保留份数",
       "wiki.webMode": "Web 模式", "webModeIntranet": "内网模式", "webModeExtranet": "外网模式",
@@ -1582,7 +1724,9 @@ function apply(ctx: any): void {
       "wiki.newDoc": "New Doc", "wiki.newDocTitle": "New document title…",
       "wiki.rebindSource": "Rebind source path", "wiki.rebindSourcePrompt": "Enter new source path…",
       "wiki.folderSync": "Batch sync from source folder",
+      "wiki.folderRebindSource": "Re-select source folder", "wiki.folderRebindSourcePrompt": "Enter new source folder path…", "wiki.folderRebound": "Source folder re-selected",
       "wiki.shelve": "Shelve", "wiki.shelved": "Shelved",
+      "wiki.moved": "Moved", "wiki.created": "Created", "wiki.dismissed": "Change dismissed",
       "wiki.zipStorage": "Zip storage path", "wiki.snapshotStorage": "Snapshot storage path",
       "wiki.snapshotKeep": "Snapshot keep count",
       "wiki.webMode": "Web Mode", "webModeIntranet": "Intranet", "webModeExtranet": "Extranet",
