@@ -3,6 +3,8 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { parseWorkbookToMarkdown } from './excel-parse';
 import { parsePptxToMarkdown } from './pptx-parse';
+import { parsePdfToMarkdown } from './pdf-extract';
+import { parseDocxToMarkdown } from './docx-extract';
 
 /** 计算文件 SHA-256 哈希 */
 export async function sha256File(filePath: string): Promise<string> {
@@ -45,7 +47,7 @@ export function isOversize(filePath: string, thresholdMb = 100): Promise<boolean
 
 /**
  * 从原始文件提取正文文本，统一转成 Markdown 字符串。
- * pdf/docx 在此用降级方案：返回占位说明 + 可读文件名（真实环境中由 DSH 宿主注入解析器）。
+ * md/txt 直读；sheet/pptx/pdf/docx 真实解析；unknown 返回占位。
  */
 export async function extractTextToMarkdown(filePath: string): Promise<string> {
   const type = detectFileType(filePath);
@@ -65,12 +67,18 @@ export async function extractTextToMarkdown(filePath: string): Promise<string> {
     return await parsePptxToMarkdown(filePath);
   }
 
-  // pdf / docx / unknown：记录来源，正文由宿主解析器补充
-  const note =
-    type === 'unknown'
-      ? '（未知/不支持格式，未提取正文）'
-      : `（${type.toUpperCase()} 格式，正文由 DSH 宿主解析器注入）`;
-  return `# ${fileName}\n\n${note}\n\n> 源文件：\`${filePath}\`\n`;
+  // PDF：pdf-parse 提取文本
+  if (type === 'pdf') {
+    return await parsePdfToMarkdown(filePath);
+  }
+
+  // DOCX：mammoth 提取纯文本
+  if (type === 'docx') {
+    return await parseDocxToMarkdown(filePath);
+  }
+
+  // unknown：记录来源，未提取正文
+  return `# ${fileName}\n\n（未知/不支持格式，未提取正文）\n\n> 源文件：\`${filePath}\`\n`;
 }
 
 /** 生成 Markdown 文档名（保持扩展名为 .md） */

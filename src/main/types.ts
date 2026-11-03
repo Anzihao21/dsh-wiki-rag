@@ -33,6 +33,8 @@ export interface OperationLog {
   action: string;
   detail: string;
   time: number;
+  level: string;
+  meta: string | null;
 }
 
 export interface RagSearchResult {

@@ -86,25 +86,20 @@ describe('FileImporter.importLocalFile happy path', () => {
     expect(r.fileName).toBe('readme.md');
   });
 
-  it('导入 .pdf 文件走占位提取，不抛错', async () => {
+  it('导入损坏的 .pdf 文件：真实解析失败但不抛错（返回 skipped）', async () => {
     const src = path.join(srcDir, 'doc.pdf');
     await fs.writeFile(src, '%PDF-1.4 fake', 'utf-8');
     const r = await importer.importLocalFile(src);
-    expect(r.skipped).toBe(false);
-    const row = await getKnowledgeFileById(r.fileId);
-    expect(row!.file_type).toBe('pdf');
-    const md = await fs.readFile(r.mdPath, 'utf-8');
-    expect(md).toContain('doc.pdf');
-    expect(md).toContain('PDF');
+    expect(r.skipped).toBe(true);
+    expect(r.reason).toBeTruthy();
   });
 
-  it('导入 .docx 文件走占位提取', async () => {
+  it('导入损坏的 .docx 文件：真实解析失败但不抛错（返回 skipped）', async () => {
     const src = path.join(srcDir, 'word.docx');
     await fs.writeFile(src, 'PK fake', 'utf-8');
     const r = await importer.importLocalFile(src);
-    expect(r.skipped).toBe(false);
-    const row = await getKnowledgeFileById(r.fileId);
-    expect(row!.file_type).toBe('docx');
+    expect(r.skipped).toBe(true);
+    expect(r.reason).toBeTruthy();
   });
 
   it('导入无扩展名文件被识别为 unknown 并降级为 md', async () => {

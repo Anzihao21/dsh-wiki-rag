@@ -2,6 +2,41 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+> 说明：正式版本线为 `0.0.x`。下方 `1.x/2.x` 为早期开发迭代的残留版本（已在 npmjs 上 deprecate），仅作历史记录保留，请以 `0.0.x` 为准。
+
+## [0.0.2] - 2026-11-03
+
+### Added
+- Excel/CSV 导入（`xlsx` 每 Sheet 转 Markdown 表格），支持 `.xlsx/.xls/.csv`。
+- PPTX 导入（`jszip` 解压按真实页序提取文本），支持 `.pptx`。
+- PDF / DOCX 真实解析（`pdf-parse` / `mammoth`），替代占位；空页/扫描件 PDF 返回占位。
+- DB 增量迁移机制：`SCHEMA_VERSION=3` + `MIGRATIONS` + `ensureColumn`，补 `knowledge_files.sha256/status` 与 `operation_log.level/meta` 列，幂等可重复初始化。
+- 编辑冲突检测：保存接口接收可选 `baseline`，冲突返回 `409 {error:'conflict', diskContent}`，客户端弹出确认（强制覆盖 / 放弃）。
+- 结构化日志与可观测性：`writeLog` 写入 `level/meta`，`listLogs` 按 action/level/limit 过滤，`pruneLogs` 防表无限增长。
+- RAG 检索质量基准测试（端到端验证命中 / 排序 / topK / 空库兜底）。
+- CI/CD workflow 重写（`ci.yml` / `release.yml`：npm ci + vitest + bundle 构建 + npm publish）。
+- 富文本编辑器升级为 Tiptap v2（浮动工具栏、表格、链接）。
+
+### Changed
+- `reindex` 改为分批并发 embed（batch 8）+ 单事务批量插入，导入/重建索引性能显著提升。
+- i18n 兜底字典补全缺失键，统一 `tt(t, key)` 替换硬编码中文。
+- 依赖版本治理：消除 `npm ls` 的 `invalid:`（archiver/chokidar/diff/extract-zip/schemastery），`engines` 声明 `node >=18`。
+- client/host 构建开启 `minify`，产物体积约降 49%（client ~1.0MB→515KB，host ~4.8MB→2.5MB）。
+- 局域网共享权限检测与断网重试（`unc-retry.ts`）接入导入链路。
+
+### Fixed
+- 根/子构建统一为 npm 管理，移除陈旧的 `pnpm-lock.yaml`。
+
+## [0.0.1] - 2026-11-03
+
+### Added
+- 初始版本：标准 DSH Cordis 插件形态（bundle 单一入口 + `dsh.bundle.patch`/`engines.dsh`/`dsh.client` 声明，插件身份 `dsh-wiki-rag`）。
+- 六大导入源（本地文件 / 网页抓取 / 笔记 / 手册 / Excel / PPTX）统一抽取为 Markdown 归档入库。
+- RAG 混合检索（向量 + 关键词 + 可选重排），Agent 通过 `wiki_rag_search` 工具检索。
+- 文件夹树、右键「重新选择源文件夹」（`rebind-source`）、网页抓取大小限制、笔记原文 TXT 归档。
+- 富文本编辑器（contenteditable → Tiptap）「新建文档」入口。
+- 检索溯源（chunk/file/md_path/chunk_index）与进度上报。
+
 ## [2.1.0] - 2026-11-03
 
 ### Added

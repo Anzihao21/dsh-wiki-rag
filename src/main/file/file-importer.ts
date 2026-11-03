@@ -3,7 +3,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { insertKnowledgeFile, listFileNamesByPath, findKnowledgeFileBySourcePath } from '../db/knowledge-db';
 import { writeLog } from '../db/log-db';
-import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
+import { replaceFileChunks } from '../db/vector-db';
 import { chunkTextSmart } from '../rag/text-chunk';
 import { chunkSheetTable } from './excel-parse';
 import { embedText } from '../rag/embedding';
@@ -221,14 +221,19 @@ export class FileImporter {
 
   /** 重新切片并写入向量库；mode：table=表格行级分块，heading=按标题分块，auto=按设置分块 */
   async reindex(fileId: number, text: string, mode: 'auto' | 'table' | 'heading' = 'auto'): Promise<void> {
-    await deleteChunksByFileId(fileId);
     const chunks = mode === 'table'
       ? chunkSheetTable(text, this.ctx.chunkSize, this.ctx.chunkOverlap)
       : chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, mode === 'heading' ? 'heading' : this.ctx.chunkMode);
-    for (const c of chunks) {
-      const vec = await embedText(c);
-      await insertVectorChunk(fileId, c, vec);
+    // 分批并发 embed（batch 8）：异步 embedding 并行化，控制并发避免过载
+    const rows: Array<{ text: string; vector: Buffer }> = [];
+    const BATCH = 8;
+    for (let i = 0; i < chunks.length; i += BATCH) {
+      const batch = chunks.slice(i, i + BATCH);
+      const vecs = await Promise.all(batch.map((c) => embedText(c)));
+      for (let j = 0; j < batch.length; j++) rows.push({ text: batch[j], vector: vecs[j] });
     }
+    // 单事务批量替换（delete + insert），避免逐条提交，导入/重建索引的主要性能优化
+    await replaceFileChunks(fileId, rows);
   }
 
   /** 扫描目录下可解析文档（递归） */

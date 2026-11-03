@@ -15,27 +15,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
-          cache: pnpm
+          cache: npm
 
       - name: Install root dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Run unit tests (Vitest)
         run: npx vitest run
 
       - name: Install bundle dependencies
         working-directory: bundle
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Build bundle
         working-directory: bundle

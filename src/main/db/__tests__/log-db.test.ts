@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { initDatabase, closeDatabase } from '../sqlite-init';
-import { writeLog, listLogs, lastLog } from '../log-db';
+import { writeLog, listLogs, lastLog, pruneLogs } from '../log-db';
 
 let tmpDir = '';
 
@@ -40,5 +40,27 @@ describe('log-db 操作日志', () => {
     expect(limited).toHaveLength(2);
     expect(limited[0].action).toBe('act-4');
     expect(limited[1].action).toBe('act-3');
+  });
+
+  it('writeLog 支持 level/meta 结构化字段', async () => {
+    await writeLog('test', 'hello', { level: 'error', meta: { fileId: 5 } });
+    const log = await lastLog();
+    expect(log?.level).toBe('error');
+    expect(JSON.parse(log!.meta as string)).toEqual({ fileId: 5 });
+  });
+
+  it('listLogs 支持按 action/level 过滤', async () => {
+    await writeLog('a', '1', { level: 'info' });
+    await writeLog('b', '2', { level: 'error' });
+    expect((await listLogs({ action: 'b' })).length).toBe(1);
+    expect((await listLogs({ level: 'error' })).length).toBe(1);
+  });
+
+  it('pruneLogs 保留每种 action 最近 N 条并返回删除数', async () => {
+    for (let i = 0; i < 5; i++) await writeLog('repeat', String(i));
+    await writeLog('keep', 'x');
+    const removed = await pruneLogs(2);
+    expect(removed).toBe(3);
+    expect((await listLogs({ action: 'repeat' })).length).toBe(2);
   });
 });

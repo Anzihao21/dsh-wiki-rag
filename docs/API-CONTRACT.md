@@ -4,6 +4,32 @@
 所有响应均为 JSON。错误统一为 `{ "error": "message" }`，HTTP 4xx/5xx。
 基址：`http://localhost:3081`，统一前缀 `/api/wiki`。
 
+## 补充契约（0.0.x 正式版）
+
+> 在「既有端点」基础上补充的正式版端点与字段。路径前缀统一为 `/api/wiki`（与既有端点一致）。
+
+### 1. 文件内容保存 + 编辑冲突
+
+- `GET /files/:id/content`：读取 MD 内容（人工编辑链路）。
+- `POST /files/:id/content`：保存内容。请求体可带可选 `baseline`（编辑起点内容）。
+  - 冲突检测：若磁盘内容同时异于 `baseline` 与提交内容，返回 **`409`** `{ error: 'conflict', diskContent }`。
+  - 客户端收到 409 后弹确认：强制覆盖（不带 baseline 重提）或加载磁盘版本放弃本地编辑。
+
+### 2. 结构化日志（过滤 + level/meta）
+
+- `GET /api/wiki/logs`，支持查询参数：
+  - `action`：按动作过滤；`level`：按日志级别（info/warn/error 等）过滤；`limit`：条数上限（默认 200）。
+  - 返回 `Array<{ time, action, detail, level, meta }>`，`meta` 为 JSON 对象。
+
+### 3. 文件夹重选源
+
+- `POST /folders/:id/rebind-source`：重新选择源文件夹（右键菜单），触发该文件夹重新同步。
+
+### 4. 导入类型扩展
+
+- 支持文件类型：`pdf` / `docx` / `md` / `txt` / `url` / `note` / `sheet`（`.xlsx/.xls/.csv`）/ `pptx`。
+- `POST /api/wiki/import`：异步导入，返回 `job`，客户端以 `job.done/total/message` 轮询进度（`status: running | done | error`）。
+
 ## 既有端点（保持兼容，不得破坏）
 | 方法 | 路径 | 请求体 | 响应 |
 |---|---|---|---|

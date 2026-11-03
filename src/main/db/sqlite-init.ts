@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS knowledge_files (
     file_type TEXT NOT NULL,
     create_time INTEGER NOT NULL,
     last_sync_time INTEGER NOT NULL DEFAULT 0,
-    folder_id INTEGER DEFAULT NULL
+    folder_id INTEGER DEFAULT NULL,
+    sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'ready'
 );
 
 CREATE TABLE IF NOT EXISTS folders (
@@ -39,7 +41,9 @@ CREATE TABLE IF NOT EXISTS operation_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action TEXT NOT NULL,
     detail TEXT,
-    time INTEGER NOT NULL
+    time INTEGER NOT NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    meta TEXT
 );
 `;
 
@@ -60,6 +64,43 @@ export async function initDatabase(filePath?: string): Promise<void> {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   runSchema();
+  migrate();
+}
+
+/** 当前 schema 版本（user_version） */
+export const SCHEMA_VERSION = 3;
+
+/**
+ * 迁移清单：索引 i 对应「把库从版本 i+1 升到 i+2」。
+ * 迁移必须幂等、只做增量（新增列/表/索引），不破坏已有数据。
+ */
+const MIGRATIONS: Array<() => void> = [
+  // v1 → v2：knowledge_files 补 sha256（内容哈希，供冲突检测/去重）与 status（索引状态 ready/stale/error）
+  () => {
+    ensureColumn('knowledge_files', 'sha256', 'TEXT');
+    ensureColumn('knowledge_files', 'status', "TEXT NOT NULL DEFAULT 'ready'");
+  },
+  // v2 → v3：operation_log 加 level（info/warn/error）与 meta（结构化 JSON），支持结构化日志/过滤
+  () => {
+    ensureColumn('operation_log', 'level', "TEXT NOT NULL DEFAULT 'info'");
+    ensureColumn('operation_log', 'meta', 'TEXT');
+  },
+];
+
+/** 若目标列不存在则补列（老库升级，CREATE IF NOT EXISTS 不会重建已有表） */
+function ensureColumn(table: string, column: string, ddl: string): void {
+  const cols = getDb().prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    getDb().prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`).run();
+  }
+}
+
+function migrate(): void {
+  const current = getDb().pragma('user_version', { simple: true }) as number;
+  for (let i = current; i < SCHEMA_VERSION; i++) {
+    MIGRATIONS[i - 1]?.();
+  }
+  getDb().pragma(`user_version = ${SCHEMA_VERSION}`);
 }
 
 function runSchema(): void {
@@ -76,6 +117,11 @@ function getDb(): Database.Database {
 
 export function run(sql: string, params: any[] = []): void {
   getDb().prepare(sql).run(...params);
+}
+
+/** 在单个事务中执行 fn（BEGIN…COMMIT/ROLLBACK 由 better-sqlite3 管理），批量写入显著减少提交开销 */
+export function runInTransaction<T>(fn: () => T): T {
+  return getDb().transaction(fn)();
 }
 
 export function get<T>(sql: string, params: any[] = []): T | undefined {

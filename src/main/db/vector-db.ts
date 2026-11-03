@@ -1,4 +1,4 @@
-import { all, get, run } from './sqlite-init';
+import { all, get, run, runInTransaction } from './sqlite-init';
 import type { VectorChunk } from '../types';
 
 /** 写入向量切片；空文本 / 空向量直接跳过（不入库，避免污染相似度计算） */
@@ -13,6 +13,29 @@ export async function insertVectorChunk(
     'INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, ?, ?)',
     [fileId, chunkText, vector]
   );
+}
+
+/**
+ * 在单个事务内「先删后插」批量替换某文件的全部向量切片。
+ * 相比逐条 INSERT（每条一次提交），把 delete + 全部 insert 合成一个事务，
+ * 大幅降低 WAL 提交与 fsync 开销，是导入/重建索引的主要性能优化。
+ */
+export async function replaceFileChunks(
+  fileId: number,
+  rows: Array<{ text: string; vector: Buffer }>
+): Promise<void> {
+  runInTransaction(() => {
+    run('DELETE FROM vector_chunks WHERE file_id = ?', [fileId]);
+    for (const r of rows) {
+      if (!r.text || !r.text.trim()) continue;
+      if (!r.vector || r.vector.length === 0) continue;
+      run('INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, ?, ?)', [
+        fileId,
+        r.text,
+        r.vector,
+      ]);
+    }
+  });
 }
 
 /** 删除某文件全部向量切片 */

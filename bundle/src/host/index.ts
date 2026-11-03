@@ -17,6 +17,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 
 import { initDatabase, getDbPath, closeDatabase, walCheckpoint } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
+import { detectEditConflict } from '../../../src/main/file/edit-conflict';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
 import { ragSearch, normalizeSearchInput } from '../../../src/main/rag/rag-search';
 import { initEmbedding } from '../../../src/main/rag/embedding';
@@ -640,14 +641,17 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           })));
         }
 
-        // ---- 日志 ----
+        // ---- 日志（支持 ?action=&level=&limit= 过滤，返回结构化 level/meta） ----
         if (req.method === 'GET' && pathname === '/api/wiki/logs') {
-          const rows = await listLogs(200);
-          return json(200, rows.map((l) => ({
-            time: new Date(l.time).toLocaleString(),
-            action: l.action,
-            detail: l.detail,
-          })));
+          const action = url.searchParams.get('action') || undefined;
+          const level = url.searchParams.get('level') || undefined;
+          const limit = parseInt(url.searchParams.get('limit') || '200') || 200;
+          const rows = await listLogs({ limit, action, level });
+          return json(200, rows.map((l) => {
+            let meta: unknown;
+            try { meta = l.meta ? JSON.parse(l.meta) : undefined; } catch { meta = l.meta; }
+            return { time: new Date(l.time).toLocaleString(), action: l.action, detail: l.detail, level: l.level, meta };
+          }));
         }
 
         // ---- 待确认变更（文件监听 Diff 队列）----
@@ -843,9 +847,15 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             return json(400, { error: '请求体不是合法 JSON' });
           }
           const content = typeof parsed?.content === 'string' ? parsed.content : '';
+          const baseline = typeof parsed?.baseline === 'string' ? parsed.baseline : undefined;
           // 审计日志记录新旧内容哈希
           let oldContent = '';
           try { oldContent = await fs.readFile(rec.md_path, 'utf-8'); } catch { oldContent = ''; }
+          // 编辑冲突检测：打开后外部改动了磁盘（磁盘 ≠ 基线），且本次保存内容 ≠ 磁盘当前 → 冲突
+          const conflict = detectEditConflict(oldContent, content, baseline);
+          if (conflict.conflict) {
+            return json(409, { error: 'conflict', diskContent: conflict.diskContent });
+          }
           await fs.mkdir(path.dirname(rec.md_path), { recursive: true });
           await fs.writeFile(rec.md_path, content, 'utf-8');
           // 重建向量库

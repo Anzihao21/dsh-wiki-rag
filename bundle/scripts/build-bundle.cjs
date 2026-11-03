@@ -39,6 +39,7 @@ async function main() {
     banner: {
       js: "import { createRequire as __dshCreateRequire } from 'module';\nconst require = __dshCreateRequire(import.meta.url);\n",
     },
+    minify: true,
     sourcemap: true,
     logLevel: 'info',
   });
@@ -82,6 +83,7 @@ async function main() {
         '}' +
         '});',
     },
+    minify: true,
     sourcemap: true,
     logLevel: 'info',
   });
