@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { parseWorkbookToMarkdown } from './excel-parse';
+import { parsePptxToMarkdown } from './pptx-parse';
 
 /** 计算文件 SHA-256 哈希 */
 export async function sha256File(filePath: string): Promise<string> {
@@ -14,7 +16,7 @@ export function sha256Text(text: string): string {
 }
 
 /** 依据扩展名判定文档类型 */
-export function detectFileType(filePath: string): 'pdf' | 'docx' | 'md' | 'txt' | 'unknown' {
+export function detectFileType(filePath: string): 'pdf' | 'docx' | 'md' | 'txt' | 'sheet' | 'pptx' | 'unknown' {
   const ext = path.extname(filePath).toLowerCase();
   switch (ext) {
     case '.pdf':
@@ -25,6 +27,12 @@ export function detectFileType(filePath: string): 'pdf' | 'docx' | 'md' | 'txt' 
       return 'md';
     case '.txt':
       return 'txt';
+    case '.xlsx':
+    case '.xls':
+    case '.csv':
+      return 'sheet';
+    case '.pptx':
+      return 'pptx';
     default:
       return 'unknown';
   }
@@ -45,6 +53,16 @@ export async function extractTextToMarkdown(filePath: string): Promise<string> {
 
   if (type === 'md' || type === 'txt') {
     return await fs.readFile(filePath, 'utf-8');
+  }
+
+  // Excel / CSV：解析为 Markdown 表格文档（真实解析，可入库、可编辑、可检索）
+  if (type === 'sheet') {
+    return await parseWorkbookToMarkdown(filePath);
+  }
+
+  // PPTX：解析为「每页 ## Slide N + 要点文本」的 Markdown 文档（真实解析）
+  if (type === 'pptx') {
+    return await parsePptxToMarkdown(filePath);
   }
 
   // pdf / docx / unknown：记录来源，正文由宿主解析器补充

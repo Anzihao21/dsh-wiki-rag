@@ -28383,7 +28383,7 @@ function WikiSidebar(props) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: activeDoc.title }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: typeBadge, children: activeDoc.type }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: typeBadge, children: typeLabel(activeDoc.type) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveEdit, disabled: mdContent === savedContent, style: { ...primaryBtn, opacity: mdContent === savedContent ? 0.4 : 1, cursor: mdContent === savedContent ? "not-allowed" : "pointer" }, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", padding: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EditorContent, { editor }) }),
@@ -28714,6 +28714,19 @@ var typeBadge = {
   background: "var(--dsw-alias-bg-layer-2)",
   color: "var(--dsw-alias-label-secondary)"
 };
+var TYPE_LABEL = {
+  md: "MD",
+  txt: "TXT",
+  pdf: "PDF",
+  docx: "DOCX",
+  url: "\u7F51\u9875",
+  note: "\u7B14\u8BB0",
+  sheet: "\u8868\u683C",
+  pptx: "PPT"
+};
+function typeLabel(type) {
+  return TYPE_LABEL[type] || type || "";
+}
 var emptyHint = { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 };
 var menuItem = {
   padding: "6px 10px",

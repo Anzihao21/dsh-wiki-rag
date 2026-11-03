@@ -1339,7 +1339,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               {/* 标题 + 保存（有改动才可用） */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeDoc.title}</span>
-                <span style={typeBadge}>{activeDoc.type}</span>
+                <span style={typeBadge}>{typeLabel(activeDoc.type)}</span>
                 <button onClick={saveEdit} disabled={mdContent === savedContent} style={{ ...primaryBtn, opacity: mdContent === savedContent ? 0.4 : 1, cursor: mdContent === savedContent ? "not-allowed" : "pointer" }}>
                   {t ? t("wiki.save") : "保存"}
                 </button>
@@ -1596,6 +1596,13 @@ const smallInput: any = {
 const typeBadge: any = {
   fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-secondary)",
 };
+/** 文档类型中文标签（sheet 表示 Excel/CSV 表格文档） */
+const TYPE_LABEL: Record<string, string> = {
+  md: "MD", txt: "TXT", pdf: "PDF", docx: "DOCX", url: "网页", note: "笔记", sheet: "表格", pptx: "PPT",
+};
+function typeLabel(type: string): string {
+  return TYPE_LABEL[type] || type || "";
+}
 const textareaStyle: any = {
   flex: 1, width: "100%", boxSizing: "border-box", resize: "none", padding: 10,
   borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)",

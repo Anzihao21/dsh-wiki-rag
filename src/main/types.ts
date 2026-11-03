@@ -1,5 +1,5 @@
 // 全局共享类型定义
-export type FileType = 'pdf' | 'docx' | 'md' | 'url' | 'note' | 'txt';
+export type FileType = 'pdf' | 'docx' | 'md' | 'url' | 'note' | 'txt' | 'sheet' | 'pptx';
 
 export interface KnowledgeFile {
   id: number;

@@ -5,6 +5,7 @@ import { insertKnowledgeFile, listFileNamesByPath, findKnowledgeFileBySourcePath
 import { writeLog } from '../db/log-db';
 import { deleteChunksByFileId, insertVectorChunk } from '../db/vector-db';
 import { chunkTextSmart } from '../rag/text-chunk';
+import { chunkSheetTable } from './excel-parse';
 import { embedText } from '../rag/embedding';
 import { resolveUniqueFileName, isUncPath } from './name-auto-rename';
 import { checkUncAccess, withNetworkRetry } from './unc-retry';
@@ -210,17 +211,20 @@ export class FileImporter {
       last_sync_time: Date.now()
     });
 
-    // 切片 + 向量化
-    await this.reindex(fileId, mdText);
+    // 切片 + 向量化（sheet 表格按行分块，pptx 按页 heading，其余按配置模式）
+    const chunkMode = fileType === 'sheet' ? 'table' : fileType === 'pptx' ? 'heading' : 'auto';
+    await this.reindex(fileId, mdText, chunkMode);
 
     await writeLog('import', `导入 ${finalMdName} (id=${fileId})`);
     return { fileId, fileName: finalMdName, mdPath, skipped: false };
   }
 
-  /** 重新切片并写入向量库 */
-  async reindex(fileId: number, text: string): Promise<void> {
+  /** 重新切片并写入向量库；mode：table=表格行级分块，heading=按标题分块，auto=按设置分块 */
+  async reindex(fileId: number, text: string, mode: 'auto' | 'table' | 'heading' = 'auto'): Promise<void> {
     await deleteChunksByFileId(fileId);
-    const chunks = chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, this.ctx.chunkMode);
+    const chunks = mode === 'table'
+      ? chunkSheetTable(text, this.ctx.chunkSize, this.ctx.chunkOverlap)
+      : chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, mode === 'heading' ? 'heading' : this.ctx.chunkMode);
     for (const c of chunks) {
       const vec = await embedText(c);
       await insertVectorChunk(fileId, c, vec);
@@ -236,7 +240,7 @@ export class FileImporter {
         const full = path.join(dir, e.name);
         if (e.isDirectory()) {
           await walk(full);
-        } else if (/\.(pdf|docx|md|txt)$/i.test(e.name)) {
+        } else if (/\.(pdf|docx|md|txt|xlsx|xls|csv|pptx)$/i.test(e.name)) {
           out.push(full);
         }
       }
