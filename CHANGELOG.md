@@ -2,6 +2,24 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 与语义化版本。
 
+## [2.1.0] - 2026-11-03
+
+### Added
+- 结构化日志模块 `src/main/utils/logger.ts`：分级（debug/info/warn/error）、JSON 格式、按天轮转日志文件
+- 统一错误处理 `src/main/utils/errors.ts`：AppError 错误码体系、HTTP 错误响应封装
+- `isDbInitialized()` 导出与 `walCheckpoint(mode)` 参数化支持
+- ESLint + Prettier 配置，pre-commit hooks（lint + test），commitlint 规范
+- i18n 国际化：67 条中英文词条，客户端硬编码中文全部抽取
+- 测试用例从 72 扩展到 279：业务模块测试、边界场景测试、路径穿越防护、内存泄漏检测、性能基准
+- CI 新增 npm audit 安全检查
+
+### Changed
+- HTTP 错误响应统一为 `{ error: { code, message, stack? } }` 格式
+- 关键路径（DB 初始化、HTTP server 启动、import/search/snapshot）注入结构化日志
+
+### Fixed
+- 修复 `sqlite-init.test.ts` 中 2 个失败用例（`isDbInitialized` 未导出、`walCheckpoint` 不接受参数）
+
 ## [2.0.10] - 2026-11-03
 
 ### Fixed

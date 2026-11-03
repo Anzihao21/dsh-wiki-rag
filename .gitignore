@@ -14,3 +14,4 @@ test-data/
 
 # 研究/验证产物（不入库）
 artifacts/
+*.tgz

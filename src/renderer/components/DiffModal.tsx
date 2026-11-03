@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../i18n';
 import { Button, Modal } from '../ui-kit';
 import { IconWarningTriangleOutlineRegular } from '../assets/icons/icons';
 
@@ -36,18 +37,18 @@ export default function DiffModal({ diff, onClose, onAccept, onReject }: Props) 
 
   const footer = hasDiff ? (
     <>
-      <Button variant="ghost" onClick={onReject}>拒绝更新</Button>
-      <Button variant="primary" onClick={onAccept}>接受更新</Button>
+      <Button variant="ghost" onClick={onReject}>{t('diff.reject')}</Button>
+      <Button variant="primary" onClick={onAccept}>{t('diff.accept')}</Button>
     </>
   ) : (
     <>
-      <Button variant="ghost" onClick={onClose}>知道了</Button>
+      <Button variant="ghost" onClick={onClose}>{t('diff.gotIt')}</Button>
     </>
   );
 
   const subtitle = hasDiff ? (
     <span className="dsw-page-subtitle">
-      <span className="dsw-diff-added">+{added}</span> / <span className="dsw-diff-removed">-{removed}</span> 字符
+      <span className="dsw-diff-added">+{added}</span> / <span className="dsw-diff-removed">-{removed}</span> {t('diff.charsUnit')}
     </span>
   ) : undefined;
 
@@ -70,7 +71,7 @@ export default function DiffModal({ diff, onClose, onAccept, onReject }: Props) 
       ) : (
         <div className="flex items-center gap-2 text-[14px] leading-6" style={{ color: 'var(--dsw-alias-label-secondary)' }}>
           <IconWarningTriangleOutlineRegular size={16} className="shrink-0" />
-          <span>{diff.message ?? '无可用变更'}</span>
+          <span>{diff.message ?? t('diff.noChanges')}</span>
         </div>
       )}
     </Modal>

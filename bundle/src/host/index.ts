@@ -47,6 +47,10 @@ import { buildDiffResult } from '../../../src/main/file/diff-compare';
 import { archiveSourceFile } from '../../../src/main/file/zip-archive';
 import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '../../../src/main/snapshot/snapshot-backup';
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
+import { createLogger } from '../../../src/main/utils/logger';
+import { sendHttpError } from '../../../src/main/utils/errors';
+
+const logger = createLogger('wiki-rag-host');
 
 export const name = 'wiki-rag-host';
 export const inject = ['tools'];
@@ -177,6 +181,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   // 初始化 DB（业务依赖本地 sqlite；ctx.fs 面向沙箱文本文件，此处保留业务自身 DB 语义）
   ctx.effect(async () => {
     await initDatabase(path.join(dataDir, 'dsh-wiki-rag.db'));
+    logger.info('plugin activated', { dbPath: getDbPath() });
     await writeLog('plugin-activate', `wiki-rag-host DB=${getDbPath()}`);
 
     // 接入文件监听：源文件变更入待确认队列；入队前预计算新旧文本与 diff，前端轮询即可直接渲染
@@ -567,6 +572,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
           const source = typeof parsed.source === 'string' ? parsed.source.trim() : '';
           if (!source) return json(400, { error: '缺少导入来源 source' });
+          logger.info('import requested', { source, async: !!parsed.async });
 
           // 并发去重：同一路径导入进行中 → 409
           const opKey = `import:${source}`;
@@ -594,11 +600,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               job.result = await runImportJob(parsed, job);
               job.status = 'done';
               job.message = '导入完成';
+              logger.info('async import done', { jobId, source });
               await writeLog('import-async', `job=${jobId} done`);
             } catch (e: any) {
               job.status = 'error';
               job.error = e.message;
               job.message = '导入失败';
+              logger.error('async import failed', { jobId, source, error: e.message });
               await writeLog('import-async-error', `${jobId}: ${e.message}`);
             } finally {
               release(opKey);
@@ -619,6 +627,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             return json(400, { error: '缺少 query' });
           }
           const results = await ragSearch(norm.query, norm.topK);
+          logger.info('search executed', { query: norm.query, topK: norm.topK, hits: results.length });
           return json(200, results.map((r) => ({
             ...r,
             title: r.file_name,
@@ -660,6 +669,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         if (req.method === 'POST' && pathname === '/api/wiki/snapshots') {
           const out = await createSnapshot(settings.mdStoragePath, settings.zipStoragePath, snapshotStoragePath);
           await pruneSnapshots(settings.snapshotKeep);
+          logger.info('snapshot created', { path: out });
           return json(200, { status: 'created', path: out, list: await readSnapshotList() });
         }
         // 快照恢复预览：/api/wiki/snapshots/:id/preview-restore
@@ -1079,13 +1089,15 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         }
 
         return json(404, { error: 'not found', path: pathname });
-      } catch (e: any) {
-        await writeLog('http-error', `${pathname}: ${e.message}`).catch(() => {});
-        return json(500, { error: e.message });
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logger.error('http request failed', { path: pathname, method: req.method, error: errMsg });
+        await writeLog('http-error', `${pathname}: ${errMsg}`).catch(() => {});
+        sendHttpError(res, e);
       }
     });
     server.listen(3081, () => {
-      console.log('[dsh-wiki-rag] API server on http://localhost:3081');
+      logger.info('API server listening', { port: 3081 });
     });
     return () => server.close();
   }, 'wiki: http api server');

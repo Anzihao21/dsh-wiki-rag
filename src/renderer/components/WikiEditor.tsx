@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { KnowledgeFile } from '../../main/types';
 import { ipc } from '../ipc';
+import { t } from '../i18n';
 import { Button, IconButton, Tabs } from '../ui-kit';
 import { IconCloseOutlineRegular, IconSaveOutlineRegular } from '../assets/icons/icons';
 
@@ -22,7 +23,7 @@ export default function WikiEditor({ file, onClose, onSaved }: Props) {
 
   useEffect(() => {
     ipc<string>('wiki:readMd', file.id)
-      .then((t) => setContent(t ?? ''))
+      .then((text) => setContent(text ?? ''))
       .catch(() => setContent(''));
   }, [file.id]);
 
@@ -42,7 +43,7 @@ export default function WikiEditor({ file, onClose, onSaved }: Props) {
       <div className="dsw-page-header">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="dsw-page-title truncate">{file.file_name}</h1>
-          <div className="dsw-page-subtitle">编辑仅修改 MD，不影响 Zip 归档原始文件</div>
+          <div className="dsw-page-subtitle">{t('editor.subtitle')}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Tabs
@@ -50,14 +51,14 @@ export default function WikiEditor({ file, onClose, onSaved }: Props) {
             activeId={view}
             onChange={(id) => setView(id as 'wysiwyg' | 'source')}
             items={[
-              { id: 'wysiwyg', label: '可视化' },
-              { id: 'source', label: '源码' }
+              { id: 'wysiwyg', label: t('editor.wysiwyg') },
+              { id: 'source', label: t('editor.source') }
             ]}
           />
           <Button variant="primary" size="sm" leadingIcon={<IconSaveOutlineRegular size={14} />} loading={saving} onClick={handleSave}>
-            保存
+            {t('common.save')}
           </Button>
-          <IconButton label="关闭" variant="ghost" onClick={onClose}>
+          <IconButton label={t('common.close')} variant="ghost" onClick={onClose}>
             <IconCloseOutlineRegular size={16} />
           </IconButton>
         </div>

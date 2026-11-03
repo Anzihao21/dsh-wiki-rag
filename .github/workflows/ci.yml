@@ -34,6 +34,11 @@ jobs:
         working-directory: bundle
         run: npm ci
 
+      - name: npm audit (bundle dependencies)
+        working-directory: bundle
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Build bundle
         working-directory: bundle
         run: npm run build

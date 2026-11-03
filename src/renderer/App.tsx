@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { ipc } from './ipc';
+import { t } from './i18n';
 import type { KnowledgeFile } from '../main/types';
 import FileList from './components/FileList';
 import WikiEditor from './components/WikiEditor';
@@ -16,9 +17,9 @@ import {
 type View = 'files' | 'import' | 'settings';
 
 const NAV_ITEMS: Array<{ view: View; label: string; icon: React.ReactNode }> = [
-  { view: 'files', label: '知识库', icon: <IconListPenOutlineRegular size={18} /> },
-  { view: 'import', label: '导入', icon: <IconPlusOutlineRegular size={18} /> },
-  { view: 'settings', label: '设置', icon: <IconSettingsOutlineRegular size={18} /> }
+  { view: 'files', label: t('nav.files'), icon: <IconListPenOutlineRegular size={18} /> },
+  { view: 'import', label: t('nav.import'), icon: <IconPlusOutlineRegular size={18} /> },
+  { view: 'settings', label: t('nav.settings'), icon: <IconSettingsOutlineRegular size={18} /> }
 ];
 
 export default function App() {
@@ -32,7 +33,7 @@ export default function App() {
       const list = await ipc<KnowledgeFile[]>('wiki:listFiles');
       setFiles(list);
     } catch (e) {
-      console.error('加载文件列表失败', e);
+      console.error(t('app.loadFilesFailed'), e);
     }
   }, []);
 

@@ -5,6 +5,7 @@
  * 明暗主题由宿主 body[data-ds-dark-theme] 级联自动切换，禁止任何 JS 主题切换或 hex 字面量。
  */
 import React, { useId, type ReactNode } from 'react';
+import { t } from './i18n';
 import {
   IconCloseOutlineRegular,
   IconLoadingOutlineMedium,
@@ -128,7 +129,7 @@ export function InputField({ label, prefix, hint, error, className = '', ...rest
 }
 
 export function SearchField({
-  placeholder = '搜索',
+  placeholder = t('common.search'),
   shortcut,
   onValueChange,
   ...rest
@@ -234,7 +235,7 @@ export function Modal({ open, onClose, title, footer, width = 'min(440px, 100%)'
         {title && (
           <div className="dsw-modal-header">
             <span id={uid} className="dsw-modal-title">{title}</span>
-            <IconButton label="关闭" onClick={onClose}>
+            <IconButton label={t('common.close')} onClick={onClose}>
               <IconCloseOutlineRegular size={16} />
             </IconButton>
           </div>
@@ -250,9 +251,9 @@ export function ConfirmModal({
   open,
   title,
   message,
-  confirmLabel = '确定',
+  confirmLabel = t('common.confirm'),
   confirmVariant = 'primary',
-  cancelLabel = '取消',
+  cancelLabel = t('common.cancel'),
   onConfirm,
   onClose,
 }: {

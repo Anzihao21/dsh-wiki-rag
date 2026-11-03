@@ -47,6 +47,10 @@ export function getDbPath(): string {
   return dbPath;
 }
 
+export function isDbInitialized(): boolean {
+  return db !== null;
+}
+
 export async function initDatabase(filePath?: string): Promise<void> {
   dbPath = filePath || path.join(process.cwd(), '.dsh-wiki-rag', 'wiki.db');
   if (db) return;
@@ -93,7 +97,7 @@ export function closeDatabase(): void {
   db = null;
 }
 
-export function walCheckpoint(): void {
+export function walCheckpoint(mode: 'PASSIVE' | 'FULL' | 'TRUNCATE' = 'TRUNCATE'): void {
   if (!db) return;
-  db.pragma('wal_checkpoint(TRUNCATE)');
+  db.pragma(`wal_checkpoint(${mode})`);
 }

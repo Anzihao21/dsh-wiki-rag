@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { PluginSettings } from '../../main/types';
 import { ipc } from '../ipc';
+import { t } from '../i18n';
 import { Button, InputField, Switch, DropdownSelect } from '../ui-kit';
 import { IconSaveOutlineRegular, IconArchiveOutlineRegular } from '../assets/icons/icons';
 
@@ -16,7 +17,7 @@ export default function SettingPanel() {
   }, []);
 
   if (!settings) {
-    return <div className="dsw-scroll">加载设置…</div>;
+    return <div className="dsw-scroll">{t('settings.loading')}</div>;
   }
 
   const set = (k: keyof PluginSettings, v: any) => {
@@ -33,9 +34,9 @@ export default function SettingPanel() {
     setSnapping(true);
     try {
       await ipc('wiki:createSnapshot');
-      setSnapMsg('快照已创建');
+      setSnapMsg(t('settings.snapshotCreated'));
     } catch (e) {
-      setSnapMsg(`快照失败：${(e as Error).message}`);
+      setSnapMsg(t('settings.snapshotFailed').replace('{msg}', (e as Error).message));
     } finally {
       setSnapping(false);
     }
@@ -45,58 +46,58 @@ export default function SettingPanel() {
     <div className="flex h-full flex-col">
       <div className="dsw-page-header">
         <div>
-          <h1 className="dsw-page-title">设置</h1>
-          <div className="dsw-page-subtitle">存储路径、网页抓取模式与 RAG 切片参数</div>
+          <h1 className="dsw-page-title">{t('settings.title')}</h1>
+          <div className="dsw-page-subtitle">{t('settings.subtitle')}</div>
         </div>
       </div>
 
       <div className="dsw-scroll">
         <div className="flex flex-col gap-5" style={{ maxWidth: 480 }}>
-          <Field label="MD 文件存储路径">
+          <Field label={t('settings.mdPath')}>
             <InputField value={settings.mdStoragePath} onChange={(e) => set('mdStoragePath', e.target.value)} />
           </Field>
-          <Field label="Zip 归档存储路径">
+          <Field label={t('settings.zipPath')}>
             <InputField value={settings.zipStoragePath} onChange={(e) => set('zipStoragePath', e.target.value)} />
           </Field>
 
-          <Field label="网页抓取模式">
+          <Field label={t('settings.webMode')}>
             <DropdownSelect
               label=""
               value={settings.webMode}
               options={[
-                { value: 'intranet', label: '内网模式' },
-                { value: 'extranet', label: '外网模式' }
+                { value: 'intranet', label: t('settings.webModeIntranet') },
+                { value: 'extranet', label: t('settings.webModeExtranet') }
               ]}
               onChange={(v) => set('webMode', v)}
             />
           </Field>
-          <Field label="网页超时（毫秒）">
+          <Field label={t('settings.webTimeout')}>
             <InputField type="number" value={String(settings.webTimeout)} onChange={(e) => set('webTimeout', Number(e.target.value))} />
           </Field>
 
-          <Field label="RAG 切片大小（字符）">
+          <Field label={t('settings.chunkSize')}>
             <InputField type="number" value={String(settings.chunkSize)} onChange={(e) => set('chunkSize', Number(e.target.value))} />
           </Field>
-          <Field label="切片重叠字符数">
+          <Field label={t('settings.chunkOverlap')}>
             <InputField type="number" value={String(settings.chunkOverlap)} onChange={(e) => set('chunkOverlap', Number(e.target.value))} />
           </Field>
 
-          <Field label="自动快照备份">
+          <Field label={t('settings.autoSnapshot')}>
             <div className="flex items-center gap-3">
-              <Switch checked={settings.autoSnapshot} onChange={(v) => set('autoSnapshot', v)} label="自动快照备份" />
-              <span className="dsw-page-subtitle">关闭默认，手动开启</span>
+              <Switch checked={settings.autoSnapshot} onChange={(v) => set('autoSnapshot', v)} label={t('settings.autoSnapshot')} />
+              <span className="dsw-page-subtitle">{t('settings.autoSnapshotHint')}</span>
             </div>
           </Field>
 
           <div className="dsw-toolbar">
             <Button variant="primary" leadingIcon={<IconSaveOutlineRegular size={14} />} onClick={handleSave}>
-              保存设置
+              {t('settings.saveButton')}
             </Button>
             <Button variant="secondary" leadingIcon={<IconArchiveOutlineRegular size={14} />} loading={snapping} onClick={handleSnapshot}>
-              手动创建快照
+              {t('settings.snapshotButton')}
             </Button>
             <span className="dsw-toolbar-spacer" />
-            {saved && <span style={{ color: 'var(--dsw-alias-state-success-primary)', fontSize: 13 }}>已保存</span>}
+            {saved && <span style={{ color: 'var(--dsw-alias-state-success-primary)', fontSize: 13 }}>{t('settings.saved')}</span>}
             {snapMsg && <span style={{ color: 'var(--dsw-alias-state-warn-primary)', fontSize: 13 }}>{snapMsg}</span>}
           </div>
         </div>

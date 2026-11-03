@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ipc } from '../ipc';
+import { t } from '../i18n';
 import { Button, InputField } from '../ui-kit';
 import { IconPlusOutlineRegular, IconLinkOutlineRegular, IconListPenOutlineRegular, IconFolderOpenOutlineRegular, IconGlobeOutlineRegular } from '../assets/icons/icons';
 
@@ -26,10 +27,10 @@ export default function ImportPanel({ onImported }: Props) {
     try {
       const r = await p;
       const skipped = Array.isArray(r) ? r.some((x) => x.skipped) : r?.skipped;
-      setMsg({ ok: true, text: skipped ? '部分条目被跳过（同名冲突）' : '导入成功' });
+      setMsg({ ok: true, text: skipped ? t('import.skipped') : t('import.success') });
       onImported();
     } catch (e) {
-      setMsg({ ok: false, text: `导入失败：${(e as Error).message}` });
+      setMsg({ ok: false, text: t('import.failed').replace('{msg}', (e as Error).message) });
     } finally {
       setBusy(false);
     }
@@ -39,59 +40,59 @@ export default function ImportPanel({ onImported }: Props) {
     <div className="flex h-full flex-col">
       <div className="dsw-page-header">
         <div>
-          <h1 className="dsw-page-title">文件导入</h1>
-          <div className="dsw-page-subtitle">支持本地、文件夹批量、局域网、网页与笔记五种来源</div>
+          <h1 className="dsw-page-title">{t('import.title')}</h1>
+          <div className="dsw-page-subtitle">{t('import.subtitle')}</div>
         </div>
       </div>
 
       <div className="dsw-scroll">
         <div className="flex flex-col gap-4" style={{ maxWidth: 560 }}>
-          <Section title="本地单文件" icon={<IconListPenOutlineRegular size={16} />}>
+          <Section title={t('import.localFile')} icon={<IconListPenOutlineRegular size={16} />}>
             <InputField
-              placeholder="输入源文件绝对路径，如 /data/docs/项目说明.docx"
+              placeholder={t('import.localFilePlaceholder')}
               value={localPath}
               onChange={(e) => setLocalPath(e.target.value)}
             />
             <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!localPath || busy} onClick={() => run(ipc('wiki:importFile', localPath))}>
-              导入文件
+              {t('import.localFileButton')}
             </Button>
           </Section>
 
-          <Section title="本地文件夹批量导入" icon={<IconFolderOpenOutlineRegular size={16} />}>
-            <InputField placeholder="输入文件夹路径" value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
+          <Section title={t('import.folder')} icon={<IconFolderOpenOutlineRegular size={16} />}>
+            <InputField placeholder={t('import.folderPlaceholder')} value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
             <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!folderPath || busy} onClick={() => run(ipc('wiki:importFolder', folderPath))}>
-              批量导入
+              {t('import.folderButton')}
             </Button>
           </Section>
 
-          <Section title="局域网共享路径" icon={<IconFolderOpenOutlineRegular size={16} />}>
-            <InputField placeholder='\\192.168.x.x\share\doc 或本地目录' value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
+          <Section title={t('import.lanShare')} icon={<IconFolderOpenOutlineRegular size={16} />}>
+            <InputField placeholder={t('import.lanSharePlaceholder')} value={folderPath} onChange={(e) => setFolderPath(e.target.value)} />
             <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!folderPath || busy} onClick={() => run(ipc('wiki:importFolder', folderPath))}>
-              从共享路径导入
+              {t('import.lanShareButton')}
             </Button>
-            <div className="dsw-page-subtitle">运行 DSH 的账号需已具备共享目录读写权限</div>
+            <div className="dsw-page-subtitle">{t('import.lanShareHint')}</div>
           </Section>
 
-          <Section title="网页 URL 抓取" icon={<IconGlobeOutlineRegular size={16} />}>
+          <Section title={t('import.webUrl')} icon={<IconGlobeOutlineRegular size={16} />}>
             <InputField placeholder="https://example.com/page" value={url} onChange={(e) => setUrl(e.target.value)} />
             <Button variant="primary" leadingIcon={<IconLinkOutlineRegular size={14} />} disabled={!url || busy} onClick={() => run(ipc('wiki:importUrl', url))}>
-              抓取入库
+              {t('import.webUrlButton')}
             </Button>
           </Section>
 
-          <Section title="笔记直接添加" icon={<IconListPenOutlineRegular size={16} />}>
-            <InputField placeholder="笔记标题" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} />
+          <Section title={t('import.note')} icon={<IconListPenOutlineRegular size={16} />}>
+            <InputField placeholder={t('import.noteTitlePlaceholder')} value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} />
             <label className="dsw-field">
               <textarea
                 className="dsw-textarea"
                 style={{ minHeight: 100 }}
-                placeholder="笔记正文（Markdown）"
+                placeholder={t('import.noteTextPlaceholder')}
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
               />
             </label>
             <Button variant="primary" leadingIcon={<IconPlusOutlineRegular size={14} />} disabled={!noteTitle || busy} onClick={() => run(ipc('wiki:importNote', noteTitle, noteText))}>
-              新建知识库文档
+              {t('import.noteButton')}
             </Button>
           </Section>
 

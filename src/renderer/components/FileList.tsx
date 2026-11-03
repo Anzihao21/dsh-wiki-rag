@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { KnowledgeFile } from '../../main/types';
 import { ipc } from '../ipc';
+import { t } from '../i18n';
 import { IconButton, ConfirmModal } from '../ui-kit';
 import { IconRefreshOutlineRegular, IconTrashOutlineRegular, IconDownloadOutlineRegular } from '../assets/icons/icons';
 
@@ -16,8 +17,8 @@ const TYPE_LABEL: Record<string, string> = {
   docx: 'DOCX',
   md: 'MD',
   txt: 'TXT',
-  url: '网页',
-  note: '笔记'
+  url: t('fileList.type.url'),
+  note: t('fileList.type.note')
 };
 
 export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Props) {
@@ -37,7 +38,11 @@ export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Pro
     } else if (result.status === 'needs-confirm' && result.diff) {
       onOpenDiff(result.diff);
     } else if (result.status === 'source-lost') {
-      onOpenDiff({ fileName: f.file_name, message: `源文件丢失：${result.reason}`, lost: true });
+      onOpenDiff({
+        fileName: f.file_name,
+        message: t('diff.sourceLost').replace('{reason}', result.reason),
+        lost: true
+      });
     }
   };
 
@@ -45,17 +50,17 @@ export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Pro
     <div className="flex h-full flex-col">
       <div className="dsw-page-header">
         <div>
-          <h1 className="dsw-page-title">知识库文件</h1>
-          <div className="dsw-page-subtitle">管理已导入的知识条目，点击条目进入编辑器</div>
+          <h1 className="dsw-page-title">{t('fileList.title')}</h1>
+          <div className="dsw-page-subtitle">{t('fileList.subtitle')}</div>
         </div>
-        <IconButton label="刷新" variant="ghost" onClick={onRefresh}>
+        <IconButton label={t('common.refresh')} variant="ghost" onClick={onRefresh}>
           <IconRefreshOutlineRegular size={16} />
         </IconButton>
       </div>
 
       <div className="dsw-scroll">
         {files.length === 0 ? (
-          <div className="dsw-empty">暂无文件，请前往「导入」添加</div>
+          <div className="dsw-empty">{t('fileList.empty')}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {files.map((f) => (
@@ -65,10 +70,10 @@ export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Pro
                   <span className="dsw-list-item-title truncate">{f.file_name}</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <IconButton label="从源目录更新" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSync(f); }}>
+                  <IconButton label={t('fileList.syncFromSource')} variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSync(f); }}>
                     <IconDownloadOutlineRegular size={14} />
                   </IconButton>
-                  <IconButton label="删除" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPendingDelete(f); }}>
+                  <IconButton label={t('common.delete')} variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPendingDelete(f); }}>
                     <IconTrashOutlineRegular size={14} />
                   </IconButton>
                 </div>
@@ -80,9 +85,9 @@ export default function FileList({ files, onSelect, onRefresh, onOpenDiff }: Pro
 
       <ConfirmModal
         open={!!pendingDelete}
-        title="删除知识条目"
-        message={`确定删除「${pendingDelete?.file_name}」及其归档包吗？删除后不可恢复。`}
-        confirmLabel="删除"
+        title={t('fileList.deleteTitle')}
+        message={t('fileList.deleteMessage').replace('{name}', pendingDelete?.file_name ?? '')}
+        confirmLabel={t('common.delete')}
         confirmVariant="danger"
         onConfirm={handleDelete}
         onClose={() => setPendingDelete(null)}
