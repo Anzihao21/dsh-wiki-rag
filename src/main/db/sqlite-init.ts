@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-let db: Database.Database | null = null;
+let db: DatabaseSync | null = null;
 let dbPath = '';
 
 const SCHEMA_SQL = `
@@ -53,8 +53,8 @@ export async function initDatabase(filePath?: string): Promise<void> {
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
 
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
+  db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
   runSchema();
 }
 
@@ -65,7 +65,7 @@ function runSchema(): void {
   }
 }
 
-function getDb(): Database.Database {
+function getDb(): DatabaseSync {
   if (!db) throw new Error('数据库尚未初始化，请先调用 initDatabase()');
   return db;
 }
@@ -95,5 +95,5 @@ export function closeDatabase(): void {
 
 export function walCheckpoint(): void {
   if (!db) return;
-  db.pragma('wal_checkpoint(TRUNCATE)');
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
 }

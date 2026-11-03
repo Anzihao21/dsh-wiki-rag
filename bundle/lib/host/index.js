@@ -32804,7 +32804,7 @@ import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 // ../src/main/db/sqlite-init.ts
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { promises as fs } from "fs";
 import path from "path";
 var db = null;
@@ -32854,8 +32854,8 @@ async function initDatabase(filePath) {
   if (db) return;
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
+  db = new DatabaseSync(dbPath);
+  db.exec("PRAGMA journal_mode = WAL");
   runSchema();
 }
 function runSchema() {
@@ -32888,7 +32888,7 @@ function closeDatabase() {
 }
 function walCheckpoint() {
   if (!db) return;
-  db.pragma("wal_checkpoint(TRUNCATE)");
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
 }
 
 // ../src/main/file/file-importer.ts
