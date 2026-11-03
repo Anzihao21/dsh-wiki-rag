@@ -23,7 +23,6 @@ async function main() {
     '@deepseek-ai/cordis',
     '@deepseek-ai/dsh-tools',
     '@deepseek-ai/schemastery',
-    'better-sqlite3',
   ];
 
   await build({

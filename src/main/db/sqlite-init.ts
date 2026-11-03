@@ -1,159 +1,212 @@
-import Database from 'better-sqlite3';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-let db: Database.Database | null = null;
+// 纯 JS JSON 文件存储（替代 SQLite，零原生依赖，Windows 直接可用）
+interface DBData {
+  knowledge_files: any[];
+  folders: any[];
+  vector_chunks: any[];
+  operation_log: any[];
+  settings: Record<string, any>;
+  _autoinc: {
+    knowledge_files: number;
+    folders: number;
+    vector_chunks: number;
+    operation_log: number;
+  };
+}
+
 let dbPath = '';
-
-// 建表 SQL：知识库主表、文件夹表、向量切片表、操作日志表
-const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS knowledge_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_name TEXT NOT NULL,
-    source_path TEXT NOT NULL,
-    md_path TEXT NOT NULL,
-    zip_archive_path TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    create_time INTEGER NOT NULL,
-    last_sync_time INTEGER NOT NULL DEFAULT 0,
-    folder_id INTEGER DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS folders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    parent_id INTEGER,
-    create_time INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS vector_chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id INTEGER NOT NULL,
-    chunk_text TEXT NOT NULL,
-    vector_blob BLOB NOT NULL,
-    FOREIGN KEY(file_id) REFERENCES knowledge_files(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_vector_file_id ON vector_chunks(file_id);
-
-CREATE TABLE IF NOT EXISTS operation_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT NOT NULL,
-    detail TEXT,
-    time INTEGER NOT NULL
-);
-`;
+let data: DBData = {
+  knowledge_files: [],
+  folders: [],
+  vector_chunks: [],
+  operation_log: [],
+  settings: {},
+  _autoinc: { knowledge_files: 0, folders: 0, vector_chunks: 0, operation_log: 0 },
+};
+let dirty = false;
 
 export function getDbPath(): string {
   return dbPath;
 }
 
-/**
- * 初始化数据库连接并建表。
- * @param filePath 数据库文件路径，默认放到 DSH 数据目录
- */
 export async function initDatabase(filePath?: string): Promise<void> {
-  dbPath = filePath || path.join(process.cwd(), 'dsh-wiki-rag.db');
-  if (db) {
-    return;
-  }
-  // 确保目录存在
+  dbPath = filePath || path.join(process.cwd(), '.dsh-wiki-rag', 'db.json');
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
 
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  // WAL 下 synchronous=NORMAL 兼顾安全与吞吐；wal_autocheckpoint 让 SQLite 每 ~1000 页自动回收
-  db.pragma('synchronous = NORMAL');
-  db.pragma('wal_autocheckpoint = 1000');
-  db.pragma('foreign_keys = ON');
-
-  runSchema();
-}
-
-/** 逐条执行建表语句 */
-function runSchema(): void {
-  const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
-  for (const stmt of statements) {
-    run(stmt);
-  }
-  migrate();
-}
-
-/**
- * 幂等迁移：对已存在的旧库补列。
- * - knowledge_files.folder_id：CREATE TABLE IF NOT EXISTS 不会给老表补列，
- *   这里用 ALTER TABLE ADD COLUMN，包 try/catch（列已存在则忽略）。
- */
-function migrate(): void {
   try {
-    db!.prepare('ALTER TABLE knowledge_files ADD COLUMN folder_id INTEGER DEFAULT NULL').run();
+    const raw = await fs.readFile(dbPath, 'utf-8');
+    data = JSON.parse(raw);
+    if (!data.knowledge_files) data.knowledge_files = [];
+    if (!data.folders) data.folders = [];
+    if (!data.vector_chunks) data.vector_chunks = [];
+    if (!data.operation_log) data.operation_log = [];
+    if (!data.settings) data.settings = {};
+    if (!data._autoinc) data._autoinc = { knowledge_files: 0, folders: 0, vector_chunks: 0, operation_log: 0 };
   } catch {
-    // 列已存在（新库建表时已带 folder_id），忽略
+    data = {
+      knowledge_files: [], folders: [], vector_chunks: [], operation_log: [], settings: {},
+      _autoinc: { knowledge_files: 0, folders: 0, vector_chunks: 0, operation_log: 0 },
+    };
   }
 }
 
-function getDb(): Database.Database {
-  if (!db) {
-    throw new Error('数据库尚未初始化，请先调用 initDatabase()');
-  }
-  return db;
+async function save(): Promise<void> {
+  if (!dirty) return;
+  await fs.writeFile(dbPath, JSON.stringify(data, null, 2), 'utf-8');
+  dirty = false;
 }
 
-/** 执行 SQL（同步） */
 export function run(sql: string, params: any[] = []): void {
-  getDb().prepare(sql).run(...params);
-}
+  dirty = true;
+  const s = sql.trim();
 
-/** 查询单行（同步） */
-export function get<T>(sql: string, params: any[] = []): T | undefined {
-  return getDb().prepare(sql).get(...params) as T | undefined;
-}
-
-/** 查询多行（同步） */
-export function all<T>(sql: string, params: any[] = []): T[] {
-  return getDb().prepare(sql).all(...params) as T[];
-}
-
-/** 返回最后插入的自增 id（同步） */
-export function lastInsertId(): number {
-  const row = get<{ id: number }>('SELECT last_insert_rowid() AS id');
-  return row?.id ?? 0;
-}
-
-/**
- * 手动触发 WAL checkpoint（TRUNCATE 模式把 -wal 文件归零并截断）。
- * 长运行进程可定期调用，避免 -wal 无限增长；关闭数据库前也会自动调用一次。
- */
-export function walCheckpoint(mode: 'PASSIVE' | 'FULL' | 'TRUNCATE' = 'TRUNCATE'): void {
-  if (!db) return;
-  try {
-    db.pragma(`wal_checkpoint(${mode})`);
-  } catch {
-    // 非 WAL 模式或库已关闭时忽略
-  }
-}
-
-/** 是否已初始化（便于测试 / 重复 init 幂等判断） */
-export function isDbInitialized(): boolean {
-  return db !== null;
-}
-
-/** 关闭数据库连接（同步）：先 checkpoint 再 close，避免 -wal 残留 */
-export function closeDatabase(): void {
-  if (!db) {
+  // INSERT INTO knowledge_files
+  if (s.startsWith('INSERT INTO knowledge_files')) {
+    const id = ++data._autoinc.knowledge_files;
+    data.knowledge_files.push({
+      id,
+      file_name: params[0],
+      source_path: params[1],
+      md_path: params[2],
+      zip_archive_path: params[3],
+      file_type: params[4],
+      create_time: params[5],
+      last_sync_time: params[6] || 0,
+      folder_id: params[7] || null,
+    });
     return;
   }
-  try {
-    // 关闭前把 WAL 落盘并截断，防止进程退出后 -wal 文件保留
-    db.pragma('wal_checkpoint(TRUNCATE)');
-  } catch {
-    // ignore
+
+  // INSERT INTO folders
+  if (s.startsWith('INSERT INTO folders')) {
+    const id = ++data._autoinc.folders;
+    data.folders.push({
+      id,
+      name: params[0],
+      parent_id: params[1] || null,
+      create_time: params[2],
+    });
+    return;
   }
-  try {
-    db.close();
-  } catch {
-    // ignore
+
+  // INSERT INTO vector_chunks
+  if (s.startsWith('INSERT INTO vector_chunks')) {
+    const id = ++data._autoinc.vector_chunks;
+    data.vector_chunks.push({
+      id,
+      file_id: params[0],
+      chunk_text: params[1],
+      vector_blob: params[2],
+    });
+    return;
   }
-  db = null;
+
+  // INSERT INTO operation_log
+  if (s.startsWith('INSERT INTO operation_log')) {
+    const id = ++data._autoinc.operation_log;
+    data.operation_log.push({
+      id,
+      action: params[0],
+      detail: params[1],
+      time: params[2],
+    });
+    return;
+  }
+
+  // DELETE FROM knowledge_files WHERE id = ?
+  if (s.startsWith('DELETE FROM knowledge_files WHERE id = ?')) {
+    data.knowledge_files = data.knowledge_files.filter((r) => r.id !== params[0]);
+    data.vector_chunks = data.vector_chunks.filter((r) => r.file_id !== params[0]);
+    return;
+  }
+
+  // DELETE FROM vector_chunks WHERE file_id = ?
+  if (s.startsWith('DELETE FROM vector_chunks WHERE file_id = ?')) {
+    data.vector_chunks = data.vector_chunks.filter((r) => r.file_id !== params[0]);
+    return;
+  }
+
+  // UPDATE knowledge_files SET ... WHERE id = ?
+  if (s.startsWith('UPDATE knowledge_files SET')) {
+    const row = data.knowledge_files.find((r) => r.id === params[params.length - 1]);
+    if (row) {
+      // 简单处理：根据 SET 子句更新字段
+      if (s.includes('last_sync_time')) row.last_sync_time = params[0];
+      if (s.includes('file_name')) row.file_name = params[0];
+      if (s.includes('md_path')) row.md_path = params[0];
+      if (s.includes('zip_archive_path')) row.zip_archive_path = params[0];
+      if (s.includes('folder_id')) row.folder_id = params[0];
+    }
+    return;
+  }
+
+  // UPDATE folders SET name = ? WHERE id = ?
+  if (s.startsWith('UPDATE folders SET')) {
+    const row = data.folders.find((r) => r.id === params[params.length - 1]);
+    if (row && s.includes('name')) row.name = params[0];
+    return;
+  }
+}
+
+export function get<T>(sql: string, params: any[] = []): T | undefined {
+  const s = sql.trim();
+
+  if (s.startsWith('SELECT * FROM knowledge_files WHERE id = ?')) {
+    return data.knowledge_files.find((r) => r.id === params[0]) as T | undefined;
+  }
+
+  if (s.startsWith('SELECT * FROM folders WHERE id = ?')) {
+    return data.folders.find((r) => r.id === params[0]) as T | undefined;
+  }
+
+  if (s.includes('last_insert_rowid')) {
+    return { id: data._autoinc.knowledge_files } as T;
+  }
+
+  if (s.startsWith('SELECT * FROM settings WHERE key = ?')) {
+    return { key: params[0], value: data.settings[params[0]] } as T;
+  }
+
+  return undefined;
+}
+
+export function all<T>(sql: string, params: any[] = []): T[] {
+  const s = sql.trim();
+
+  if (s.startsWith('SELECT * FROM knowledge_files')) {
+    return [...data.knowledge_files].sort((a, b) => b.create_time - a.create_time) as T[];
+  }
+
+  if (s.startsWith('SELECT * FROM folders')) {
+    return [...data.folders] as T[];
+  }
+
+  if (s.startsWith('SELECT * FROM vector_chunks WHERE file_id = ?')) {
+    return data.vector_chunks.filter((r) => r.file_id === params[0]) as T[];
+  }
+
+  if (s.startsWith('SELECT * FROM operation_log')) {
+    return [...data.operation_log].sort((a, b) => b.time - a.time) as T[];
+  }
+
+  if (s.startsWith('SELECT * FROM settings')) {
+    return Object.entries(data.settings).map(([key, value]) => ({ key, value })) as T[];
+  }
+
+  return [];
+}
+
+export function lastInsertId(): number {
+  return data._autoinc.knowledge_files;
+}
+
+export async function closeDatabase(): Promise<void> {
+  await save();
+}
+
+export async function walCheckpoint(): Promise<void> {
+  await save();
 }
