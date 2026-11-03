@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wiki 知识库（RAG）",
+    "description": "将本地 Markdown、压缩包与 Wiki 源文件索引进向量库，并让 Agent 通过 wiki_rag_search 工具检索相关资料。"
+  }
+}

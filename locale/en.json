@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wiki Knowledge Base (RAG)",
+    "description": "Indexes local Markdown, ZIP, and Wiki sources into a vector store and lets the agent retrieve relevant passages through the wiki_rag_search tool."
+  }
+}
