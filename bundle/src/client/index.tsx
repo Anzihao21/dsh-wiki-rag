@@ -106,6 +106,16 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.willAdd": "将新增",
   "wiki.willOverwrite": "将覆盖",
   "wiki.willRemove": "将移除",
+  "wiki.fullscreen": "全屏",
+  "wiki.exitFullscreen": "退出全屏",
+  "wiki.more": "更多",
+  "wiki.browseFile": "浏览文件",
+  "wiki.refresh": "刷新",
+  "wiki.emptyTitle": "从左侧选择文档开始",
+  "wiki.emptyHint": "在左侧导入或搜索文档，点击后即可在此查看与编辑。支持本地文件 / 网页 / 笔记 / Excel / PPT 等。",
+  "wiki.statusReady": "已索引",
+  "wiki.statusStale": "待同步",
+  "wiki.statusError": "异常",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -603,17 +613,20 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [importType, setImportType] = useState<"file" | "url" | "note">("file");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
   const [showNewMd, setShowNewMd] = useState(false);
   const [newMdTitle, setNewMdTitle] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "doc" | "folder"; id: string | number } | null>(null);
+  const [showMore, setShowMore] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | number | null>(null);
   const [renameText, setRenameText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [stats, setStats] = useState<{ total: number; ready: number; stale: number }>({ total: 0, ready: 0, stale: 0 });
+  const [stats, setStats] = useState<{ total: number; ready: number; stale: number; byType: Record<string, number> }>({ total: 0, ready: 0, stale: 0, byType: {} });
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
@@ -655,7 +668,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       const [l, tr, s, sn, lg] = await Promise.all([
         apiList().catch(() => SAMPLE_DOCS),
         apiTree().catch(() => []),
-        request("/stats").catch(() => ({ total: 0, ready: 0, stale: 0 })),
+        request("/stats").catch(() => ({ total: 0, ready: 0, stale: 0, byType: {} })),
         request("/snapshots").catch(() => []),
         request("/logs").catch(() => []),
       ]);
@@ -1040,7 +1053,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
-    <div style={rootStyle}>
+    <div style={fullscreen ? { ...rootStyle, position: "fixed", inset: 0, zIndex: 10050, background: "var(--dsw-alias-bg-layer-0)" } : rootStyle}>
       {/* Toast */}
       <ToastStack toasts={toasts} />
 
@@ -1092,16 +1105,39 @@ function WikiSidebar(props: WikiSidebarProps) {
               <path d="M14 2v6h6" /><path d="M12 18v-6M9 15h6" />
             </svg>
           </button>
-          {[
-            ["+", "import", () => setShowImport(!showImport)],
-            [tt(t, "wiki.newFolder"), "folder", () => setShowNewFolder(!showNewFolder)],
-            ["⟳", "refresh", () => refreshList()],
-            [tt(t, "wiki.snapshots"), "snap", () => setView("snapshots")],
-            [tt(t, "wiki.logs"), "logs", () => setView("logs")],
-            [tt(t, "wiki.settings"), "set", () => setView("settings")],
-          ].map(([lbl, tip, fn], i) => (
-            <button key={i} title={tip as string} onClick={fn as any} style={headerBtn}>{lbl}</button>
-          ))}
+          {/* 主操作：导入 / 新建文件夹 / 刷新 */}
+          <button title={tt(t, "wiki.import")} onClick={() => setShowImport(!showImport)} style={headerBtn}>＋</button>
+          <button title={tt(t, "wiki.newFolder")} onClick={() => setShowNewFolder(!showNewFolder)} style={headerBtn}>{tt(t, "wiki.newFolder")}</button>
+          <button title={tt(t, "wiki.refresh")} onClick={() => refreshList()} style={headerBtn}>⟳</button>
+          {/* 全屏 / 退出全屏 */}
+          <button title={fullscreen ? tt(t, "wiki.exitFullscreen") : tt(t, "wiki.fullscreen")}
+            onClick={() => setFullscreen(!fullscreen)} style={headerBtn}>
+            {fullscreen ? (
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+                <path d="M8 3v3a2 2 0 0 1-2 2H3" /><path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                <path d="M3 16h3a2 2 0 0 1 2 2v3" /><path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+              </svg>
+            ) : (
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+              </svg>
+            )}
+          </button>
+          {/* 更多 ⋯：快照 / 日志 / 设置 */}
+          <div style={{ position: "relative" }}>
+            <button title={tt(t, "wiki.more")} onClick={() => setShowMore(!showMore)} style={headerBtn}>⋯</button>
+            {showMore && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowMore(false)} />
+                <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>
+                  <div onClick={() => { setView("snapshots"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.snapshots")}</div>
+                  <div onClick={() => { setView("logs"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
+                  <div onClick={() => { setView("settings"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1121,13 +1157,18 @@ function WikiSidebar(props: WikiSidebarProps) {
       <div style={mainLayoutStyle}>
         {/* 左侧：文件树 */}
         <div style={sidebarStyle}>
-          {/* 搜索框 */}
-          <input ref={searchInputRef}
-            value={q}
-            onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
-            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
-            placeholder={tt(t, "wiki.search")}
-            style={searchInputStyle} />
+          {/* 搜索框 + 退出搜索 */}
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input ref={searchInputRef}
+              value={q}
+              onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+              placeholder={tt(t, "wiki.search")}
+              style={{ ...searchInputStyle, flex: 1 }} />
+            {searchingMode && (
+              <button title={tt(t, "wiki.cancel")} onClick={() => { setQ(""); setSearchResults(null); }} style={iconBtn}>✕</button>
+            )}
+          </div>
 
           {/* 新建文件夹 */}
           {showNewFolder && (
@@ -1153,8 +1194,17 @@ function WikiSidebar(props: WikiSidebarProps) {
                 ))}
               </div>
               {importType !== "note" ? (
-                <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
-                  placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"} style={smallInput} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
+                    placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"} style={smallInput} />
+                  {importType === "file" && (
+                    <>
+                      <button title={tt(t, "wiki.browseFile")} onClick={() => fileInputRef.current?.click()} style={{ ...ghostBtn, flexShrink: 0 }}>浏览…</button>
+                      <input ref={fileInputRef} type="file" style={{ display: "none" }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportPath((f as any).path || f.name); }} />
+                    </>
+                  )}
+                </div>
               ) : (
                 <>
                   <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="笔记标题…" style={smallInput} />
@@ -1230,7 +1280,10 @@ function WikiSidebar(props: WikiSidebarProps) {
                         }}>
                         <span style={{ fontSize: 10, color: "var(--dsw-alias-label-secondary)" }}>{open ? "▼" : "▶"}</span>
                         <FolderIcon size={14} />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                        <button title={tt(t, "wiki.more")}
+                          onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setContextMenu({ x: Math.max(4, r.left), y: r.bottom + 2, kind: "folder", id: row.id }); }}
+                          style={{ ...iconBtn, flexShrink: 0, fontSize: 14, width: 20, height: 20 }}>⋯</button>
                       </div>
                     );
                   }
@@ -1268,8 +1321,23 @@ function WikiSidebar(props: WikiSidebarProps) {
           </div>
 
           {/* 底部统计 */}
-          <div style={{ padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
-            {t ? t("wiki.count", { n: stats.total || rows.length }) : `共 ${stats.total || rows.length} 条`}
+          <div style={{ padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div>{t ? t("wiki.count", { n: stats.total || rows.length }) : `共 ${stats.total || rows.length} 条`}</div>
+            {Object.keys(stats.byType || {}).length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {Object.entries(stats.byType).map(([k, n]) => (
+                  <span key={k} style={{ padding: "0 5px", borderRadius: 4, background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-secondary)" }}>
+                    {typeLabel(k)} {n}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* 状态图例 */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 1 }}>
+              <span><span style={{ color: "var(--dsw-alias-state-success)" }}>●</span> {tt(t, "wiki.statusReady")}</span>
+              <span><span style={{ color: "var(--dsw-alias-state-warning)" }}>●</span> {tt(t, "wiki.statusStale")}</span>
+              <span><span style={{ color: "var(--dsw-alias-state-danger)" }}>●</span> {tt(t, "wiki.statusError")}</span>
+            </div>
           </div>
         </div>
 
@@ -1425,9 +1493,22 @@ function WikiSidebar(props: WikiSidebarProps) {
               )}
             </>
           ) : (
-            /* 空状态 */
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 13 }}>
-              {tt(t, "wiki.empty")}
+            /* 空状态：引导 + 统计概览 */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
+              <div style={{ fontSize: 30 }}>📚</div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{tt(t, "wiki.emptyTitle")}</div>
+              <div style={{ fontSize: 12, color: "var(--dsw-alias-label-tertiary)", textAlign: "center", maxWidth: 320, lineHeight: 1.6 }}>
+                {tt(t, "wiki.emptyHint")}
+              </div>
+              {stats.total > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 4 }}>
+                  {Object.entries(stats.byType || {}).map(([k, n]) => (
+                    <span key={k} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-secondary)" }}>
+                      {typeLabel(k)} × {n}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
