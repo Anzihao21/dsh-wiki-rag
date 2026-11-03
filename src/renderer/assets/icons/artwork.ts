@@ -6,10 +6,10 @@
  */
 
 /** Regular stroke width used by the product icon set. */
-export const ICON_REGULAR_STROKE = 1
+export const ICON_REGULAR_STROKE = 1;
 
 /** Medium stroke width used by emphasized product icons. */
-export const ICON_MEDIUM_STROKE = 1.3
+export const ICON_MEDIUM_STROKE = 1.3;
 
 /** One product glyph: default rendered height, `[width, height]` box ratio when not square, and SVG source per stroke width. */
 interface IconArtwork {
@@ -122,7 +122,7 @@ export const ICON_ARTWORK = {
     : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="${strokeWidth}"><rect x="5" y="1.5" width="6" height="9" rx="3"></rect><path d="M2.35 8.675C3.075 11.3 5.2 13.125 8 13.125C10.8 13.125 12.925 11.3 13.65 8.675M8 13.125V15"></path></svg>` },
   'apps-add-outline': { size: 16, svg: strokeWidth => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="${strokeWidth}"><rect x="2.25" y="2.25" width="4" height="4" rx="1"></rect><rect x="2.25" y="9.75" width="4" height="4" rx="1"></rect><rect x="9.75" y="9.75" width="4" height="4" rx="1"></rect><path d="M11.75 1.75v5M9.25 4.25h5"></path></svg>` },
   'apps-add-compact-outline': { size: 16, svg: strokeWidth => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="${strokeWidth}"><rect x="2.75" y="2.75" width="4" height="4" rx="1"></rect><rect x="2.75" y="9.25" width="4" height="4" rx="1"></rect><rect x="9.25" y="9.25" width="4" height="4" rx="1"></rect><path d="M11.25 2.25v5M8.75 4.75h5"></path></svg>` },
-} satisfies Record<string, IconArtwork>
+} satisfies Record<string, IconArtwork>;
 
 /** Glyph name accepted by {@link iconSymbolId}. */
 export type IconGlyph = keyof typeof ICON_ARTWORK
@@ -130,7 +130,7 @@ export type IconGlyph = keyof typeof ICON_ARTWORK
 /** Weight suffix of a product icon symbol. */
 export type IconWeight = 'regular' | 'medium'
 
-const STROKES: Record<IconWeight, number> = { regular: ICON_REGULAR_STROKE, medium: ICON_MEDIUM_STROKE }
+const STROKES: Record<IconWeight, number> = { regular: ICON_REGULAR_STROKE, medium: ICON_MEDIUM_STROKE };
 
 /**
  * Name the sprite symbol that carries one glyph weight.
@@ -139,7 +139,7 @@ const STROKES: Record<IconWeight, number> = { regular: ICON_REGULAR_STROKE, medi
  * @returns the `dsw-icon-<glyph>-<weight>` element id.
  */
 export function iconSymbolId(glyph: IconGlyph, weight: IconWeight): IconSymbolId {
-  return `dsw-icon-${glyph}-${weight}`
+  return `dsw-icon-${glyph}-${weight}`;
 }
 
 /** Sprite symbol id of one product glyph weight. */
@@ -149,4 +149,4 @@ export type IconSymbolId = `dsw-icon-${IconGlyph}-${IconWeight}`
 export const ICON_SYMBOLS = Object.freeze(Object.fromEntries(
   (Object.entries(ICON_ARTWORK) as [IconGlyph, IconArtwork][]).flatMap(([glyph, artwork]) =>
     (Object.keys(STROKES) as IconWeight[]).map(weight => [iconSymbolId(glyph, weight), artwork.svg(STROKES[weight])])),
-)) as Readonly<Record<IconSymbolId, string>>
+)) as Readonly<Record<IconSymbolId, string>>;

@@ -18,3 +18,6 @@ artifacts/
 
 # 本地 pnpm 商店（构建产物，不入库）
 .pnpm-store/
+
+# 本地 vitest 临时目录（调试用，非产物）
+.vitest-tmp/

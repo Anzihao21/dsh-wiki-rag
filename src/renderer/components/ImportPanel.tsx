@@ -102,7 +102,7 @@ export default function ImportPanel({ onImported }: Props) {
           </Section>
 
           {msg && (
-            <div className={"dsw-inline-message " + (msg.ok ? "dsw-inline-message-ok" : "dsw-inline-message-err")}>
+            <div className={'dsw-inline-message ' + (msg.ok ? 'dsw-inline-message-ok' : 'dsw-inline-message-err')}>
               {msg.text}
             </div>
           )}

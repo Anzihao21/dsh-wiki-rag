@@ -13,7 +13,7 @@ import type { PluginSettings } from '../types';
 
 let settings: PluginSettings | null = null;
 let localEmbedder: any = null;   // @xenova/transformers pipeline 实例
-let embedDim = 256;
+const embedDim = 256;
 
 /** 初始化 embedding 模块（在宿主插件 apply 时调用一次）。 */
 export async function initEmbedding(s: PluginSettings): Promise<void> {
