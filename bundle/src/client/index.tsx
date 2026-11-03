@@ -524,6 +524,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
+  const [restorePreview, setRestorePreview] = useState<{ snapshotId: number; added: string[]; removed: string[]; modified: string[] } | null>(null);
   const [settings, setSettings] = useState<Partial<SettingsState>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [job, setJob] = useState<JobState | null>(null);
@@ -838,6 +839,17 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   // ---------- 快照恢复 ----------
   const doRestore = async (id: number) => {
+    try {
+      // 先预览 Diff
+      const preview = await request(`/snapshots/${id}/preview-restore`, { method: "POST" });
+      setRestorePreview({ snapshotId: id, added: preview.added || [], removed: preview.removed || [], modified: preview.modified || [] });
+    } catch (e: any) { notify("error", e?.message || "预览失败"); }
+  };
+
+  const doConfirmRestore = async () => {
+    if (!restorePreview) return;
+    const id = restorePreview.snapshotId;
+    setRestorePreview(null);
     try {
       await apiRestoreSnapshot(id);
       notify("success", t ? t("wiki.restored") : "快照已恢复");
@@ -1317,6 +1329,65 @@ function WikiSidebar(props: WikiSidebarProps) {
         try { await apiDismiss(ft); } catch { /* ignore */ }
         setDiffModal(null);
       }} onShelve={(ft) => doShelve(ft)} />}
+
+      {/* 快照恢复预览弹窗 */}
+      {restorePreview && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{
+            width: "90%", maxWidth: 480, background: "var(--dsw-alias-bg-layer-1)",
+            borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 12,
+            maxHeight: "80vh", overflow: "hidden",
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t ? t("wiki.restorePreview") : "恢复快照预览"}</div>
+            <div style={{ fontSize: 12, color: "var(--dsw-alias-label-secondary)" }}>
+              {t ? t("wiki.restoreWarning") : "恢复后将覆盖当前知识库内容，请确认以下变更："}
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {restorePreview.added.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-success)", marginBottom: 4 }}>
+                    {t ? t("wiki.willAdd") : "将新增"} ({restorePreview.added.length})
+                  </div>
+                  {restorePreview.added.map((f) => (
+                    <div key={f} style={{ fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }}>{f}</div>
+                  ))}
+                </div>
+              )}
+              {restorePreview.removed.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-danger)", marginBottom: 4 }}>
+                    {t ? t("wiki.willRemove") : "将删除"} ({restorePreview.removed.length})
+                  </div>
+                  {restorePreview.removed.map((f) => (
+                    <div key={f} style={{ fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }}>{f}</div>
+                  ))}
+                </div>
+              )}
+              {restorePreview.modified.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-warning)", marginBottom: 4 }}>
+                    {t ? t("wiki.willOverwrite") : "将覆盖"} ({restorePreview.modified.length})
+                  </div>
+                  {restorePreview.modified.map((f) => (
+                    <div key={f} style={{ fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }}>{f}</div>
+                  ))}
+                </div>
+              )}
+              {restorePreview.added.length === 0 && restorePreview.removed.length === 0 && restorePreview.modified.length === 0 && (
+                <div style={{ fontSize: 12, color: "var(--dsw-alias-label-tertiary)", textAlign: "center", padding: 20 }}>
+                  {t ? t("wiki.noChanges") : "无变更，当前状态与快照一致"}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setRestorePreview(null)} style={ghostBtn}>{t ? t("wiki.cancel") : "取消"}</button>
+              <button onClick={doConfirmRestore} style={{ ...primaryBtn, background: "var(--dsw-alias-state-danger)" }}>
+                {t ? t("wiki.confirmRestore") : "确认恢复"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 重绑定源路径对话框 */}
       {rebindState && (

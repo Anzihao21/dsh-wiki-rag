@@ -57,3 +57,57 @@ export async function restoreSnapshot(snapshotZip: string, targetDir: string): P
   await writeLog('snapshot-restore', snapshotZip);
   return restored;
 }
+
+/** 预览恢复：对比当前 MD 目录和快照内容，返回 Diff 预览 */
+export async function previewRestore(snapshotZip: string, currentMdDir: string): Promise<{
+  added: string[];      // 快照里有、当前没有的文件（恢复后新增）
+  removed: string[];    // 当前有、快照里没有的文件（恢复后删除）
+  modified: string[];   // 两边都有但内容不同（恢复后覆盖）
+}> {
+  const { default: extract } = await import('extract-zip');
+  const os = await import('os');
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'snapshot-preview-'));
+  try {
+    // 解压快照到临时目录
+    await extract(snapshotZip, { dir: tmpDir });
+    const snapshotMdDir = path.join(tmpDir, 'md');
+
+    // 列出当前 MD 文件
+    let currentFiles: string[] = [];
+    try { currentFiles = await fs.readdir(currentMdDir); } catch { currentFiles = []; }
+
+    // 列出快照 MD 文件
+    let snapshotFiles: string[] = [];
+    try { snapshotFiles = await fs.readdir(snapshotMdDir); } catch { snapshotFiles = []; }
+
+    const added: string[] = [];
+    const removed: string[] = [];
+    const modified: string[] = [];
+
+    // 快照里有、当前没有 → 新增
+    for (const f of snapshotFiles) {
+      if (!currentFiles.includes(f)) added.push(f);
+    }
+
+    // 当前有、快照里没有 → 删除
+    for (const f of currentFiles) {
+      if (!snapshotFiles.includes(f)) removed.push(f);
+    }
+
+    // 两边都有但内容不同 → 修改
+    for (const f of snapshotFiles) {
+      if (currentFiles.includes(f)) {
+        const currentContent = await fs.readFile(path.join(currentMdDir, f)).catch(() => null);
+        const snapshotContent = await fs.readFile(path.join(snapshotMdDir, f)).catch(() => null);
+        if (currentContent && snapshotContent && !currentContent.equals(snapshotContent)) {
+          modified.push(f);
+        }
+      }
+    }
+
+    return { added, removed, modified };
+  } finally {
+    // 清理临时目录
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}

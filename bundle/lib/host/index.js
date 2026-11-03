@@ -34185,6 +34185,49 @@ async function restoreSnapshot(snapshotZip, targetDir) {
   await writeLog("snapshot-restore", snapshotZip);
   return restored;
 }
+async function previewRestore(snapshotZip, currentMdDir) {
+  const { default: extract } = await Promise.resolve().then(() => __toESM(require_extract_zip(), 1));
+  const os = await import("os");
+  const tmpDir = await fs6.mkdtemp(path8.join(os.tmpdir(), "snapshot-preview-"));
+  try {
+    await extract(snapshotZip, { dir: tmpDir });
+    const snapshotMdDir = path8.join(tmpDir, "md");
+    let currentFiles = [];
+    try {
+      currentFiles = await fs6.readdir(currentMdDir);
+    } catch {
+      currentFiles = [];
+    }
+    let snapshotFiles = [];
+    try {
+      snapshotFiles = await fs6.readdir(snapshotMdDir);
+    } catch {
+      snapshotFiles = [];
+    }
+    const added = [];
+    const removed = [];
+    const modified = [];
+    for (const f of snapshotFiles) {
+      if (!currentFiles.includes(f)) added.push(f);
+    }
+    for (const f of currentFiles) {
+      if (!snapshotFiles.includes(f)) removed.push(f);
+    }
+    for (const f of snapshotFiles) {
+      if (currentFiles.includes(f)) {
+        const currentContent = await fs6.readFile(path8.join(currentMdDir, f)).catch(() => null);
+        const snapshotContent = await fs6.readFile(path8.join(snapshotMdDir, f)).catch(() => null);
+        if (currentContent && snapshotContent && !currentContent.equals(snapshotContent)) {
+          modified.push(f);
+        }
+      }
+    }
+    return { added, removed, modified };
+  } finally {
+    await fs6.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    });
+  }
+}
 
 // ../src/main/types.ts
 var DEFAULT_SETTINGS = {
@@ -34754,6 +34797,14 @@ function apply(ctx, config) {
           const out = await createSnapshot(settings3.mdStoragePath, settings3.zipStoragePath, snapshotStoragePath);
           await pruneSnapshots(settings3.snapshotKeep);
           return json(200, { status: "created", path: out, list: await readSnapshotList() });
+        }
+        if (req.method === "POST" && seg.length === 4 && seg[1] === "snapshots" && seg[3] === "preview-restore") {
+          const list = await readSnapshotList();
+          const target = list.find((s) => s.id === parseInt(seg[2] || "0"));
+          if (!target) return json(404, { error: "\u5FEB\u7167\u4E0D\u5B58\u5728" });
+          const zipPath = path9.join(snapshotStoragePath, target.file);
+          const diff2 = await previewRestore(zipPath, settings3.mdStoragePath);
+          return json(200, diff2);
         }
         if (req.method === "POST" && seg.length === 4 && seg[1] === "snapshots" && seg[3] === "restore") {
           const list = await readSnapshotList();

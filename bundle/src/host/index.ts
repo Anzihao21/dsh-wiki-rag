@@ -45,7 +45,7 @@ import { resolveUniqueFileName, isUncPath } from '../../../src/main/file/name-au
 import { extractTextToMarkdown, sha256Text } from '../../../src/main/file/file-utils';
 import { buildDiffResult } from '../../../src/main/file/diff-compare';
 import { archiveSourceFile } from '../../../src/main/file/zip-archive';
-import { createSnapshot, restoreSnapshot, listSnapshots } from '../../../src/main/snapshot/snapshot-backup';
+import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '../../../src/main/snapshot/snapshot-backup';
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 
 export const name = 'wiki-rag-host';
@@ -662,6 +662,16 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           await pruneSnapshots(settings.snapshotKeep);
           return json(200, { status: 'created', path: out, list: await readSnapshotList() });
         }
+        // 快照恢复预览：/api/wiki/snapshots/:id/preview-restore
+        if (req.method === 'POST' && seg.length === 4 && seg[1] === 'snapshots' && seg[3] === 'preview-restore') {
+          const list = await readSnapshotList();
+          const target = list.find((s) => s.id === parseInt(seg[2] || '0'));
+          if (!target) return json(404, { error: '快照不存在' });
+          const zipPath = path.join(snapshotStoragePath, target.file);
+          const diff = await previewRestore(zipPath, settings.mdStoragePath);
+          return json(200, diff);
+        }
+
         // 快照恢复：/api/wiki/snapshots/:id/restore
         if (req.method === 'POST' && seg.length === 4 && seg[1] === 'snapshots' && seg[3] === 'restore') {
           const list = await readSnapshotList();

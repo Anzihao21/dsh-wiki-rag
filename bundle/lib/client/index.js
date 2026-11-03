@@ -396,6 +396,7 @@ function WikiSidebar(props) {
   const [snapshots, setSnapshots] = (0, import_react.useState)([]);
   const [logs, setLogs] = (0, import_react.useState)([]);
   const [diffModal, setDiffModal] = (0, import_react.useState)(null);
+  const [restorePreview, setRestorePreview] = (0, import_react.useState)(null);
   const [settings, setSettings] = (0, import_react.useState)({});
   const [settingsLoaded, setSettingsLoaded] = (0, import_react.useState)(false);
   const [job, setJob] = (0, import_react.useState)(null);
@@ -726,6 +727,17 @@ function WikiSidebar(props) {
     }
   };
   const doRestore = async (id) => {
+    try {
+      const preview = await request(`/snapshots/${id}/preview-restore`, { method: "POST" });
+      setRestorePreview({ snapshotId: id, added: preview.added || [], removed: preview.removed || [], modified: preview.modified || [] });
+    } catch (e) {
+      notify("error", e?.message || "\u9884\u89C8\u5931\u8D25");
+    }
+  };
+  const doConfirmRestore = async () => {
+    if (!restorePreview) return;
+    const id = restorePreview.snapshotId;
+    setRestorePreview(null);
     try {
       await apiRestoreSnapshot(id);
       notify("success", t ? t("wiki.restored") : "\u5FEB\u7167\u5DF2\u6062\u590D");
@@ -1310,6 +1322,55 @@ function WikiSidebar(props) {
       }
       setDiffModal(null);
     }, onShelve: (ft) => doShelve(ft) }),
+    restorePreview && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+      width: "90%",
+      maxWidth: 480,
+      background: "var(--dsw-alias-bg-layer-1)",
+      borderRadius: "var(--dsw-radius-lg)",
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+      maxHeight: "80vh",
+      overflow: "hidden"
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: t ? t("wiki.restorePreview") : "\u6062\u590D\u5FEB\u7167\u9884\u89C8" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-secondary)" }, children: t ? t("wiki.restoreWarning") : "\u6062\u590D\u540E\u5C06\u8986\u76D6\u5F53\u524D\u77E5\u8BC6\u5E93\u5185\u5BB9\uFF0C\u8BF7\u786E\u8BA4\u4EE5\u4E0B\u53D8\u66F4\uFF1A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }, children: [
+        restorePreview.added.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-success)", marginBottom: 4 }, children: [
+            t ? t("wiki.willAdd") : "\u5C06\u65B0\u589E",
+            " (",
+            restorePreview.added.length,
+            ")"
+          ] }),
+          restorePreview.added.map((f) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }, children: f }, f))
+        ] }),
+        restorePreview.removed.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-danger)", marginBottom: 4 }, children: [
+            t ? t("wiki.willRemove") : "\u5C06\u5220\u9664",
+            " (",
+            restorePreview.removed.length,
+            ")"
+          ] }),
+          restorePreview.removed.map((f) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }, children: f }, f))
+        ] }),
+        restorePreview.modified.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-state-warning)", marginBottom: 4 }, children: [
+            t ? t("wiki.willOverwrite") : "\u5C06\u8986\u76D6",
+            " (",
+            restorePreview.modified.length,
+            ")"
+          ] }),
+          restorePreview.modified.map((f) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, padding: "2px 8px", color: "var(--dsw-alias-label-secondary)" }, children: f }, f))
+        ] }),
+        restorePreview.added.length === 0 && restorePreview.removed.length === 0 && restorePreview.modified.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", textAlign: "center", padding: 20 }, children: t ? t("wiki.noChanges") : "\u65E0\u53D8\u66F4\uFF0C\u5F53\u524D\u72B6\u6001\u4E0E\u5FEB\u7167\u4E00\u81F4" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setRestorePreview(null), style: ghostBtn, children: t ? t("wiki.cancel") : "\u53D6\u6D88" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doConfirmRestore, style: { ...primaryBtn, background: "var(--dsw-alias-state-danger)" }, children: t ? t("wiki.confirmRestore") : "\u786E\u8BA4\u6062\u590D" })
+      ] })
+    ] }) }),
     rebindState && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       width: "90%",
       maxWidth: 420,
