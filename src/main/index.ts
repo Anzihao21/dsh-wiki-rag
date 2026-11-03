@@ -60,6 +60,7 @@ export async function activate(): Promise<void> {
       zipDir: settings.zipStoragePath,
       chunkSize: settings.chunkSize,
       chunkOverlap: settings.chunkOverlap,
+      chunkMode: settings.chunkMode,
       webTimeout: settings.webTimeout
     }),
     watcher: new FileWatcher(),

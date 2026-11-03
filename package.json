@@ -37,6 +37,7 @@
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
     "@types/archiver": "^8.0.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/diff": "^8.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.2.0",

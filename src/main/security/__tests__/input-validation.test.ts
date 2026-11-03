@@ -83,10 +83,10 @@ describe('security: 输入校验', () => {
     });
 
     it('topK 越界被 clamp 到 [1, 50]', () => {
-      expect(normalizeSearchInput('hello', -1).topK).toBe(1);
-      expect(normalizeSearchInput('hello', 999).topK).toBe(50);
-      expect(normalizeSearchInput('hello', NaN).topK).toBe(5);
-      expect(normalizeSearchInput('hello', undefined).topK).toBe(5);
+      expect(normalizeSearchInput('hello', -1)!.topK).toBe(1);
+      expect(normalizeSearchInput('hello', 999)!.topK).toBe(50);
+      expect(normalizeSearchInput('hello', NaN)!.topK).toBe(5);
+      expect(normalizeSearchInput('hello', undefined)!.topK).toBe(5);
     });
 
     it('非字符串 query（对象/数字/null）返回 null', () => {

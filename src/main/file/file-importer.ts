@@ -187,7 +187,7 @@ export class FileImporter {
     await deleteChunksByFileId(fileId);
     const chunks = chunkTextSmart(text, this.ctx.chunkSize, this.ctx.chunkOverlap, this.ctx.chunkMode);
     for (const c of chunks) {
-      const vec = embedText(c);
+      const vec = await embedText(c);
       await insertVectorChunk(fileId, c, vec);
     }
   }
