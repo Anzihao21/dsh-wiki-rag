@@ -112,9 +112,7 @@ var apiAcceptUpdate = (id, newText) => request(`/${id}/accept-update`, { method:
 var apiDismiss = (id) => request(`/${id}/dismiss`, { method: "POST" });
 var apiDelete = (id) => request(`/${id}`, { method: "DELETE" });
 var apiSearch = (query) => request("/search", { method: "POST", body: JSON.stringify({ query, topK: 10 }) }).then((r) => r || []);
-var apiGetSettings = () => request("/settings");
 var apiSaveSettings = (patch) => request("/settings", { method: "POST", body: JSON.stringify(patch) });
-var apiCreateSnapshot = () => request("/snapshots", { method: "POST" });
 var apiRestoreSnapshot = (id) => request(`/snapshots/${id}/restore`, { method: "POST" });
 var apiGetJobs = (jobId) => request(`/jobs/${jobId}`);
 function renderMdSafe(md) {
@@ -345,16 +343,6 @@ var ErrorBoundary = class extends import_react.Component {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_react.Fragment, { children: this.props.children }, this.state.retryCount);
   }
 };
-function flattenTree(nodes, depth, expanded, out) {
-  (nodes || []).forEach((n) => {
-    if (n.type === "folder") {
-      out.push({ rowType: "folder", depth, id: n.id, title: n.name || "", raw: n });
-      if (expanded.has(n.id)) flattenTree(n.children, depth + 1, expanded, out);
-    } else {
-      out.push({ rowType: "doc", depth, id: n.fileId, title: n.title || "", kind: n.kind, status: n.status, raw: n });
-    }
-  });
-}
 var ROW_H = 38;
 function statusStyle(status) {
   if (status === "error") return { label: "\u5F02\u5E38", color: "var(--dsw-alias-state-danger)" };
@@ -631,166 +619,6 @@ function WikiSidebar(props) {
     ) });
   }
   const activeDoc = docs.find((d) => d.id === activeId);
-  if (view === "editor" && activeDoc) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: iconBtn, children: "\u2190" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: activeDoc.title }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: typeBadge, children: activeDoc.type }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveEdit, style: primaryBtn, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }, children: ["edit", "preview"].map((tab) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setEditTab(tab), style: {
-        padding: "6px 12px",
-        border: "none",
-        background: "transparent",
-        cursor: "pointer",
-        fontSize: 12,
-        color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-        borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
-        fontWeight: editTab === tab ? 600 : 400
-      }, children: tab === "edit" ? t ? t("wiki.edit") : "\u7F16\u8F91" : t ? t("wiki.preview") : "\u9884\u89C8" }, tab)) }),
-      editTab === "edit" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", { value: mdContent, onChange: (e) => setMdContent(e.target.value), style: textareaStyle }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-        flex: 1,
-        overflowY: "auto",
-        padding: 10,
-        borderRadius: "var(--dsw-radius-md)",
-        background: "var(--dsw-alias-bg-layer-1)",
-        fontSize: 13,
-        lineHeight: 1.7
-      }, children: renderMdSafe(mdContent) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.autoIndexHint") : "\u7F16\u8F91\u540E\u81EA\u52A8\u5237\u65B0\u5411\u91CF\u7D22\u5F15" })
-    ] });
-  }
-  if (view === "settings") {
-    const inputStyle = {
-      height: 30,
-      padding: "0 8px",
-      boxSizing: "border-box",
-      borderRadius: "var(--dsw-radius-sm)",
-      border: "1px solid var(--dsw-alias-border-l4)",
-      background: "var(--dsw-alias-bg-layer-1)",
-      color: "var(--dsw-alias-label-primary)",
-      outline: "none",
-      fontSize: 12,
-      width: "100%"
-    };
-    const labelStyle = { fontSize: 11, color: "var(--dsw-alias-label-secondary)", marginBottom: 2, display: "block" };
-    const sectionStyle = {
-      fontSize: 13,
-      fontWeight: 600,
-      margin: "8px 0 6px",
-      color: "var(--dsw-alias-label-primary)",
-      paddingBottom: 4,
-      borderBottom: "1px solid var(--dsw-alias-border-l1)"
-    };
-    if (!settingsLoaded) {
-      apiGetSettings().then((s) => {
-        setSettings(s || {});
-        setSettingsLoaded(true);
-      }).catch(() => setSettingsLoaded(true));
-    }
-    const set = (k, v) => setSettings((prev) => ({ ...prev, [k]: v }));
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: iconBtn, children: "\u2190" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13 }, children: t ? t("wiki.settings") : "\u8BBE\u7F6E" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveSettings, style: primaryBtn, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: sectionStyle, children: t ? t("wiki.storage") : "\u6570\u636E\u5B58\u50A8\u76EE\u5F55" }),
-        [
-          ["mdStoragePath", "MD \u5B58\u50A8\u76EE\u5F55"],
-          ["zipStoragePath", "ZIP \u5B58\u50A8\u76EE\u5F55"],
-          ["snapshotStoragePath", "\u5FEB\u7167\u5B58\u50A8\u76EE\u5F55"]
-        ].map(([k, lbl]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: lbl }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: settings[k] || "", onChange: (e) => set(k, e.target.value), style: inputStyle, placeholder: "/path/to/store" })
-        ] }, k)),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: t ? t("wiki.chunkSize") : "\u5206\u5757\u5927\u5C0F" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.chunkSize ?? 500, onChange: (e) => set("chunkSize", Number(e.target.value)), style: inputStyle })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: t ? t("wiki.chunkOverlap") : "\u5206\u5757\u91CD\u53E0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.chunkOverlap ?? 50, onChange: (e) => set("chunkOverlap", Number(e.target.value)), style: inputStyle })
-          ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: sectionStyle, children: "Rerank" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: t ? t("wiki.rerankTopK") : "Rerank TopK" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.rerankTopK ?? 5, onChange: (e) => set("rerankTopK", Number(e.target.value)), style: inputStyle })
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.restartHint") : "\u4FEE\u6539\u5B58\u50A8\u8DEF\u5F84\u540E\u5C06\u81EA\u52A8\u8FC1\u79FB\u5DF2\u6709\u6587\u4EF6" })
-    ] });
-  }
-  if (view === "snapshots") {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("list"), style: ghostBtn, children: [
-          "\u2190 ",
-          t ? t("wiki.back") : "\u8FD4\u56DE"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: t ? t("wiki.snapshots") : "\u5FEB\u7167\u7BA1\u7406" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: async () => {
-          await apiCreateSnapshot();
-          notify("success", t ? t("wiki.snapshotCreated") : "\u5DF2\u521B\u5EFA\u5FEB\u7167");
-          refreshList();
-        }, style: primaryBtn, children: [
-          "+ ",
-          t ? t("wiki.new") : "\u65B0\u5EFA"
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noSnapshots") : "\u6682\u65E0\u5FEB\u7167" }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 500 }, children: [
-            "#",
-            s.id,
-            " ",
-            s.note || "\u624B\u52A8\u5FEB\u7167"
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }, children: new Date(s.created_at || s.created_at_ms || Date.now()).toLocaleString() })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => doRestore(s.id), style: ghostBtn, children: t ? t("wiki.restore") : "\u6062\u590D" })
-      ] }) }, s.id)) })
-    ] });
-  }
-  if (view === "logs") {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => setView("list"), style: ghostBtn, children: [
-          "\u2190 ",
-          t ? t("wiki.back") : "\u8FD4\u56DE"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 600, fontSize: 14 }, children: t ? t("wiki.logs") : "\u5BA1\u8BA1\u65E5\u5FD7" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 60 } })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }, children: logs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noLogs") : "\u6682\u65E0\u65E5\u5FD7" }) : logs.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "6px 10px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)", fontSize: 11 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "var(--dsw-alias-label-tertiary)" }, children: l.time }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 2 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: l.action }),
-          " \xB7 ",
-          l.detail
-        ] })
-      ] }, i)) })
-    ] });
-  }
-  const searchingMode = !!searchResults;
-  let rows = [];
-  if (!searchingMode) {
-    rows = [];
-    flattenTree(tree, 0, expandedFolders, rows);
-    if (rows.length === 0 && docs.length) {
-      rows = docs.map((d) => ({ rowType: "doc", depth: 0, id: Number(d.id) || 0, title: d.title, kind: d.type, status: d.status, raw: {} }));
-    }
-  }
-  const overscan = 6;
-  const maxScrollTop = Math.max(0, rows.length * ROW_H - 1);
-  const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
-  const startIndex = Math.max(0, Math.floor(clampedScrollTop / ROW_H) - overscan);
-  const endIndex = Math.min(rows.length, Math.ceil((clampedScrollTop + viewportH) / ROW_H) + overscan);
-  const visibleRows = rows.slice(startIndex, endIndex);
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rootStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToastStack, { toasts }),
@@ -829,158 +657,194 @@ function WikiSidebar(props) {
         [t ? t("wiki.settings") : "Set", "set", () => setView("settings")]
       ].map(([lbl, tip, fn], i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { title: tip, onClick: fn, style: headerBtn, children: lbl }, i)) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "input",
-      {
-        ref: searchInputRef,
-        value: q,
-        onChange: (e) => {
-          setQ(e.target.value);
-          if (!e.target.value.trim()) setSearchResults(null);
-        },
-        onKeyDown: (e) => {
-          if (e.key === "Enter") doSearch();
-        },
-        placeholder: t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026",
-        style: searchInputStyle
-      }
-    ),
-    showNewFolder && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "input",
-        {
-          value: newFolderName,
-          onChange: (e) => setNewFolderName(e.target.value),
-          onKeyDown: (e) => {
-            if (e.key === "Enter") doCreateFolder();
-          },
-          placeholder: t ? t("wiki.folderName") : "\u6587\u4EF6\u5939\u540D\u79F0\u2026",
-          autoFocus: true,
-          style: smallInput
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doCreateFolder, style: primaryBtn, children: t ? t("wiki.new") : "\u65B0\u5EFA" })
-    ] }),
-    showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["file", "\u6587\u4EF6"], ["url", "URL"], ["note", "\u7B14\u8BB0"]].map(([k, l]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setImportType(k), style: {
-        flex: 1,
-        padding: "3px 0",
-        border: "none",
-        cursor: "pointer",
-        borderRadius: "var(--dsw-radius-sm)",
-        fontSize: 11,
-        background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-        color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)"
-      }, children: l }, k)) }),
-      importType !== "note" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "input",
-        {
-          value: importPath,
-          onChange: (e) => setImportPath(e.target.value),
-          placeholder: importType === "url" ? "https://example.com/article" : "\u8F93\u5165\u6587\u4EF6\u8DEF\u5F84\u2026",
-          style: smallInput
-        }
-      ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: noteTitle, onChange: (e) => setNoteTitle(e.target.value), placeholder: "\u7B14\u8BB0\u6807\u9898\u2026", style: smallInput }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: mainLayoutStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: sidebarStyle, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "textarea",
+          "input",
           {
-            value: noteContent,
-            onChange: (e) => setNoteContent(e.target.value),
-            placeholder: "\u7B14\u8BB0\u5185\u5BB9\u2026",
-            rows: 3,
-            style: { ...smallInput, height: "auto", padding: "6px 8px", resize: "vertical" }
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doImport, disabled: importInflight.current, style: { ...primaryBtn, opacity: importInflight.current ? 0.6 : 1 }, children: importInflight.current ? "\u2026" : t ? t("wiki.import") : "\u5BFC\u5165" })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["all", "\u5168\u90E8"], ["ready", "\u5DF2\u7D22\u5F15"], ["stale", "\u5F85\u540C\u6B65"], ["error", "\u5F02\u5E38"]].map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setStatusFilter(key), style: {
-      flex: 1,
-      padding: "3px 0",
-      border: "none",
-      cursor: "pointer",
-      borderRadius: "var(--dsw-radius-sm)",
-      fontSize: 11,
-      background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-      color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-      fontWeight: statusFilter === key ? 600 : 400
-    }, children: label }, key)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "div",
-      {
-        ref: listScrollRef,
-        onScroll: (e) => {
-          setScrollTop(e.currentTarget.scrollTop);
-          setViewportH(e.currentTarget.clientHeight);
-        },
-        style: { flex: 1, overflowY: "auto", position: "relative", minHeight: 0 },
-        children: loadingList ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonRows, { count: 8 }) : searchingMode ? (
-          /* ---- 搜索结果：来源文件名 + 片段 + 徽章 ---- */
-          searching ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonRows, { count: 5 }) : searchResults.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noResult") : "\u65E0\u641C\u7D22\u7ED3\u679C" }) : searchResults.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              onClick: () => {
-                setActiveId(r.id);
-                setMdContent(r.summary);
-                setView("editor");
-              },
-              style: {
-                padding: "8px 10px",
-                borderRadius: "var(--dsw-radius-md)",
-                cursor: "pointer",
-                marginBottom: 4,
-                background: "var(--dsw-alias-bg-layer-1)",
-                border: "1px solid var(--dsw-alias-border-l4)"
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 600, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: r.title }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 4,
-                    flexShrink: 0,
-                    background: "var(--dsw-alias-bg-module-platform)",
-                    color: "var(--dsw-alias-label-secondary)"
-                  }, children: r.fileName || "MD" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: r.summary }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8 }, children: [
-                  r.sourcePath && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: r.sourcePath }),
-                  typeof r.score === "number" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-                    "score ",
-                    r.score.toFixed(3)
-                  ] })
-                ] })
-              ]
+            ref: searchInputRef,
+            value: q,
+            onChange: (e) => {
+              setQ(e.target.value);
+              if (!e.target.value.trim()) setSearchResults(null);
             },
-            i
-          ))
-        ) : rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.empty") : "\u77E5\u8BC6\u5E93\u4E3A\u7A7A" }) : (
-          /* ---- 虚拟列表占位 ---- */
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: rows.length * ROW_H, position: "relative" }, children: visibleRows.map((row) => {
-            const top = (startIndex + rows.indexOf(row)) * ROW_H;
-            if (row.rowType === "folder") {
-              const open = expandedFolders.has(row.id);
+            onKeyDown: (e) => {
+              if (e.key === "Enter") doSearch();
+            },
+            placeholder: t ? t("wiki.search") : "\u641C\u7D22\u6587\u6863\u2026",
+            style: searchInputStyle
+          }
+        ),
+        showNewFolder && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              value: newFolderName,
+              onChange: (e) => setNewFolderName(e.target.value),
+              onKeyDown: (e) => {
+                if (e.key === "Enter") doCreateFolder();
+              },
+              placeholder: t ? t("wiki.folderName") : "\u6587\u4EF6\u5939\u540D\u79F0\u2026",
+              autoFocus: true,
+              style: smallInput
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doCreateFolder, style: primaryBtn, children: t ? t("wiki.new") : "\u65B0\u5EFA" })
+        ] }),
+        showImport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["file", "\u6587\u4EF6"], ["url", "URL"], ["note", "\u7B14\u8BB0"]].map(([k, l]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setImportType(k), style: {
+            flex: 1,
+            padding: "3px 0",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "var(--dsw-radius-sm)",
+            fontSize: 11,
+            background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+            color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)"
+          }, children: l }, k)) }),
+          importType !== "note" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              value: importPath,
+              onChange: (e) => setImportPath(e.target.value),
+              placeholder: importType === "url" ? "https://example.com/article" : "\u8F93\u5165\u6587\u4EF6\u8DEF\u5F84\u2026",
+              style: smallInput
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: noteTitle, onChange: (e) => setNoteTitle(e.target.value), placeholder: "\u7B14\u8BB0\u6807\u9898\u2026", style: smallInput }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "textarea",
+              {
+                value: noteContent,
+                onChange: (e) => setNoteContent(e.target.value),
+                placeholder: "\u7B14\u8BB0\u5185\u5BB9\u2026",
+                rows: 3,
+                style: { ...smallInput, height: "auto", padding: "6px 8px", resize: "vertical" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doImport, disabled: importInflight.current, style: { ...primaryBtn, opacity: importInflight.current ? 0.6 : 1 }, children: importInflight.current ? "\u2026" : t ? t("wiki.import") : "\u5BFC\u5165" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2 }, children: [["all", "\u5168\u90E8"], ["ready", "\u5DF2\u7D22\u5F15"], ["stale", "\u5F85\u540C\u6B65"], ["error", "\u5F02\u5E38"]].map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setStatusFilter(key), style: {
+          flex: 1,
+          padding: "3px 0",
+          border: "none",
+          cursor: "pointer",
+          borderRadius: "var(--dsw-radius-sm)",
+          fontSize: 11,
+          background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+          color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+          fontWeight: statusFilter === key ? 600 : 400
+        }, children: label }, key)) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "div",
+          {
+            ref: listScrollRef,
+            onScroll: (e) => {
+              setScrollTop(e.currentTarget.scrollTop);
+              setViewportH(e.currentTarget.clientHeight);
+            },
+            style: { flex: 1, overflowY: "auto", position: "relative", minHeight: 0 },
+            children: loadingList ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonRows, { count: 8 }) : searchingMode ? searching ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonRows, { count: 5 }) : searchResults.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noResult") : "\u65E0\u641C\u7D22\u7ED3\u679C" }) : searchResults.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: () => {
+                  setActiveId(r.id);
+                  setMdContent(r.summary);
+                },
+                style: {
+                  padding: "8px 10px",
+                  borderRadius: "var(--dsw-radius-md)",
+                  cursor: "pointer",
+                  marginBottom: 4,
+                  background: "var(--dsw-alias-bg-layer-1)",
+                  border: "1px solid var(--dsw-alias-border-l4)"
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 600, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: r.title }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      flexShrink: 0,
+                      background: "var(--dsw-alias-bg-module-platform)",
+                      color: "var(--dsw-alias-label-secondary)"
+                    }, children: r.fileName || "MD" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: r.summary }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8 }, children: [
+                    r.sourcePath && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: r.sourcePath }),
+                    typeof r.score === "number" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                      "score ",
+                      r.score.toFixed(3)
+                    ] })
+                  ] })
+                ]
+              },
+              i
+            )) : rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.empty") : "\u77E5\u8BC6\u5E93\u4E3A\u7A7A" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: rows.length * ROW_H, position: "relative" }, children: visibleRows.map((row) => {
+              const top = (startIndex + rows.indexOf(row)) * ROW_H;
+              if (row.rowType === "folder") {
+                const open = expandedFolders.has(row.id);
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "div",
+                  {
+                    onDragOver: (e) => e.preventDefault(),
+                    onDrop: (e) => {
+                      e.preventDefault();
+                      const fid = e.dataTransfer.getData("text/doc-id");
+                      if (fid) doMoveDoc(fid, row.id);
+                    },
+                    onClick: () => setExpandedFolders((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(row.id)) n.delete(row.id);
+                      else n.add(row.id);
+                      return n;
+                    }),
+                    onContextMenu: (e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id });
+                    },
+                    style: {
+                      position: "absolute",
+                      top,
+                      left: 0,
+                      right: 0,
+                      height: ROW_H,
+                      paddingLeft: 8 + row.depth * 14,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      cursor: "pointer",
+                      color: "var(--dsw-alias-label-primary)",
+                      fontSize: 13,
+                      fontWeight: 600
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-secondary)" }, children: open ? "\u25BC" : "\u25B6" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FolderIcon, { size: 14 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: row.title })
+                    ]
+                  },
+                  "f" + row.id
+                );
+              }
+              const d = { id: String(row.id), title: row.title, type: row.kind || "MD", status: row.status || "ready", summary: "" };
+              const st = statusStyle(d.status);
+              const active = d.id === activeId;
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "div",
                 {
-                  onDragOver: (e) => e.preventDefault(),
-                  onDrop: (e) => {
-                    e.preventDefault();
-                    const fid = e.dataTransfer.getData("text/doc-id");
-                    if (fid) doMoveDoc(fid, row.id);
+                  draggable: true,
+                  onDragStart: (e) => e.dataTransfer.setData("text/doc-id", d.id),
+                  onClick: () => {
+                    setActiveId(d.id);
+                    setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
                   },
-                  onClick: () => setExpandedFolders((prev) => {
-                    const n = new Set(prev);
-                    if (n.has(row.id)) n.delete(row.id);
-                    else n.add(row.id);
-                    return n;
-                  }),
                   onContextMenu: (e) => {
                     e.preventDefault();
-                    setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id });
+                    setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id });
                   },
                   style: {
                     position: "absolute",
@@ -988,85 +852,148 @@ function WikiSidebar(props) {
                     left: 0,
                     right: 0,
                     height: ROW_H,
-                    paddingLeft: 8 + row.depth * 14,
+                    paddingLeft: 22 + row.depth * 14,
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 6,
                     cursor: "pointer",
-                    color: "var(--dsw-alias-label-primary)",
-                    fontSize: 13,
-                    fontWeight: 600
+                    borderRadius: "var(--dsw-radius-md)",
+                    background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                    borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent"
                   },
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: "var(--dsw-alias-label-secondary)" }, children: open ? "\u25BC" : "\u25B6" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FolderIcon, { size: 14 }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: row.title })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileIcon, { size: 13 }),
+                    renamingId === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        autoFocus: true,
+                        value: renameText,
+                        onChange: (e) => setRenameText(e.target.value),
+                        onKeyDown: (e) => {
+                          if (e.key === "Enter") doRenameDoc(d.id);
+                          if (e.key === "Escape") {
+                            setRenamingId(null);
+                            setRenameText("");
+                          }
+                        },
+                        onBlur: () => doRenameDoc(d.id),
+                        style: { flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }
+                      }
+                    ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }, children: row.title }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: st.color }, children: "\u25CF" })
                   ]
                 },
-                "f" + row.id
+                "d" + row.id
               );
+            }) })
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.count", { n: stats.total || rows.length }) : `\u5171 ${stats.total || rows.length} \u6761` })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: editorStyle, children: view === "settings" ? (
+        /* 设置面板 */
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13 }, children: t ? t("wiki.settings") : "\u8BBE\u7F6E" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: iconBtn, children: "\u2715" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.storage") : "\u6570\u636E\u5B58\u50A8\u76EE\u5F55" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: settings.mdStoragePath || "", onChange: (e) => setSettings({ ...settings, mdStoragePath: e.target.value }), style: smallInput })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.chunkSize") : "\u5206\u5757\u5927\u5C0F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.chunkSize || 500, onChange: (e) => setSettings({ ...settings, chunkSize: Number(e.target.value) }), style: smallInput })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.chunkOverlap") : "\u5206\u5757\u91CD\u53E0" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.chunkOverlap || 80, onChange: (e) => setSettings({ ...settings, chunkOverlap: Number(e.target.value) }), style: smallInput })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, marginBottom: 4 }, children: t ? t("wiki.rerankTopK") : "Rerank TopK" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "number", value: settings.rerankTopK || 5, onChange: (e) => setSettings({ ...settings, rerankTopK: Number(e.target.value) }), style: smallInput })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.restartHint") : "\u4FEE\u6539\u5B58\u50A8\u8DEF\u5F84\u540E\u5C06\u81EA\u52A8\u8FC1\u79FB\u5DF2\u6709\u6587\u4EF6" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveSettings, style: primaryBtn, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
+          ] })
+        ] })
+      ) : view === "snapshots" ? (
+        /* 快照面板 */
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 600, fontSize: 13 }, children: t ? t("wiki.snapshots") : "\u5FEB\u7167" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: doCreateSnapshot, style: primaryBtn, children: t ? t("wiki.new") : "\u65B0\u5EFA" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: iconBtn, children: "\u2715" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }, children: snapshots.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noSnapshots") : "\u6682\u65E0\u5FEB\u7167" }) : snapshots.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontSize: 12 }, children: s.name || `Snapshot ${s.id}` }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: new Date(s.time || s.created_at || 0).toLocaleString() }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => doRestoreSnapshot(s.id), style: ghostBtn, children: t ? t("wiki.restore") : "\u6062\u590D" })
+          ] }, s.id)) })
+        ] })
+      ) : view === "logs" ? (
+        /* 日志面板 */
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 600, fontSize: 13 }, children: t ? t("wiki.logs") : "\u65E5\u5FD7" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setView("list"), style: iconBtn, children: "\u2715" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }, children: logs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: emptyHint, children: t ? t("wiki.noLogs") : "\u6682\u65E0\u65E5\u5FD7" }) : logs.map((l, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)", fontSize: 11 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary)", flexShrink: 0 }, children: new Date(l.time).toLocaleTimeString() }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 600, flexShrink: 0 }, children: l.action }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: l.detail })
+          ] }, i)) })
+        ] })
+      ) : activeDoc ? (
+        /* MD 编辑器 */
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: activeDoc.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: typeBadge, children: activeDoc.type }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: saveEdit, style: primaryBtn, children: t ? t("wiki.save") : "\u4FDD\u5B58" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }, children: ["edit", "preview"].map((tab) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setEditTab(tab), style: {
+            padding: "6px 12px",
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            fontSize: 12,
+            color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+            borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+            fontWeight: editTab === tab ? 600 : 400
+          }, children: tab === "edit" ? t ? t("wiki.edit") : "\u7F16\u8F91" : t ? t("wiki.preview") : "\u9884\u89C8" }, tab)) }),
+          editTab === "edit" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "textarea",
+            {
+              value: mdContent,
+              onChange: (e) => setMdContent(e.target.value),
+              style: {
+                flex: 1,
+                width: "100%",
+                boxSizing: "border-box",
+                padding: 12,
+                border: "none",
+                outline: "none",
+                resize: "none",
+                background: "transparent",
+                color: "var(--dsw-alias-label-primary)",
+                fontSize: 13,
+                fontFamily: "var(--dsw-font-family-mono, monospace)",
+                lineHeight: 1.6
+              }
             }
-            const d = { id: String(row.id), title: row.title, type: row.kind || "MD", status: row.status || "ready", summary: "" };
-            const st = statusStyle(d.status);
-            const active = d.id === activeId;
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-              "div",
-              {
-                draggable: true,
-                onDragStart: (e) => e.dataTransfer.setData("text/doc-id", d.id),
-                onClick: () => {
-                  setActiveId(d.id);
-                  setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n\u6682\u65E0\u5185\u5BB9\n");
-                  setView("editor");
-                },
-                onContextMenu: (e) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id });
-                },
-                style: {
-                  position: "absolute",
-                  top,
-                  left: 0,
-                  right: 0,
-                  height: ROW_H,
-                  paddingLeft: 22 + row.depth * 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  cursor: "pointer",
-                  borderRadius: "var(--dsw-radius-md)",
-                  background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-                  borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent"
-                },
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileIcon, { size: 13 }),
-                  renamingId === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      autoFocus: true,
-                      value: renameText,
-                      onChange: (e) => setRenameText(e.target.value),
-                      onKeyDown: (e) => {
-                        if (e.key === "Enter") doRenameDoc(d.id);
-                        if (e.key === "Escape") {
-                          setRenamingId(null);
-                          setRenameText("");
-                        }
-                      },
-                      onBlur: () => doRenameDoc(d.id),
-                      style: { flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }
-                    }
-                  ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }, children: row.title }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: st.color }, children: "\u25CF" })
-                ]
-              },
-              "d" + row.id
-            );
-          }) })
-        )
-      }
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }, children: t ? t("wiki.count", { n: stats.total || rows.length }) : `\u5171 ${stats.total || rows.length} \u6761` }),
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: "auto", padding: 12 }, dangerouslySetInnerHTML: { __html: renderMdSafe(mdContent) } })
+        ] })
+      ) : (
+        /* 空状态 */
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 13 }, children: t ? t("wiki.empty") : "\u9009\u62E9\u5DE6\u4FA7\u6587\u6863\u5F00\u59CB\u7F16\u8F91" })
+      ) })
+    ] }),
     contextMenu && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "div",
       {
@@ -1140,6 +1067,30 @@ var rootStyle = {
   fontSize: 14,
   fontFamily: "var(--dsw-font-family)"
 };
+var mainLayoutStyle = {
+  flex: 1,
+  display: "flex",
+  gap: 8,
+  overflow: "hidden",
+  minHeight: 0
+};
+var sidebarStyle = {
+  width: 260,
+  flexShrink: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  overflowY: "auto",
+  minHeight: 0
+};
+var editorStyle = {
+  flex: 1,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  minHeight: 0,
+  overflow: "hidden"
+};
 var iconBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--dsw-alias-label-secondary)", fontSize: 16, padding: 2 };
 var primaryBtn = {
   height: 26,
@@ -1201,21 +1152,6 @@ var typeBadge = {
   background: "var(--dsw-alias-bg-layer-2)",
   color: "var(--dsw-alias-label-secondary)"
 };
-var textareaStyle = {
-  flex: 1,
-  width: "100%",
-  boxSizing: "border-box",
-  resize: "none",
-  padding: 10,
-  borderRadius: "var(--dsw-radius-md)",
-  border: "1px solid var(--dsw-alias-border-l4)",
-  background: "var(--dsw-alias-bg-layer-1)",
-  color: "var(--dsw-alias-label-primary)",
-  fontFamily: "var(--dsw-font-family-mono, monospace)",
-  fontSize: 12,
-  lineHeight: 1.6,
-  outline: "none"
-};
 var emptyHint = { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 };
 var menuItem = {
   padding: "6px 10px",
@@ -1235,7 +1171,7 @@ function treeFindName(nodes, id) {
 }
 function DiffModalBox(props) {
   const { modal, t, onClose, onAccept, onReject } = props;
-  const rows = computeDiff(modal.old, modal.new);
+  const rows2 = computeDiff(modal.old, modal.new);
   const rowColor = {
     add: { background: "var(--dsw-alias-state-success-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-success)", sign: "+" },
     del: { background: "var(--dsw-alias-state-danger-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-danger)", sign: "-" },
@@ -1258,7 +1194,7 @@ function DiffModalBox(props) {
       "\uFF1A",
       modal.title
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--dsw-font-family-mono, monospace)", display: "flex", flexDirection: "column" }, children: rows.map((r, i) => {
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--dsw-font-family-mono, monospace)", display: "flex", flexDirection: "column" }, children: rows2.map((r, i) => {
       if (r.type === "mod") {
         return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...rowColor.mod, padding: "2px 6px", whiteSpace: "pre-wrap" }, children: [

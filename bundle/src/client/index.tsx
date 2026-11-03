@@ -706,177 +706,6 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   const activeDoc = docs.find((d) => d.id === activeId);
 
-  // ==========================================================================
-  // 编辑器视图
-  // ==========================================================================
-  if (view === "editor" && activeDoc) {
-    return (
-      <div style={rootStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button onClick={() => setView("list")} style={iconBtn}>←</button>
-          <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeDoc.title}</span>
-          <span style={typeBadge}>{activeDoc.type}</span>
-          <button onClick={saveEdit} style={primaryBtn}>{t ? t("wiki.save") : "保存"}</button>
-        </div>
-        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }}>
-          {(["edit", "preview"] as const).map((tab) => (
-            <button key={tab} onClick={() => setEditTab(tab)} style={{
-              padding: "6px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: 12,
-              color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-              borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
-              fontWeight: editTab === tab ? 600 : 400,
-            }}>{tab === "edit" ? (t ? t("wiki.edit") : "编辑") : (t ? t("wiki.preview") : "预览")}</button>
-          ))}
-        </div>
-        {editTab === "edit" ? (
-          <textarea value={mdContent} onChange={(e) => setMdContent(e.target.value)} style={textareaStyle} />
-        ) : (
-          <div style={{
-            flex: 1, overflowY: "auto", padding: 10, borderRadius: "var(--dsw-radius-md)",
-            background: "var(--dsw-alias-bg-layer-1)", fontSize: 13, lineHeight: 1.7,
-          }}>
-            {renderMdSafe(mdContent)}
-          </div>
-        )}
-        <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{t ? t("wiki.autoIndexHint") : "编辑后自动刷新向量索引"}</div>
-      </div>
-    );
-  }
-
-  // ==========================================================================
-  // 设置视图（含数据存储目录 GET/POST /settings）
-  // ==========================================================================
-  if (view === "settings") {
-    const inputStyle: any = {
-      height: 30, padding: "0 8px", boxSizing: "border-box",
-      borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)",
-      background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)",
-      outline: "none", fontSize: 12, width: "100%",
-    };
-    const labelStyle: any = { fontSize: 11, color: "var(--dsw-alias-label-secondary)", marginBottom: 2, display: "block" };
-    const sectionStyle: any = {
-      fontSize: 13, fontWeight: 600, margin: "8px 0 6px", color: "var(--dsw-alias-label-primary)",
-      paddingBottom: 4, borderBottom: "1px solid var(--dsw-alias-border-l1)",
-    };
-    if (!settingsLoaded) {
-      apiGetSettings().then((s) => { setSettings(s || {}); setSettingsLoaded(true); }).catch(() => setSettingsLoaded(true));
-    }
-    const set = (k: keyof SettingsState, v: any) => setSettings((prev) => ({ ...prev, [k]: v }));
-    return (
-      <div style={rootStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button onClick={() => setView("list")} style={iconBtn}>←</button>
-          <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{t ? t("wiki.settings") : "设置"}</span>
-          <button onClick={saveSettings} style={primaryBtn}>{t ? t("wiki.save") : "保存"}</button>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={sectionStyle}>{t ? t("wiki.storage") : "数据存储目录"}</div>
-          {[
-            ["mdStoragePath", "MD 存储目录"],
-            ["zipStoragePath", "ZIP 存储目录"],
-            ["snapshotStoragePath", "快照存储目录"],
-          ].map(([k, lbl]) => (
-            <div key={k}>
-              <label style={labelStyle}>{lbl}</label>
-              <input value={(settings as any)[k] || ""} onChange={(e) => set(k as any, e.target.value)} style={inputStyle} placeholder="/path/to/store" />
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>{t ? t("wiki.chunkSize") : "分块大小"}</label>
-              <input type="number" value={(settings as any).chunkSize ?? 500} onChange={(e) => set("chunkSize", Number(e.target.value))} style={inputStyle} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>{t ? t("wiki.chunkOverlap") : "分块重叠"}</label>
-              <input type="number" value={(settings as any).chunkOverlap ?? 50} onChange={(e) => set("chunkOverlap", Number(e.target.value))} style={inputStyle} />
-            </div>
-          </div>
-          <div style={sectionStyle}>Rerank</div>
-          <div>
-            <label style={labelStyle}>{t ? t("wiki.rerankTopK") : "Rerank TopK"}</label>
-            <input type="number" value={(settings as any).rerankTopK ?? 5} onChange={(e) => set("rerankTopK", Number(e.target.value))} style={inputStyle} />
-          </div>
-        </div>
-        <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{t ? t("wiki.restartHint") : "修改存储路径后将自动迁移已有文件"}</div>
-      </div>
-    );
-  }
-
-  // ==========================================================================
-  // 快照视图（每行恢复按钮）
-  // ==========================================================================
-  if (view === "snapshots") {
-    return (
-      <div style={rootStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button onClick={() => setView("list")} style={ghostBtn}>← {t ? t("wiki.back") : "返回"}</button>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{t ? t("wiki.snapshots") : "快照管理"}</div>
-          <button onClick={async () => { await apiCreateSnapshot(); notify("success", t ? t("wiki.snapshotCreated") : "已创建快照"); refreshList(); }} style={primaryBtn}>+ {t ? t("wiki.new") : "新建"}</button>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
-          {snapshots.length === 0 ? (
-            <div style={emptyHint}>{t ? t("wiki.noSnapshots") : "暂无快照"}</div>
-          ) : snapshots.map((s) => (
-            <div key={s.id} style={{ padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>#{s.id} {s.note || "手动快照"}</div>
-                  <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>{new Date(s.created_at || s.created_at_ms || Date.now()).toLocaleString()}</div>
-                </div>
-                <button onClick={() => doRestore(s.id)} style={ghostBtn}>{t ? t("wiki.restore") : "恢复"}</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================================================
-  // 日志视图
-  // ==========================================================================
-  if (view === "logs") {
-    return (
-      <div style={rootStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button onClick={() => setView("list")} style={ghostBtn}>← {t ? t("wiki.back") : "返回"}</button>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{t ? t("wiki.logs") : "审计日志"}</div>
-          <div style={{ width: 60 }} />
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
-          {logs.length === 0 ? <div style={emptyHint}>{t ? t("wiki.noLogs") : "暂无日志"}</div> :
-            logs.map((l, i) => (
-              <div key={i} style={{ padding: "6px 10px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)", fontSize: 11 }}>
-                <div style={{ color: "var(--dsw-alias-label-tertiary)" }}>{l.time}</div>
-                <div style={{ marginTop: 2 }}><b>{l.action}</b> · {l.detail}</div>
-              </div>
-            ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================================================
-  // 列表视图（默认）：树 + 虚拟滚动 + 搜索溯源
-  // ==========================================================================
-  const searchingMode = !!searchResults;
-  let rows: FlatRow[] = [];
-  if (!searchingMode) {
-    rows = [];
-    flattenTree(tree, 0, expandedFolders, rows);
-    // 若后端还没给 tree，退回平铺 docs
-    if (rows.length === 0 && docs.length) {
-      rows = docs.map((d) => ({ rowType: "doc", depth: 0, id: Number(d.id) || 0, title: d.title, kind: d.type, status: d.status, raw: {} as TreeNode }));
-    }
-  }
-  // 虚拟窗口：列表收缩（删除 / 折叠）时 clamp scrollTop，避免 startIndex 越界导致白屏
-  const overscan = 6;
-  const maxScrollTop = Math.max(0, rows.length * ROW_H - 1);
-  const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
-  const startIndex = Math.max(0, Math.floor(clampedScrollTop / ROW_H) - overscan);
-  const endIndex = Math.min(rows.length, Math.ceil((clampedScrollTop + viewportH) / ROW_H) + overscan);
-  const visibleRows = rows.slice(startIndex, endIndex);
-  // 空列表兜底提示
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
@@ -906,7 +735,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       )}
 
-      {/* 头部 */}
+      {/* 顶部工具栏 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 2px 0" }}>
         <div style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
           <WikiIcon size={16} />{title}
@@ -925,160 +754,271 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       </div>
 
-      {/* 搜索框 */}
-      <input ref={searchInputRef}
-        value={q}
-        onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
-        onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
-        placeholder={t ? t("wiki.search") : "搜索文档…"}
-        style={searchInputStyle} />
+      {/* 左右分栏主区域 */}
+      <div style={mainLayoutStyle}>
+        {/* 左侧：文件树 */}
+        <div style={sidebarStyle}>
+          {/* 搜索框 */}
+          <input ref={searchInputRef}
+            value={q}
+            onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+            placeholder={t ? t("wiki.search") : "搜索文档…"}
+            style={searchInputStyle} />
 
-      {/* 新建文件夹 */}
-      {showNewFolder && (
-        <div style={{ display: "flex", gap: 4 }}>
-          <input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") doCreateFolder(); }}
-            placeholder={t ? t("wiki.folderName") : "文件夹名称…"} autoFocus
-            style={smallInput} />
-          <button onClick={doCreateFolder} style={primaryBtn}>{t ? t("wiki.new") : "新建"}</button>
-        </div>
-      )}
+          {/* 新建文件夹 */}
+          {showNewFolder && (
+            <div style={{ display: "flex", gap: 4 }}>
+              <input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doCreateFolder(); }}
+                placeholder={t ? t("wiki.folderName") : "文件夹名称…"} autoFocus
+                style={smallInput} />
+              <button onClick={doCreateFolder} style={primaryBtn}>{t ? t("wiki.new") : "新建"}</button>
+            </div>
+          )}
 
-      {/* 导入面板 */}
-      {showImport && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+          {/* 导入面板 */}
+          {showImport && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+              <div style={{ display: "flex", gap: 2 }}>
+                {([["file", "文件"], ["url", "URL"], ["note", "笔记"]] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setImportType(k)} style={{
+                    flex: 1, padding: "3px 0", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
+                    background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                    color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+                  }}>{l}</button>
+                ))}
+              </div>
+              {importType !== "note" ? (
+                <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
+                  placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"} style={smallInput} />
+              ) : (
+                <>
+                  <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="笔记标题…" style={smallInput} />
+                  <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} placeholder="笔记内容…" rows={3}
+                    style={{ ...smallInput, height: "auto", padding: "6px 8px", resize: "vertical" }} />
+                </>
+              )}
+              <button onClick={doImport} disabled={importInflight.current} style={{ ...primaryBtn, opacity: importInflight.current ? 0.6 : 1 }}>
+                {importInflight.current ? "…" : (t ? t("wiki.import") : "导入")}
+              </button>
+            </div>
+          )}
+
+          {/* 状态筛选 */}
           <div style={{ display: "flex", gap: 2 }}>
-            {([["file", "文件"], ["url", "URL"], ["note", "笔记"]] as const).map(([k, l]) => (
-              <button key={k} onClick={() => setImportType(k)} style={{
+            {([["all", "全部"], ["ready", "已索引"], ["stale", "待同步"], ["error", "异常"]] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setStatusFilter(key)} style={{
                 flex: 1, padding: "3px 0", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
-                background: importType === k ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-                color: importType === k ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-              }}>{l}</button>
+                background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+                fontWeight: statusFilter === key ? 600 : 400,
+              }}>{label}</button>
             ))}
           </div>
-          {importType !== "note" ? (
-            <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
-              placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"} style={smallInput} />
-          ) : (
-            <>
-              <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="笔记标题…" style={smallInput} />
-              <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} placeholder="笔记内容…" rows={3}
-                style={{ ...smallInput, height: "auto", padding: "6px 8px", resize: "vertical" }} />
-            </>
-          )}
-          <button onClick={doImport} disabled={importInflight.current} style={{ ...primaryBtn, opacity: importInflight.current ? 0.6 : 1 }}>
-            {importInflight.current ? "…" : (t ? t("wiki.import") : "导入")}
-          </button>
-        </div>
-      )}
 
-      {/* 状态筛选 */}
-      <div style={{ display: "flex", gap: 2 }}>
-        {([["all", "全部"], ["ready", "已索引"], ["stale", "待同步"], ["error", "异常"]] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setStatusFilter(key)} style={{
-            flex: 1, padding: "3px 0", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
-            background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-            color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
-            fontWeight: statusFilter === key ? 600 : 400,
-          }}>{label}</button>
-        ))}
-      </div>
-
-      {/* 列表区：加载骨架 / 搜索结果溯源 / 树虚拟列表 */}
-      <div ref={listScrollRef}
-        onScroll={(e) => { setScrollTop(e.currentTarget.scrollTop); setViewportH(e.currentTarget.clientHeight); }}
-        style={{ flex: 1, overflowY: "auto", position: "relative", minHeight: 0 }}>
-        {loadingList ? (
-          <SkeletonRows count={8} />
-        ) : searchingMode ? (
-          /* ---- 搜索结果：来源文件名 + 片段 + 徽章 ---- */
-          searching ? <SkeletonRows count={5} /> :
-            searchResults!.length === 0 ? <div style={emptyHint}>{t ? t("wiki.noResult") : "无搜索结果"}</div> :
-              searchResults!.map((r, i) => (
-                <div key={i} onClick={() => { setActiveId(r.id); setMdContent(r.summary); setView("editor"); }}
-                  style={{
-                    padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", cursor: "pointer", marginBottom: 4,
-                    background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)",
-                  }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-                    <span style={{
-                      fontSize: 10, padding: "1px 5px", borderRadius: 4, flexShrink: 0,
-                      background: "var(--dsw-alias-bg-module-platform)", color: "var(--dsw-alias-label-secondary)",
-                    }}>{r.fileName || "MD"}</span>
-                  </div>
-                  <div style={{ marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{r.summary}</div>
-                  <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8 }}>
-                    {r.sourcePath && <span>{r.sourcePath}</span>}
-                    {typeof r.score === "number" && <span>score {r.score.toFixed(3)}</span>}
-                  </div>
-                </div>
-              ))
-        ) : rows.length === 0 ? (
-          <div style={emptyHint}>{t ? t("wiki.empty") : "知识库为空"}</div>
-        ) : (
-          /* ---- 虚拟列表占位 ---- */
-          <div style={{ height: rows.length * ROW_H, position: "relative" }}>
-            {visibleRows.map((row) => {
-              const top = (startIndex + rows.indexOf(row)) * ROW_H;
-              if (row.rowType === "folder") {
-                const open = expandedFolders.has(row.id);
-                return (
-                  <div key={"f" + row.id}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); const fid = e.dataTransfer.getData("text/doc-id"); if (fid) doMoveDoc(fid, row.id); }}
-                    onClick={() => setExpandedFolders((prev) => { const n = new Set(prev); if (n.has(row.id)) n.delete(row.id); else n.add(row.id); return n; })}
-                    onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id }); }}
-                    style={{
-                      position: "absolute", top, left: 0, right: 0, height: ROW_H,
-                      paddingLeft: 8 + row.depth * 14, display: "flex", alignItems: "center", gap: 4, cursor: "pointer",
-                      color: "var(--dsw-alias-label-primary)", fontSize: 13, fontWeight: 600,
-                    }}>
-                    <span style={{ fontSize: 10, color: "var(--dsw-alias-label-secondary)" }}>{open ? "▼" : "▶"}</span>
-                    <FolderIcon size={14} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
-                  </div>
-                );
-              }
-              const d: WikiDoc = { id: String(row.id), title: row.title, type: row.kind || "MD", status: (row.status as any) || "ready", summary: "" };
-              const st = statusStyle(d.status);
-              const active = d.id === activeId;
-              return (
-                <div key={"d" + row.id}
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
-                  onClick={() => { setActiveId(d.id); setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n暂无内容\n"); setView("editor"); }}
-                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id }); }}
-                  style={{
-                    position: "absolute", top, left: 0, right: 0, height: ROW_H,
-                    paddingLeft: 22 + row.depth * 14, display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                    borderRadius: "var(--dsw-radius-md)",
-                    background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
-                    borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
-                  }}>
-                  <FileIcon size={13} />
-                  {renamingId === d.id ? (
-                    <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") doRenameDoc(d.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
-                      onBlur={() => doRenameDoc(d.id)}
-                      style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
-                  ) : (
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }}>{row.title}</span>
-                  )}
-                  <span style={{ fontSize: 10, color: st.color }}>●</span>
-                </div>
-              );
-            })}
+          {/* 文件列表区 */}
+          <div ref={listScrollRef}
+            onScroll={(e) => { setScrollTop(e.currentTarget.scrollTop); setViewportH(e.currentTarget.clientHeight); }}
+            style={{ flex: 1, overflowY: "auto", position: "relative", minHeight: 0 }}>
+            {loadingList ? (
+              <SkeletonRows count={8} />
+            ) : searchingMode ? (
+              searching ? <SkeletonRows count={5} /> :
+                searchResults!.length === 0 ? <div style={emptyHint}>{t ? t("wiki.noResult") : "无搜索结果"}</div> :
+                  searchResults!.map((r, i) => (
+                    <div key={i} onClick={() => { setActiveId(r.id); setMdContent(r.summary); }}
+                      style={{
+                        padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", cursor: "pointer", marginBottom: 4,
+                        background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)",
+                      }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
+                        <span style={{
+                          fontSize: 10, padding: "1px 5px", borderRadius: 4, flexShrink: 0,
+                          background: "var(--dsw-alias-bg-module-platform)", color: "var(--dsw-alias-label-secondary)",
+                        }}>{r.fileName || "MD"}</span>
+                      </div>
+                      <div style={{ marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{r.summary}</div>
+                      <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8 }}>
+                        {r.sourcePath && <span>{r.sourcePath}</span>}
+                        {typeof r.score === "number" && <span>score {r.score.toFixed(3)}</span>}
+                      </div>
+                    </div>
+                  ))
+            ) : rows.length === 0 ? (
+              <div style={emptyHint}>{t ? t("wiki.empty") : "知识库为空"}</div>
+            ) : (
+              <div style={{ height: rows.length * ROW_H, position: "relative" }}>
+                {visibleRows.map((row) => {
+                  const top = (startIndex + rows.indexOf(row)) * ROW_H;
+                  if (row.rowType === "folder") {
+                    const open = expandedFolders.has(row.id);
+                    return (
+                      <div key={"f" + row.id}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); const fid = e.dataTransfer.getData("text/doc-id"); if (fid) doMoveDoc(fid, row.id); }}
+                        onClick={() => setExpandedFolders((prev) => { const n = new Set(prev); if (n.has(row.id)) n.delete(row.id); else n.add(row.id); return n; })}
+                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id }); }}
+                        style={{
+                          position: "absolute", top, left: 0, right: 0, height: ROW_H,
+                          paddingLeft: 8 + row.depth * 14, display: "flex", alignItems: "center", gap: 4, cursor: "pointer",
+                          color: "var(--dsw-alias-label-primary)", fontSize: 13, fontWeight: 600,
+                        }}>
+                        <span style={{ fontSize: 10, color: "var(--dsw-alias-label-secondary)" }}>{open ? "▼" : "▶"}</span>
+                        <FolderIcon size={14} />
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                      </div>
+                    );
+                  }
+                  const d: WikiDoc = { id: String(row.id), title: row.title, type: row.kind || "MD", status: (row.status as any) || "ready", summary: "" };
+                  const st = statusStyle(d.status);
+                  const active = d.id === activeId;
+                  return (
+                    <div key={"d" + row.id}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
+                      onClick={() => { setActiveId(d.id); setMdContent(SAMPLE_MD[d.id] ?? "# " + d.title + "\n\n暂无内容\n"); }}
+                      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id }); }}
+                      style={{
+                        position: "absolute", top, left: 0, right: 0, height: ROW_H,
+                        paddingLeft: 22 + row.depth * 14, display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                        borderRadius: "var(--dsw-radius-md)",
+                        background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                        borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+                      }}>
+                      <FileIcon size={13} />
+                      {renamingId === d.id ? (
+                        <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") doRenameDoc(d.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
+                          onBlur={() => doRenameDoc(d.id)}
+                          style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                      ) : (
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }}>{row.title}</span>
+                      )}
+                      <span style={{ fontSize: 10, color: st.color }}>●</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* 底部统计 */}
+          <div style={{ padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
+            {t ? t("wiki.count", { n: stats.total || rows.length }) : `共 ${stats.total || rows.length} 条`}
+          </div>
+        </div>
+
+        {/* 右侧：编辑器 */}
+        <div style={editorStyle}>
+          {view === "settings" ? (
+            /* 设置面板 */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{t ? t("wiki.settings") : "设置"}</span>
+                <button onClick={() => setView("list")} style={iconBtn}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>{t ? t("wiki.storage") : "数据存储目录"}</div>
+                  <input value={settings.mdStoragePath || ""} onChange={(e) => setSettings({ ...settings, mdStoragePath: e.target.value })} style={smallInput} />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>{t ? t("wiki.chunkSize") : "分块大小"}</div>
+                    <input type="number" value={settings.chunkSize || 500} onChange={(e) => setSettings({ ...settings, chunkSize: Number(e.target.value) })} style={smallInput} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>{t ? t("wiki.chunkOverlap") : "分块重叠"}</div>
+                    <input type="number" value={settings.chunkOverlap || 80} onChange={(e) => setSettings({ ...settings, chunkOverlap: Number(e.target.value) })} style={smallInput} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>{t ? t("wiki.rerankTopK") : "Rerank TopK"}</div>
+                  <input type="number" value={settings.rerankTopK || 5} onChange={(e) => setSettings({ ...settings, rerankTopK: Number(e.target.value) })} style={smallInput} />
+                </div>
+                <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{t ? t("wiki.restartHint") : "修改存储路径后将自动迁移已有文件"}</div>
+                <button onClick={saveSettings} style={primaryBtn}>{t ? t("wiki.save") : "保存"}</button>
+              </div>
+            </div>
+          ) : view === "snapshots" ? (
+            /* 快照面板 */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{t ? t("wiki.snapshots") : "快照"}</span>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={doCreateSnapshot} style={primaryBtn}>{t ? t("wiki.new") : "新建"}</button>
+                  <button onClick={() => setView("list")} style={iconBtn}>✕</button>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {snapshots.length === 0 ? <div style={emptyHint}>{t ? t("wiki.noSnapshots") : "暂无快照"}</div> :
+                  snapshots.map((s) => (
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)" }}>
+                      <span style={{ flex: 1, fontSize: 12 }}>{s.name || `Snapshot ${s.id}`}</span>
+                      <span style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{new Date(s.time || s.created_at || 0).toLocaleString()}</span>
+                      <button onClick={() => doRestoreSnapshot(s.id)} style={ghostBtn}>{t ? t("wiki.restore") : "恢复"}</button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : view === "logs" ? (
+            /* 日志面板 */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{t ? t("wiki.logs") : "日志"}</span>
+                <button onClick={() => setView("list")} style={iconBtn}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {logs.length === 0 ? <div style={emptyHint}>{t ? t("wiki.noLogs") : "暂无日志"}</div> :
+                  logs.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)", fontSize: 11 }}>
+                      <span style={{ color: "var(--dsw-alias-label-tertiary)", flexShrink: 0 }}>{new Date(l.time).toLocaleTimeString()}</span>
+                      <span style={{ fontWeight: 600, flexShrink: 0 }}>{l.action}</span>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.detail}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : activeDoc ? (
+            /* MD 编辑器 */
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeDoc.title}</span>
+                <span style={typeBadge}>{activeDoc.type}</span>
+                <button onClick={saveEdit} style={primaryBtn}>{t ? t("wiki.save") : "保存"}</button>
+              </div>
+              <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--dsw-alias-border-l1)" }}>
+                {(["edit", "preview"] as const).map((tab) => (
+                  <button key={tab} onClick={() => setEditTab(tab)} style={{
+                    padding: "6px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: 12,
+                    color: editTab === tab ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
+                    borderBottom: editTab === tab ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+                    fontWeight: editTab === tab ? 600 : 400,
+                  }}>{tab === "edit" ? (t ? t("wiki.edit") : "编辑") : (t ? t("wiki.preview") : "预览")}</button>
+                ))}
+              </div>
+              {editTab === "edit" ? (
+                <textarea value={mdContent} onChange={(e) => setMdContent(e.target.value)}
+                  style={{
+                    flex: 1, width: "100%", boxSizing: "border-box", padding: 12, border: "none", outline: "none", resize: "none",
+                    background: "transparent", color: "var(--dsw-alias-label-primary)", fontSize: 13, fontFamily: "var(--dsw-font-family-mono, monospace)", lineHeight: 1.6,
+                  }} />
+              ) : (
+                <div style={{ flex: 1, overflowY: "auto", padding: 12 }} dangerouslySetInnerHTML={{ __html: renderMdSafe(mdContent) }} />
+              )}
+            </>
+          ) : (
+            /* 空状态 */
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 13 }}>
+              {t ? t("wiki.empty") : "选择左侧文档开始编辑"}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 底部统计 */}
-      <div style={{ padding: "6px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>
-        {t ? t("wiki.count", { n: stats.total || rows.length }) : `共 ${stats.total || rows.length} 条`}
-      </div>
-
-      {/* 右键菜单（文档/文件夹通用） */}
+      {/* 右键菜单 */}
       {contextMenu && (
         <div onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
           style={{ position: "fixed", inset: 0, zIndex: 998 }}>
@@ -1130,6 +1070,18 @@ function WikiSidebar(props: WikiSidebarProps) {
 const rootStyle: any = {
   height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8,
   padding: "6px 10px", color: "var(--dsw-alias-label-primary)", fontSize: 14, fontFamily: "var(--dsw-font-family)",
+};
+
+const mainLayoutStyle: any = {
+  flex: 1, display: "flex", gap: 8, overflow: "hidden", minHeight: 0,
+};
+
+const sidebarStyle: any = {
+  width: 260, flexShrink: 0, display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", minHeight: 0,
+};
+
+const editorStyle: any = {
+  flex: 1, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, overflow: "hidden",
 };
 const iconBtn: any = { border: "none", background: "transparent", cursor: "pointer", color: "var(--dsw-alias-label-secondary)", fontSize: 16, padding: 2 };
 const primaryBtn: any = {
