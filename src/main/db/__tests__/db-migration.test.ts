@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { initDatabase, closeDatabase, get, all, SCHEMA_VERSION } from '../sqlite-init';
+import { initDatabase, closeDatabase, get, all, run, SCHEMA_VERSION } from '../sqlite-init';
 
 let dir: string;
 let dbPath: string;
@@ -138,5 +138,22 @@ describe('DB 迁移机制', () => {
     await initDatabase(dbPath);
     const cols = all<{ name: string }>('PRAGMA table_info(knowledge_files)').map((c) => c.name);
     expect(cols).toContain('deleted_at');
+  });
+});
+
+describe('v5 兼容性', () => {
+  it('v5 库用不引用 deleted_at 的旧查询路径访问正常（多列不影响 INSERT/SELECT *）', async () => {
+    await initDatabase(dbPath);
+    // 旧路径：不指定 deleted_at 的 INSERT（应为 NULL）
+    await run(
+      `INSERT INTO knowledge_files (file_name, source_path, md_path, zip_archive_path, file_type, create_time)
+       VALUES ('old.md', '/old.md', '/old.md.m', '/old.zip', 'md', 123)`
+    );
+    // 旧 SELECT * 不感知 deleted_at
+    const row = get<{ file_name: string; deleted_at: number | null }>(
+      'SELECT * FROM knowledge_files WHERE file_name = ?', ['old.md']
+    );
+    expect(row?.file_name).toBe('old.md');
+    expect(row?.deleted_at).toBeNull();
   });
 });
