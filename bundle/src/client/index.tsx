@@ -902,6 +902,10 @@ function WikiSidebar(props: WikiSidebarProps) {
 
 
   // ---------- 导入（async 任务 + 进度条） ----------
+  const jobTimers = useRef<number[]>([]);
+  const scrollRaf = useRef<number | null>(null);
+  useEffect(() => () => { jobTimers.current.forEach((t) => clearInterval(t)); }, []);
+
   const pollJob = useCallback((jobId: string) => {
     const timer = setInterval(async () => {
       try {
@@ -915,6 +919,41 @@ function WikiSidebar(props: WikiSidebarProps) {
         }
       } catch { /* ignore poll error */ }
     }, 700);
+    jobTimers.current.push(timer);
+  }, [notify, refreshList, t]);
+
+  // 批量导入：轮询全部 jobId，按真实结果聚合 成功/失败/跳过，失败列文件名+原因
+  const pollJobsBatch = useCallback((items: { jobId: string; name: string }[], skipCount = 0) => {
+    if (!items.length) {
+      if (skipCount > 0) notify("info", `导入完成：跳过 ${skipCount} 个（不支持的类型）`);
+      return;
+    }
+    let settled = 0;
+    let ok = 0, fail = 0;
+    const failures: string[] = [];
+    setJob({ jobId: items.map((i) => i.jobId).join(","), phase: "import", done: 0, total: items.length, message: "", status: "running" });
+    items.forEach(({ jobId, name }) => {
+      const timer = setInterval(async () => {
+        try {
+          const j = await apiGetJobs(jobId);
+          if (j.status === "done" || j.status === "error") {
+            clearInterval(timer);
+            settled++;
+            if (j.status === "done") ok++;
+            else { fail++; failures.push(`${name}：${j.error || "导入失败"}`); }
+            setJob((prev) => prev ? { ...prev, done: settled } : prev);
+            if (settled === items.length) {
+              setTimeout(() => setJob(null), 1500);
+              const skipMsg = skipCount ? `，跳过 ${skipCount}` : "";
+              if (!fail) notify("success", `${tt(t, "wiki.importDone")}：成功 ${ok}${skipMsg}`);
+              else notify("error", `导入完成：成功 ${ok}，失败 ${fail}${skipMsg}（${failures.slice(0, 3).join("；")}${fail > 3 ? " 等" : ""}）`);
+              refreshList();
+            }
+          }
+        } catch { /* ignore */ }
+      }, 700);
+      jobTimers.current.push(timer);
+    });
   }, [notify, refreshList, t]);
 
   // 导入文件夹（原生文件夹选择器 webkitdirectory 选中后调用）
@@ -953,13 +992,14 @@ function WikiSidebar(props: WikiSidebarProps) {
   // 拖拽系统文件/原生文件选择器 → 直接导入（可指定目标文件夹与类型）
   const importSystemFiles = async (paths: string[], folderId: number | null = null, kind: "file" | "folder" = "file") => {
     if (!paths.length) return;
+    if (importInflight.current) return;
     importInflight.current = true;
     try {
       const jobs = await Promise.all(
         paths.map((src) => request("/import", { method: "POST", body: JSON.stringify({ source: src, kind, async: true, folderId }) }))
       );
-      const first = jobs.find((j: any) => j && j.jobId);
-      if (first) { setJob({ jobId: first.jobId, phase: "import", done: 0, total: 0, message: "", status: "running" }); pollJob(first.jobId); }
+      const items = jobs.map((j: any, i: number) => (j && j.jobId ? { jobId: j.jobId, name: paths[i]?.split("/").pop() || `文件 ${i + 1}` } : null)).filter(Boolean) as { jobId: string; name: string }[];
+      pollJobsBatch(items);
       notify("success", tt(t, "wiki.importSubmitting").replace("{n}", String(paths.length)));
       refreshList();
     } catch (e: any) {
@@ -983,7 +1023,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (over.length) notify("error", `${over.length} 个文件超过 10MB 已跳过：${over.slice(0, 3).map((f) => f.name).join("、")}`);
     if (!okList.length) return;
     importInflight.current = true;
-    const results: string[] = [];
+    const pending: { jobId: string; name: string }[] = [];
+    let skipCount = 0;
     const CONC = 4;
     let idx = 0;
     const worker = async () => {
@@ -992,20 +1033,15 @@ function WikiSidebar(props: WikiSidebarProps) {
         try {
           const b64 = toBase64(new Uint8Array(await f.arrayBuffer()));
           const r = await request("/import", { method: "POST", body: JSON.stringify({ fileName: f.name, content: b64, kind: "upload", async: true, folderId }) });
-          results.push(r?.skipped ? `跳过 ${f.name}：${r.reason || "未解析"}` : `成功 ${f.name}`);
-        } catch (e: any) { results.push(`失败 ${f.name}：${e?.message || "未知错误"}`); }
+          if (r?.jobId) pending.push({ jobId: r.jobId, name: f.name });
+          else if (r?.skipped) skipCount++;
+        } catch { skipCount++; }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONC, okList.length) }, () => worker()));
     importInflight.current = false;
-    const ok = results.filter((r) => r.startsWith("成功")).length;
-    const fail = results.filter((r) => r.startsWith("失败")).length;
-    const skip = results.filter((r) => r.startsWith("跳过")).length;
-    const firstFail = results.find((r) => r.startsWith("失败"));
-    if (!fail && !skip) notify("success", `${tt(t, "wiki.importDone")}：${ok} 条`);
-    else if (!fail) notify("success", `导入完成：成功 ${ok}，跳过 ${skip}`);
-    else notify("error", `导入完成：成功 ${ok}，失败 ${fail}，跳过 ${skip}${firstFail ? `（${firstFail}）` : ""}`);
-    refreshList();
+    // 轮询全部 jobId，按真实结果聚合
+    pollJobsBatch(pending, skipCount);
   };
 
   // 文件夹内容上传：还原顶层目录（找/建同名文件夹后平铺导入）
@@ -1734,7 +1770,12 @@ function WikiSidebar(props: WikiSidebarProps) {
 
           {/* 文件列表区 */}
           <div ref={listScrollRef}
-            onScroll={(e) => { setScrollTop(e.currentTarget.scrollTop); setViewportH(e.currentTarget.clientHeight); }}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              // rAF 合并滚动事件，避免滚动期间每帧重复 setState
+              if (scrollRaf.current != null) cancelAnimationFrame(scrollRaf.current);
+              scrollRaf.current = requestAnimationFrame(() => { setScrollTop(el.scrollTop); setViewportH(el.clientHeight); });
+            }}
             style={{ flex: 1, overflowY: "auto", position: "relative", minHeight: 0 }}>
             {loadingList ? (
               <SkeletonRows count={8} />
