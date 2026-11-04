@@ -179,3 +179,30 @@ describe('purge/restore 并发幂等', () => {
     await expect(restoreFile(fid)).resolves.toBeUndefined();
   });
 });
+
+describe('restoreVersion 对软删/已 purge 文件语义', () => {
+  it('软删文件 getKnowledgeFileById 仍返回行（含 deleted_at），调用方可判断是否 404', async () => {
+    const fid = await insertKnowledgeFile({
+      file_name: 'versioned.md', source_path: '/v.md', md_path: path.join(dir, 'v.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(fid);
+    // getKnowledgeFileById 不过滤 deleted_at（用于 restore/purge 内部）
+    const rec = await getKnowledgeFileById(fid);
+    expect(rec).toBeTruthy();
+    expect(rec?.deleted_at).not.toBeNull();
+    // 语义：host 层应据此返回 404（文件在回收站，不在活跃列表）
+  });
+
+  it('purge 后 getKnowledgeFileById 返回 undefined（restoreVersion 应 404）', async () => {
+    const fid = await insertKnowledgeFile({
+      file_name: 'gone.md', source_path: '/g.md', md_path: path.join(dir, 'g.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(fid);
+    await purgeFileRow(fid);
+    expect(await getKnowledgeFileById(fid)).toBeUndefined();
+  });
+});
