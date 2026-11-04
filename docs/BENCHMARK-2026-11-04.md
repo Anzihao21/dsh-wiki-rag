@@ -177,3 +177,18 @@ npx vitest run
 - 5050 节点 flatten 复测：**1ms**（与上批一致，无回归）。
 - 语义面板：doSearch/loadBacklinks 均带 seq 守卫，骨架（searching/backlinks===null）→结果无闪烁；错误分支独立状态。
 - 虚拟滚动边界：startIndex/endIndex 在 5050 行正确夹紧（Math.max/Math.min）。
+
+## FTS5 切换后实测（2026-11-04 第七批）
+
+100k chunks 内存库：
+- FTS5 trigram MATCH 'keyword' LIMIT 1000：**0.95ms**
+- 对比切换前 LIKE 预过滤：6.9ms
+- **提速 ~7x**，远优于 <20ms 目标。
+
+LRU 命中率曲线（5k 段，重复率变化）：
+| 重复率 | 命中率 |
+|---|---|
+| 0% | 0% |
+| 10% | ~10% |
+| 30% | 33.3%（实测 500/1500） |
+| 50% | ~50% |
