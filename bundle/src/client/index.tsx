@@ -1055,6 +1055,19 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // ---------- 删除（DSH 风格确认弹窗） ----------
+  // 软删后从收藏/最近编辑时间中清除该文档
+  const purgeFromRecentFavs = (id: string) => {
+    setFavs((prev) => {
+      if (!prev.has(id)) return prev;
+      const n = new Set(prev); n.delete(id);
+      try { localStorage.setItem("dsh-wiki-rag:favs", JSON.stringify([...n])); } catch {}
+      return n;
+    });
+    try {
+      const times = loadEditTimes();
+      if (id in times) { delete times[id]; saveEditTimesMark(times); }
+    } catch {}
+  };
   const doDelete = (id: string) => {
     setConfirmState({
       message: tt(t, "wiki.confirmDeleteDoc"),
@@ -1062,6 +1075,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         try {
           await apiDelete(id);
           notify("success", tt(t, "wiki.deleted"));
+          purgeFromRecentFavs(id);
           refreshList(); loadTrash();
         } catch (e: any) { notify("error", e?.message || "删除失败"); }
       },
@@ -1160,6 +1174,20 @@ function WikiSidebar(props: WikiSidebarProps) {
     setConfirmState({
       message: tt(t, "wiki.confirmDeleteFolder"),
       onYes: async () => {
+        // 级联清除该文件夹子树内所有文档的收藏/最近
+        try {
+          const folderIds = subtreeFolderIds(tree, id, new Set([id]));
+          const docIds: string[] = [];
+          const walk = (nodes: any[], inTarget: boolean) => {
+            for (const n of nodes) {
+              const here = inTarget || folderIds.has(n.id);
+              if (here && (n.type === "doc" || n.fileId != null)) docIds.push(String(n.fileId ?? n.id));
+              if (n.children) walk(n.children, here);
+            }
+          };
+          walk(tree, false);
+          docIds.forEach(purgeFromRecentFavs);
+        } catch {}
         try { await apiDeleteFolder(id); notify("success", tt(t, "wiki.folderDeleted")); }
         catch (e: any) { notify("error", e?.message || "删除失败"); }
         refreshList(); loadTrash();
