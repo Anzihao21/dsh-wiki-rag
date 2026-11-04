@@ -1494,6 +1494,7 @@ function WikiSidebar(props: WikiSidebarProps) {
           if (noPath.length) importFilesContent(noPath);
         }
       }}>
+      <style>{`@keyframes dsw-indeterminate { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
       {/* 拖拽悬停提示遮罩 */}
       {dragOver && (
         <div style={{ position: "absolute", inset: 0, zIndex: 20000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "var(--dsw-alias-bg-mask-2)", border: "2px dashed var(--dsw-alias-state-business-primary)", borderRadius: "var(--dsw-radius-lg)", color: "var(--dsw-alias-state-business-primary)", fontSize: 14, fontWeight: 600, pointerEvents: "none", transition: "opacity 150ms ease" }}>
@@ -1504,25 +1505,36 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* Toast */}
       <ToastStack toasts={toasts} />
 
-      {/* 离线提示条 */}
+      {/* 离线贯穿警告条 */}
       {offline && (
         <div style={{
-          padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
+          padding: "6px 12px", borderRadius: "var(--dsw-radius-sm)", fontSize: 12, marginBottom: 6,
           background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-label)",
-        }}>{tt(t, "wiki.offline")}</div>
+        }}>{tt(t, "wiki.offline")} — 数据仅本地缓存</div>
       )}
 
-      {/* 批量任务进度条 */}
+      {/* 批量任务进度条（total 未知时 indeterminate 滑动，可取消） */}
       {job && (
         <div style={{ padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>{job.message || (tt(t, "wiki.importing"))}</div>
-          <div style={{ height: 6, borderRadius: 3, background: "var(--dsw-alias-bg-layer-2)", overflow: "hidden" }}>
-            <div style={{
-              height: "100%", width: job.total ? `${Math.min(100, (job.done / job.total) * 100)}%` : "0%",
-              background: "var(--dsw-alias-state-business-primary)", transition: "width 0.3s",
-            }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div style={{ fontSize: 12 }}>{job.message || (tt(t, "wiki.importing"))}</div>
+            <button title={tt(t, "wiki.cancel")} onClick={() => setJob(null)} style={{ ...iconBtn, fontSize: 12 }}>✕</button>
           </div>
-          <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>{job.done} / {job.total}</div>
+          <div style={{ height: 6, borderRadius: 3, background: "var(--dsw-alias-bg-layer-2)", overflow: "hidden", position: "relative" }}>
+            {job.total ? (
+              <div style={{
+                height: "100%", width: `${Math.min(100, (job.done / job.total) * 100)}%`,
+                background: "var(--dsw-alias-state-business-primary)", transition: "width 0.3s ease",
+              }} />
+            ) : (
+              <div style={{
+                position: "absolute", top: 0, bottom: 0, width: "30%", borderRadius: 3,
+                background: "var(--dsw-alias-state-business-primary)",
+                animation: "dsw-indeterminate 1.2s ease-in-out infinite",
+              }} />
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", marginTop: 2 }}>{job.done} / {job.total || "…"}</div>
         </div>
       )}
 
@@ -1567,7 +1579,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             {showMore && (
               <>
                 <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowMore(false)} />
-                <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>
+                <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "var(--dsw-shadow-lv2)" }}>
                   <div onClick={() => { setView("versions"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.versions")}</div>
                   <div onClick={() => { setView("logs"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
                   <div onClick={() => { setView("settings"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
@@ -1655,7 +1667,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               {showPlus && (
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowPlus(false)} />
-                  <div style={{ position: "absolute", left: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>
+                  <div style={{ position: "absolute", left: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "var(--dsw-shadow-lv2)" }}>
                     <div onClick={() => { setShowPlus(false); doNewDoc(); }} style={menuItem}>{tt(t, "wiki.newDoc")}</div>
                     <div onClick={() => { setShowPlus(false); doCreateFolder(null); }} style={menuItem}>{tt(t, "wiki.newFolder")}</div>
                     <div onClick={() => { setShowPlus(false); fileInputRef.current?.click(); }} style={menuItem}>{tt(t, "wiki.importFile")}</div>
@@ -2165,7 +2177,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10001, display: "flex", alignItems: "center", gap: 2, padding: "2px 4px",
                   transform: `translate(${Math.max(0, paraBar.x - 4)}px, ${paraBar.y}px) translate(-100%, -50%)`,
                   background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
-                  borderRadius: "var(--dsw-radius-sm)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", fontSize: 11 }}
+                  borderRadius: "var(--dsw-radius-sm)", boxShadow: "var(--dsw-shadow-lv2)", fontSize: 11 }}
                   onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   onMouseEnter={clearParaTimer} onMouseLeave={paraLeave}>
                   <span style={{ color: "var(--dsw-alias-label-secondary)", whiteSpace: "nowrap" }}>{paraBar.label}</span>
@@ -2177,7 +2189,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10003, display: "flex", flexDirection: "column", gap: 1, padding: 4,
                   transform: `translate(${Math.max(0, vertBar.x - 4)}px, ${vertBar.y}px) translate(-100%, 0)`,
                   background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
-                  borderRadius: "var(--dsw-radius-md)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                  borderRadius: "var(--dsw-radius-md)", boxShadow: "var(--dsw-shadow-lv3)" }}
                   onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   onMouseEnter={clearParaTimer} onMouseLeave={paraLeave}>
                   <VertBtn label="正文" title="正文" active={editor?.isActive("paragraph")} onClick={() => editor?.chain().focus().setParagraph().run()} />
@@ -2256,7 +2268,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             position: "fixed", left: contextMenu.x, top: contextMenu.y,
             background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)",
             border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 140,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            boxShadow: "var(--dsw-shadow-lv2)",
           }}>
             <div onClick={() => {
               setRenamingId(contextMenu.id);
@@ -2320,7 +2332,7 @@ function WikiSidebar(props: WikiSidebarProps) {
 
       {/* 删除确认弹窗（DSH 风格） */}
       {confirmState && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
             width: "min(90%, 420px)", background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 16,
@@ -2357,7 +2369,7 @@ function WikiSidebar(props: WikiSidebarProps) {
 
       {/* 导入网页 URL 对话框 */}
       {urlDialog && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
             width: "90%", maxWidth: 440, background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
@@ -2379,7 +2391,7 @@ function WikiSidebar(props: WikiSidebarProps) {
 
       {/* 重绑定源路径对话框 */}
       {rebindState && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
             width: "90%", maxWidth: 420, background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
@@ -2400,7 +2412,7 @@ function WikiSidebar(props: WikiSidebarProps) {
 
       {/* 文件夹重新选择源对话框 */}
       {folderRebindState && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
             width: "90%", maxWidth: 420, background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
@@ -2455,12 +2467,12 @@ const headerBtn: any = {
 const searchInputStyle: any = {
   height: 32, padding: "0 10px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-md)",
   border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)",
-  color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13,
+  color: "var(--dsw-alias-label-primary)", fontSize: 13,
 };
 const smallInput: any = {
   flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)",
   border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)",
-  color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12,
+  color: "var(--dsw-alias-label-primary)", fontSize: 12,
 };
 const typeBadge: any = {
   fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-secondary)",
@@ -2476,7 +2488,7 @@ const textareaStyle: any = {
   flex: 1, width: "100%", boxSizing: "border-box", resize: "none", padding: 10,
   borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)",
   background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)",
-  fontFamily: "var(--dsw-font-family-mono, monospace)", fontSize: 12, lineHeight: 1.6, outline: "none",
+  fontFamily: "var(--dsw-font-family-mono, monospace)", fontSize: 12, lineHeight: 1.6,
 };
 const emptyHint: any = { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 };
 const menuItem: any = {
@@ -2513,7 +2525,7 @@ function DiffModalBox(props: {
     ctx: { background: "transparent", color: "var(--dsw-alias-label-secondary)", sign: " " },
   };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
       <div style={{
         width: "90%", maxWidth: 560, maxHeight: "80vh", background: "var(--dsw-alias-bg-layer-1)",
         borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 12,
