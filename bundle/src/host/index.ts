@@ -638,6 +638,92 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   let updateCache: { at: number; latestVersion: string } | null = null;
 
   // 可测 API handler（核心路由子集）：直调 dispatchImport/runImportJob/applySettingsPatch 等闭包函数
+  // 回收站操作实现（DB + 物理文件清理）
+  const trashOps: NonNullable<Parameters<typeof createApiHandler>[0]['trash']> = {
+    list: async () => listTrash(),
+    restore: async (id, type) => {
+      if (type === 'file') await restoreFile(id);
+      else await restoreFolderCascade(id);
+    },
+    purge: async (id, type) => {
+      if (type === 'file') {
+        const rec = await getKnowledgeFileById(id);
+        if (rec) {
+          try { await fs.unlink(rec.md_path); } catch { /* ignore */ }
+          try { if (rec.zip_archive_path) await fs.unlink(rec.zip_archive_path); } catch { /* ignore */ }
+        }
+        await purgeFileRow(id);
+      } else {
+        // 递归收集子项
+        const queue: number[] = [id];
+        const allFolders: number[] = [];
+        while (queue.length) {
+          const fid = queue.shift()!;
+          allFolders.push(fid);
+          const children = await all<{ id: number }>('SELECT id FROM folders WHERE parent_id = ?', [fid]);
+          for (const c of children) queue.push(c.id);
+        }
+        for (const fid of allFolders) {
+          const files = await all<{ id: number; md_path: string; zip_archive_path: string }>(
+            'SELECT id, md_path, zip_archive_path FROM knowledge_files WHERE folder_id = ?', [fid]);
+          for (const f of files) {
+            try { await fs.unlink(f.md_path); } catch { /* ignore */ }
+            try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
+            await purgeFileRow(f.id);
+          }
+          await purgeFolderRow(fid);
+        }
+      }
+    },
+    empty: async () => {
+      const trashFiles = await listTrashFiles();
+      for (const f of trashFiles) {
+        try { await fs.unlink(f.md_path); } catch { /* ignore */ }
+        try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
+        await purgeFileRow(f.id);
+      }
+      const trashFolders = await listTrashFolderIds();
+      for (const fid of trashFolders) await purgeFolderRow(fid);
+      return { files: trashFiles.length, folders: trashFolders.length };
+    },
+  };
+
+  // ZIP 导出实现
+  const exportZipOp = async () => {
+    const files = await listKnowledgeFiles();
+    if (files.length === 0) {
+      const e: any = new Error('知识库为空，无可导出内容');
+      e.httpStatus = 400;
+      throw e;
+    }
+    const archiver = (await import('archiver')).default;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `wiki-export-${stamp}.zip`;
+    const outPath = path.join(settings.zipStoragePath, fileName);
+    await fs.mkdir(settings.zipStoragePath, { recursive: true });
+    const output = fs.createWriteStream(outPath);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        output.on('close', () => resolve());
+        archive.on('error', (err: Error) => reject(err));
+        archive.pipe(output);
+        for (const f of files) {
+          if (existsSync(f.md_path)) {
+            archive.file(f.md_path, { name: f.file_name });
+          }
+        }
+        archive.finalize();
+      });
+    } catch (e) {
+      // 流中断：清理半成品
+      try { await fs.unlink(outPath); } catch { /* ignore */ }
+      throw e;
+    }
+    const size = (await fs.stat(outPath)).size;
+    return { path: outPath, fileName, size, count: files.length };
+  };
+
   const apiHandler = createApiHandler({
     publicSettings,
     applySettingsPatch,
@@ -654,6 +740,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     writeLog,
     randomUUID,
     pruneJobs,
+    trash: trashOps,
+    exportZip: exportZipOp,
   });
 
   // 启动 HTTP API server（供客户端 UI 调用）

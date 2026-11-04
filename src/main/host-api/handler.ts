@@ -45,6 +45,14 @@ export interface ApiDeps {
   writeLog: (action: string, detail: string, opts?: { level?: string }) => Promise<void>;
   randomUUID: () => string;
   pruneJobs?: () => void;
+  // trash/export（可选；未注入时对应路由走 501 未实现）
+  trash?: {
+    list: () => Promise<{ files: any[]; folders: any[] }>;
+    restore: (id: number, type: 'file' | 'folder') => Promise<void>;
+    purge: (id: number, type: 'file' | 'folder') => Promise<void>;
+    empty: () => Promise<{ files: number; folders: number }>;
+  };
+  exportZip?: () => Promise<{ path: string; fileName: string; size: number; count: number }>;
 }
 
 export interface ApiResponse {
@@ -172,6 +180,54 @@ export function createApiHandler(deps: ApiDeps) {
         await applySettingsPatch(body);
         writeLog('settings-update', '设置已保存', { level: 'info' }).catch(() => {});
         return { status: 200, body: { status: 'saved', settings: publicSettings() } };
+      }
+
+      // ---- 回收站 ----
+      if (method === 'GET' && pathname === '/api/wiki/trash') {
+        if (!deps.trash) return { status: 501, body: { error: 'trash not configured' } };
+        return { status: 200, body: await deps.trash.list() };
+      }
+      if (method === 'POST' && pathname === '/api/wiki/trash/restore') {
+        if (!deps.trash) return { status: 501, body: { error: 'trash not configured' } };
+        const parsed = parseJson(rawBody);
+        if (!parsed.ok) return { status: 400, body: { error: '请求体不是合法 JSON' } };
+        const body = parsed.value;
+        const id = Number(body?.id);
+        const type = body?.type;
+        if (!Number.isFinite(id) || (type !== 'file' && type !== 'folder')) {
+          return { status: 400, body: { error: '需要 {id:number, type:"file"|"folder"}' } };
+        }
+        await deps.trash.restore(id, type);
+        writeLog('trash-restore', `${type} id=${id}`).catch(() => {});
+        return { status: 200, body: { status: 'restored', id, type } };
+      }
+      if (method === 'POST' && pathname === '/api/wiki/trash/empty') {
+        if (!deps.trash) return { status: 501, body: { error: 'trash not configured' } };
+        const r = await deps.trash.empty();
+        writeLog('trash-empty', `清空回收站：${r.files} 文件 / ${r.folders} 文件夹`).catch(() => {});
+        return { status: 200, body: { status: 'emptied', ...r } };
+      }
+      // DELETE /trash/:type/:id
+      if (method === 'DELETE' && pathname.startsWith('/api/wiki/trash/')) {
+        if (!deps.trash) return { status: 501, body: { error: 'trash not configured' } };
+        const rest = pathname.slice('/api/wiki/trash/'.length);
+        const seg = rest.split('/');
+        if (seg.length !== 2) return { status: 400, body: { error: '路径应为 /trash/:type/:id' } };
+        const type = seg[0];
+        const id = Number(seg[1]);
+        if (type !== 'file' && type !== 'folder') return { status: 400, body: { error: 'type 必须为 file|folder' } };
+        if (!Number.isFinite(id)) return { status: 400, body: { error: '非法 id' } };
+        await deps.trash.purge(id, type);
+        writeLog('trash-purge', `${type} id=${id} 已物理删除`).catch(() => {});
+        return { status: 200, body: { status: 'purged', id, type } };
+      }
+
+      // ---- 导出 ZIP ----
+      if (method === 'POST' && pathname === '/api/wiki/export/zip') {
+        if (!deps.exportZip) return { status: 501, body: { error: 'export not configured' } };
+        const r = await deps.exportZip();
+        writeLog('export-zip', `导出 ${r.count} 文件 → ${r.fileName} (${r.size} bytes)`).catch(() => {});
+        return { status: 200, body: r };
       }
 
       return { status: 404, body: { error: 'not found', path: pathname } };
