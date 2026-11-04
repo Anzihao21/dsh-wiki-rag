@@ -9,7 +9,7 @@ import {
   isDbInitialized,
   getDbPath,
 } from '../sqlite-init';
-import { writeLog } from '../log-db';
+import { writeLog, listLogs } from '../log-db';
 
 let tmpDir = '';
 
@@ -75,5 +75,16 @@ describe('sqlite-init 崩溃自愈', () => {
     // 备份文件内容仍是原始损坏字节
     const backupContent = await fs.readFile(path.join(tmpDir, backup!), 'utf-8');
     expect(backupContent).toContain('not a sqlite');
+  });
+
+  it('重建后的空库可正常读写（operation_log 写入后可查询）', async () => {
+    const dbPath = path.join(tmpDir, 'recover.db');
+    await fs.writeFile(dbPath, 'garbage\x00\x01');
+    await initDatabase(dbPath);
+    await writeLog('a', '1');
+    await writeLog('b', '2', { level: 'error' });
+    const rows = await listLogs(10);
+    expect(rows.length).toBe(2);
+    expect(rows[0].action).toBe('b');
   });
 });
