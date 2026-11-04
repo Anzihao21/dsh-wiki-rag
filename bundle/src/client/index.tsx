@@ -525,9 +525,9 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
         }}>
           <span style={{
             flexShrink: 0, fontWeight: 700, fontSize: 12, lineHeight: "16px",
-            color: t.type === "error" ? "var(--dsw-alias-state-danger)"
-              : t.type === "success" ? "var(--dsw-alias-state-success)"
-              : "var(--dsw-alias-state-business-primary)",
+            color: t.type === "error" ? "var(--dsw-alias-state-error-primary)"
+              : t.type === "success" ? "var(--dsw-alias-state-success-primary)"
+              : "var(--dsw-alias-state-warn-label)",
           }}>{t.type === "error" ? "✕" : t.type === "success" ? "✓" : "ℹ"}</span>
           <span style={{ flex: 1 }}>{t.msg}</span>
         </div>
@@ -590,7 +590,7 @@ class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string; re
             style={{
               marginTop: 12, height: 28, padding: "0 12px", borderRadius: "var(--dsw-radius-sm)",
               border: "none", background: "var(--dsw-alias-state-business-primary)",
-              color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: exhausted ? "not-allowed" : "pointer",
+              color: "var(--dsw-alias-label-primary-foreground)", fontSize: 12, cursor: exhausted ? "not-allowed" : "pointer",
               opacity: exhausted ? 0.5 : 1,
             }}
           >
@@ -662,9 +662,9 @@ interface WikiSidebarProps {
 }
 
 function statusStyle(status: WikiDoc["status"]) {
-  if (status === "error") return { label: "异常", color: "var(--dsw-alias-state-danger)" };
-  if (status === "stale") return { label: "待同步", color: "var(--dsw-alias-state-warning)" };
-  return { label: "已索引", color: "var(--dsw-alias-state-success)" };
+  if (status === "error") return { label: "异常", color: "var(--dsw-alias-state-error-primary)" };
+  if (status === "stale") return { label: "待同步", color: "var(--dsw-alias-state-warn-primary)" };
+  return { label: "已索引", color: "var(--dsw-alias-state-success-primary)" };
 }
 
 function WikiSidebar(props: WikiSidebarProps) {
@@ -1405,7 +1405,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
-    <div style={fullscreen ? { ...rootStyle, position: "fixed", inset: 0, zIndex: 10050, background: "var(--dsw-alias-bg-layer-0)" } : { ...rootStyle, position: "relative" }}
+    <div style={fullscreen ? { ...rootStyle, position: "fixed", inset: 0, zIndex: 10050, background: "var(--dsw-alias-bg-base)" } : { ...rootStyle, position: "relative" }}
       onDragEnter={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); dragDepth.current++; setDragOver(true); } }}
       onDragOver={(e) => { if (e.dataTransfer?.files?.length) e.preventDefault(); }}
       onDragLeave={(e) => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragOver(false); } }}
@@ -1431,7 +1431,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       {offline && (
         <div style={{
           padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
-          background: "var(--dsw-alias-state-warning)", color: "var(--dsw-alias-label-on-primary)",
+          background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-label)",
         }}>{tt(t, "wiki.offline")}</div>
       )}
 
@@ -1462,7 +1462,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               title={tt(t, "wiki.pendingChanges")}
               style={{
                 ...headerBtn, position: "relative", width: 26, height: 26,
-                background: "var(--dsw-alias-state-warning)", color: "var(--dsw-alias-label-on-primary)",
+                background: "var(--dsw-alias-state-warn-primary)", color: "var(--dsw-alias-label-primary-foreground)",
                 fontSize: 11, fontWeight: 700,
               }}>
               {pendingChanges.filter((c: any) => !c.shelved).length}
@@ -1511,7 +1511,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               {favs.size > 0 && (
                 <>
                   <div onClick={() => setShowFavs(!showFavs)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: "var(--dsw-alias-label-secondary)", padding: "2px 6px", fontWeight: 600 }}>
-                    <span>{showFavs ? "▾" : "▸"}</span><span style={{ color: "var(--dsw-alias-state-warning)" }}>★</span> {tt(t, "wiki.favSection")} ({favs.size})
+                    <span>{showFavs ? "▾" : "▸"}</span><span style={{ color: "var(--dsw-alias-state-warn-primary)" }}>★</span> {tt(t, "wiki.favSection")} ({favs.size})
                   </div>
                   {showFavs && [...favs].map((fid) => {
                     const d = docs.find((x) => x.id === fid);
@@ -1688,7 +1688,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                           <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") doRenameFolder(row.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
                             onBlur={() => doRenameFolder(row.id)}
-                            style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                            style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
                         ) : (
                           <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
                         )}
@@ -1720,13 +1720,13 @@ function WikiSidebar(props: WikiSidebarProps) {
                         <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") doRenameDoc(d.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
                           onBlur={() => doRenameDoc(d.id)}
-                          style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                          style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
                       ) : (
                         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }}>{row.title}</span>
                       )}
                       <button title={favs.has(d.id) ? tt(t, "wiki.unfav") : tt(t, "wiki.fav")}
                         onClick={(e) => { e.stopPropagation(); toggleFav(d.id); }}
-                        style={{ ...iconBtn, flexShrink: 0, fontSize: 13, width: 18, height: 18, color: favs.has(d.id) ? "var(--dsw-alias-state-warning)" : "var(--dsw-alias-label-tertiary)" }}>{favs.has(d.id) ? "★" : "☆"}</button>
+                        style={{ ...iconBtn, flexShrink: 0, fontSize: 13, width: 18, height: 18, color: favs.has(d.id) ? "var(--dsw-alias-state-warn-primary)" : "var(--dsw-alias-label-tertiary)" }}>{favs.has(d.id) ? "★" : "☆"}</button>
                       {/* 状态点：正常(ready)不显示，仅异常/待同步显示 */}
                       {d.status !== "ready" && <span style={{ fontSize: 10, color: st.color }}>●</span>}
                     </div>
@@ -1750,9 +1750,9 @@ function WikiSidebar(props: WikiSidebarProps) {
             )}
             {/* 状态图例 */}
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 1 }}>
-              <span><span style={{ color: "var(--dsw-alias-state-success)" }}>●</span> {tt(t, "wiki.statusReady")}</span>
-              <span><span style={{ color: "var(--dsw-alias-state-warning)" }}>●</span> {tt(t, "wiki.statusStale")}</span>
-              <span><span style={{ color: "var(--dsw-alias-state-danger)" }}>●</span> {tt(t, "wiki.statusError")}</span>
+              <span><span style={{ color: "var(--dsw-alias-state-success-primary)" }}>●</span> {tt(t, "wiki.statusReady")}</span>
+              <span><span style={{ color: "var(--dsw-alias-state-warn-primary)" }}>●</span> {tt(t, "wiki.statusStale")}</span>
+              <span><span style={{ color: "var(--dsw-alias-state-error-primary)" }}>●</span> {tt(t, "wiki.statusError")}</span>
             </div>
           </div>
         </div>
@@ -2105,7 +2105,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               if (contextMenu.kind === "doc") doDelete(String(contextMenu.id));
               else doDeleteFolder(Number(contextMenu.id));
               setContextMenu(null);
-            }} style={{ ...menuItem, color: "var(--dsw-alias-state-danger)" }}>{tt(t, "wiki.delete")}</div>
+            }} style={{ ...menuItem, color: "var(--dsw-alias-state-error-primary)" }}>{tt(t, "wiki.delete")}</div>
           </div>
         </div>
       )}
@@ -2132,7 +2132,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setConfirmState(null)} style={ghostBtn}>{tt(t, "wiki.cancel")}</button>
               <button onClick={() => { const cb = confirmState.onYes; setConfirmState(null); cb(); }}
-                style={{ ...primaryBtn, background: "var(--dsw-alias-state-danger)" }}>{tt(t, "wiki.confirm")}</button>
+                style={{ ...primaryBtn, background: "var(--dsw-alias-state-error-primary)" }}>{tt(t, "wiki.confirm")}</button>
             </div>
           </div>
         </div>
@@ -2242,7 +2242,7 @@ const editorStyle: any = {
 const iconBtn: any = { border: "none", background: "transparent", cursor: "pointer", color: "var(--dsw-alias-label-secondary)", fontSize: 16, padding: 2 };
 const primaryBtn: any = {
   height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)", border: "none",
-  background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-on-primary)", fontSize: 12, cursor: "pointer",
+  background: "var(--dsw-alias-state-business-primary)", color: "var(--dsw-alias-label-primary-foreground)", fontSize: 12, cursor: "pointer",
 };
 const ghostBtn: any = {
   height: 26, padding: "0 10px", borderRadius: "var(--dsw-radius-sm)", border: "1px solid var(--dsw-alias-border-l4)",
@@ -2259,7 +2259,7 @@ const searchInputStyle: any = {
 };
 const smallInput: any = {
   flex: 1, height: 28, padding: "0 8px", boxSizing: "border-box", borderRadius: "var(--dsw-radius-sm)",
-  border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-0)",
+  border: "1px solid var(--dsw-alias-border-l4)", background: "var(--dsw-alias-bg-layer-1)",
   color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 12,
 };
 const typeBadge: any = {
@@ -2307,9 +2307,9 @@ function DiffModalBox(props: {
   const { modal, t, onClose, onAccept, onReject, onShelve } = props;
   const rows = computeDiff(modal.old, modal.new);
   const rowColor: Record<string, any> = {
-    add: { background: "var(--dsw-alias-state-success-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-success)", sign: "+" },
-    del: { background: "var(--dsw-alias-state-danger-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-danger)", sign: "-" },
-    mod: { background: "var(--dsw-alias-state-warning-bg, var(--dsw-alias-bg-layer-2))", color: "var(--dsw-alias-state-warning)", sign: "~" },
+    add: { background: "var(--dsw-alias-code-diff-added)", color: "var(--dsw-alias-state-success-primary)", sign: "+" },
+    del: { background: "var(--dsw-alias-code-diff-deleted)", color: "var(--dsw-alias-state-error-primary)", sign: "-" },
+    mod: { background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-primary)", sign: "~" },
     ctx: { background: "transparent", color: "var(--dsw-alias-label-secondary)", sign: " " },
   };
   return (
