@@ -871,21 +871,33 @@ function WikiSidebar(props: WikiSidebarProps) {
     return () => clearInterval(t);
   }, [pollPending]);
 
-  // ---------- 快捷键 Ctrl+S 保存 / Ctrl+F 聚焦搜索 ----------
+  // ---------- 快捷键 Ctrl+S 保存 / Ctrl+F、Ctrl+P 聚焦搜索 / Esc 分层关闭 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (view === "editor") saveEdit();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "p")) {
         e.preventDefault();
         searchInputRef.current?.focus();
+      } else if (e.key === "Escape") {
+        // 分层关闭：弹窗 → 菜单 → 搜索面板；重命名/URL 输入框自身已有 Esc
+        if (diffModal) setDiffModal(null);
+        else if (verPreview) setVerPreview(null);
+        else if (confirmState) setConfirmState(null);
+        else if (urlDialog) { setUrlDialog(false); setUrlInput(""); }
+        else if (rebindState) setRebindState(null);
+        else if (folderRebindState) setFolderRebindState(null);
+        else if (contextMenu) setContextMenu(null);
+        else if (showMore) setShowMore(false);
+        else if (showPlus) setShowPlus(false);
+        else if (searchingMode) { setQ(""); setSearchResults(null); }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, activeId]);
+  }, [view, activeId, diffModal, verPreview, confirmState, urlDialog, rebindState, folderRebindState, contextMenu, showMore, showPlus, searchingMode]);
 
 
 
@@ -2241,10 +2253,14 @@ function WikiSidebar(props: WikiSidebarProps) {
           ) : (
             /* 空状态：引导 + 统计概览 */
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-              <div style={{ fontSize: 30 }}>📚</div>
+              <div style={{ color: "var(--dsw-alias-label-tertiary)" }}><WikiIcon size={48} /></div>
               <div style={{ fontSize: 15, fontWeight: 600 }}>{tt(t, "wiki.emptyTitle")}</div>
               <div style={{ fontSize: 12, color: "var(--dsw-alias-label-tertiary)", textAlign: "center", maxWidth: 320, lineHeight: 1.6 }}>
                 {tt(t, "wiki.emptyHint")}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button onClick={() => fileInputRef.current?.click()} style={primaryBtn}>{tt(t, "wiki.importFile")}</button>
+                <button onClick={doNewDoc} style={ghostBtn}>{tt(t, "wiki.newDoc")}</button>
               </div>
               {stats.total > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 4 }}>
