@@ -1,0 +1,194 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
+  toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
+  saveSearchHistory, loadEditTimes, markEdited,
+  type TreeNode,
+} from "../logic";
+
+beforeEach(() => {
+  try { localStorage.clear(); } catch { /* node 无 localStorage */ }
+});
+
+// ---------------- computeDiff ----------------
+describe("computeDiff", () => {
+  it("增：old 为空 new 有内容 → 含 add 行", () => {
+    const rows = computeDiff("", "a\nb");
+    expect(rows.some((r) => r.type === "add")).toBe(true);
+    expect(rows.some((r) => r.newText === "b")).toBe(true);
+  });
+  it("删：new 为空 → 含 del 行", () => {
+    const rows = computeDiff("a\nb", "");
+    expect(rows.some((r) => r.type === "del")).toBe(true);
+  });
+  it("改：对应行 old 有 new 无反向 → mod", () => {
+    const rows = computeDiff("x", "y");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe("mod");
+    expect(rows[0].oldText).toBe("x");
+    expect(rows[0].newText).toBe("y");
+  });
+  it("上下文混合：相同行 ctx + 前后增删", () => {
+    const rows = computeDiff("head\nold\ntail", "head\nnew\ntail");
+    expect(rows[0]).toMatchObject({ type: "ctx", oldText: "head" });
+    expect(rows[1]).toMatchObject({ type: "mod", oldText: "old", newText: "new" });
+    expect(rows[2]).toMatchObject({ type: "ctx", oldText: "tail" });
+  });
+  it("完全相同 → 全 ctx", () => {
+    const rows = computeDiff("a\nb", "a\nb");
+    expect(rows.every((r) => r.type === "ctx")).toBe(true);
+  });
+  it("空输入行为稳定（单行空 ctx，不抛）", () => {
+    expect(() => computeDiff("", "")).not.toThrow();
+    expect(() => computeDiff(undefined as any, undefined as any)).not.toThrow();
+  });
+});
+
+// ---------------- flattenTree / 树 ----------------
+const tree: TreeNode[] = [
+  { type: "doc", fileId: 1, title: "root.md" },
+  { type: "folder", id: 10, name: "A", children: [
+    { type: "doc", fileId: 2, title: "a1.md" },
+    { type: "folder", id: 11, name: "B", children: [
+      { type: "doc", fileId: 3, title: "b1.md" },
+    ]},
+  ]},
+];
+
+describe("flattenTree", () => {
+  it("未展开时只输出根级 doc + folder 头", () => {
+    const out: any[] = [];
+    flattenTree(tree, 0, new Set(), out);
+    expect(out.map((r) => [r.rowType, r.id, r.depth])).toEqual([
+      ["doc", 1, 0], ["folder", 10, 0],
+    ]);
+  });
+  it("展开 A 输出嵌套 doc，展开 B 再深一层", () => {
+    const out: any[] = [];
+    flattenTree(tree, 0, new Set([10, 11]), out);
+    expect(out.map((r) => [r.rowType, r.id, r.depth])).toEqual([
+      ["doc", 1, 0],
+      ["folder", 10, 0],
+      ["doc", 2, 1],
+      ["folder", 11, 1],
+      ["doc", 3, 2],
+    ]);
+  });
+  it("undefined 安全", () => {
+    const out: any[] = [];
+    flattenTree(undefined, 0, new Set(), out);
+    expect(out).toEqual([]);
+  });
+});
+
+describe("collectFolderIds", () => {
+  it("收集全部子孙文件夹 id", () => {
+    expect([...collectFolderIds(tree, new Set())].sort()).toEqual([10, 11]);
+  });
+});
+
+describe("subtreeFolderIds", () => {
+  it("某文件夹的子孙集", () => {
+    expect([...subtreeFolderIds(tree, 10)].sort()).toEqual([11]);
+  });
+  it("不存在的 id 返回空集", () => {
+    expect(subtreeFolderIds(tree, 999).size).toBe(0);
+  });
+});
+
+describe("findDocFolderPath", () => {
+  it("根级文档返回 []", () => {
+    expect(findDocFolderPath(tree, 1)).toEqual([]);
+  });
+  it("嵌套文档返回祖先链", () => {
+    expect(findDocFolderPath(tree, 3)).toEqual([10, 11]);
+  });
+  it("找不到返回 null", () => {
+    expect(findDocFolderPath(tree, 42)).toBeNull();
+  });
+});
+
+// ---------------- toBase64 ----------------
+describe("toBase64", () => {
+  it("ASCII 往返", () => {
+    const buf = new TextEncoder().encode("hello");
+    expect(Buffer.from(toBase64(buf), "base64").toString()).toBe("hello");
+  });
+  it("空输入", () => {
+    expect(toBase64(new Uint8Array(0))).toBe("");
+  });
+});
+
+// ---------------- makeTranslator / tt ----------------
+describe("makeTranslator", () => {
+  const t = makeTranslator({ "k1": "fallback1", "k2": "hi {n}" });
+  it("缺失 key 返回 key 本身", () => {
+    expect(t(undefined, "nope")).toBe("nope");
+  });
+  it("本地兜底命中", () => {
+    expect(t(undefined, "k1")).toBe("fallback1");
+  });
+  it("{n} 插值", () => {
+    expect(t(undefined, "k2", { n: 3 })).toBe("hi 3");
+  });
+  it("宿主值优先", () => {
+    const host = (k: string) => (k === "k1" ? "host1" : k);
+    expect(t(host, "k1")).toBe("host1");
+  });
+  it("宿主抛错回退本地", () => {
+    const host = () => { throw new Error("x"); };
+    expect(t(host, "k1")).toBe("fallback1");
+  });
+});
+
+// ---------------- shouldLeaveGuard ----------------
+describe("shouldLeaveGuard", () => {
+  it("编辑器有改动 → true", () => {
+    expect(shouldLeaveGuard("editor", "1", "changed", "saved")).toBe(true);
+  });
+  it("编辑器无改动 → false", () => {
+    expect(shouldLeaveGuard("editor", "1", "same", "same")).toBe(false);
+  });
+  it("非编辑态 → false", () => {
+    expect(shouldLeaveGuard("preview", "1", "changed", "saved")).toBe(false);
+  });
+  it("无 activeId → false", () => {
+    expect(shouldLeaveGuard("editor", null, "changed", "saved")).toBe(false);
+  });
+});
+
+// ---------------- isJobTimedOut ----------------
+describe("isJobTimedOut", () => {
+  it("恰 60000ms → false（不超时）", () => {
+    expect(isJobTimedOut(0, 60000)).toBe(false);
+  });
+  it("60001ms → true", () => {
+    expect(isJobTimedOut(0, 60001)).toBe(true);
+  });
+});
+
+// ---------------- 搜索历史（node 无 localStorage → 回退） ----------------
+describe("searchHistory", () => {
+  it("node 无 localStorage 时安全返回空", () => {
+    expect(loadSearchHistory()).toEqual([]);
+  });
+});
+
+// ---------------- 树规模性能（宽松，防 flaky） ----------------
+describe("flattenTree 规模", () => {
+  it("5000 节点 flatten+展开 < 100ms", () => {
+    // 构造 50 个文件夹 × 100 文档 = 5000 节点
+    const big: TreeNode[] = [];
+    for (let f = 0; f < 50; f++) {
+      const folder: TreeNode = { type: "folder", id: f, name: `f${f}`, children: [] };
+      for (let d = 0; d < 100; d++) folder.children!.push({ type: "doc", fileId: f * 1000 + d, title: `d${d}.md` });
+      big.push(folder);
+    }
+    const t0 = Date.now();
+    const out: any[] = [];
+    flattenTree(big, 0, new Set([...Array(50).keys()]), out);
+    const ms = Date.now() - t0;
+    expect(out.length).toBe(50 * 101); // 50 folder 头 + 5000 doc
+    expect(ms).toBeLessThan(100);
+  });
+});
