@@ -2765,7 +2765,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   else if (e.key === "ArrowUp") { e.preventDefault(); setCmdSel((s) => Math.max(s - 1, 0)); }
                   else if (e.key === "Enter") { e.preventDefault(); pick(sel); }
                 }} />
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
+              <div role="listbox" style={{ maxHeight: 320, overflowY: "auto" }}>
                 {filtered.length === 0 && <div style={{ padding: 16, color: "var(--dsw-alias-label-tertiary)", fontSize: 13 }}>{tt(t, "wiki.noResult")}</div>}
                 {filtered.map((it, i) => (
                   <div key={it.key} onMouseEnter={() => setCmdSel(i)} onClick={() => pick(i)}
