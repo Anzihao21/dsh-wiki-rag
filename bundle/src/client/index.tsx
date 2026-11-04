@@ -1885,7 +1885,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 6px", fontSize: 10, color: "var(--dsw-alias-label-tertiary)" }}>
                     <span>{tt(t, "wiki.searchHistory")}</span>
                     <button style={{ border: "none", background: "none", cursor: "pointer", color: "var(--dsw-alias-label-tertiary)", fontSize: 10 }}
-                      onClick={() => { setSearchHistory([]); try { localStorage.removeItem("dsh-wiki-rag:searchHistory"); } catch {} }}>{tt(t, "wiki.clear")}</button>
+                      onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); try { localStorage.removeItem("dsh-wiki-rag:searchHistory"); } catch {} }}>{tt(t, "wiki.clear")}</button>
                   </div>
                   {searchHistory.map((h) => (
                     <div key={h} onMouseDown={() => { setQ(h); doSearch(h); setHistoryOpen(false); searchInputRef.current?.blur(); }}
