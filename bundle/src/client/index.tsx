@@ -2746,13 +2746,13 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* 命令面板 Ctrl+P */}
       {cmdOpen && createPortal((() => {
         const cmds = [
-          { key: "new", title: tt(t, "wiki.newDoc"), run: () => { setCmdOpen(false); requestLeave(() => { setUrlDialog(true); }); } },
-          { key: "import", title: tt(t, "wiki.import"), run: () => { setCmdOpen(false); fileInputRef.current?.click(); } },
-          { key: "search", title: tt(t, "wiki.search"), run: () => { setCmdOpen(false); searchInputRef.current?.focus(); } },
-          { key: "trash", title: tt(t, "wiki.trash"), run: () => { setCmdOpen(false); requestLeave(() => { setView("trash"); loadTrash(); }); } },
-          { key: "emptyTrash", title: tt(t, "wiki.trashEmptyAll"), run: () => { setCmdOpen(false); setConfirmState({ message: tt(t, "wiki.confirmEmptyTrash"), onYes: async () => { try { await apiTrashEmpty(); notify("success", tt(t, "wiki.trashEmptied")); } catch (e: any) { notify("error", e?.message || "清空失败"); } loadTrash(); } }); } },
-          { key: "exportDoc", title: tt(t, "wiki.export"), run: () => { setCmdOpen(false); if (activeId) exportDoc(activeId); } },
-          { key: "settings", title: tt(t, "wiki.settings"), run: () => { setCmdOpen(false); requestLeave(() => setView("settings")); } },
+          { key: "new", title: tt(t, "wiki.newDoc"), desc: tt(t, "wiki.cmdNewDesc"), run: () => { setCmdOpen(false); requestLeave(() => { setUrlDialog(true); }); } },
+          { key: "import", title: tt(t, "wiki.import"), desc: tt(t, "wiki.cmdImportDesc"), run: () => { setCmdOpen(false); fileInputRef.current?.click(); } },
+          { key: "search", title: tt(t, "wiki.search"), desc: tt(t, "wiki.cmdSearchDesc"), run: () => { setCmdOpen(false); searchInputRef.current?.focus(); } },
+          { key: "trash", title: tt(t, "wiki.trash"), desc: tt(t, "wiki.cmdTrashDesc"), run: () => { setCmdOpen(false); requestLeave(() => { setView("trash"); loadTrash(); }); } },
+          { key: "emptyTrash", title: tt(t, "wiki.trashEmptyAll"), desc: tt(t, "wiki.cmdEmptyTrashDesc"), run: () => { setCmdOpen(false); setConfirmState({ message: tt(t, "wiki.confirmEmptyTrash"), onYes: async () => { try { await apiTrashEmpty(); notify("success", tt(t, "wiki.trashEmptied")); } catch (e: any) { notify("error", e?.message || "清空失败"); } loadTrash(); } }); } },
+          { key: "exportDoc", title: tt(t, "wiki.export"), desc: tt(t, "wiki.cmdExportDesc"), run: () => { setCmdOpen(false); if (activeId) exportDoc(activeId); } },
+          { key: "settings", title: tt(t, "wiki.settings"), desc: tt(t, "wiki.cmdSettingsDesc"), run: () => { setCmdOpen(false); requestLeave(() => setView("settings")); } },
         ];
         const docItems = docs.slice(0, 50).map((d) => ({ key: "doc:" + d.id, title: d.title, run: () => { setCmdOpen(false); openDoc(d.id); } }));
         const all = [...cmds, ...docItems];
@@ -2775,7 +2775,8 @@ function WikiSidebar(props: WikiSidebarProps) {
                 {filtered.map((it, i) => (
                   <div key={it.key} onMouseEnter={() => setCmdSel(i)} onClick={() => pick(i)}
                     style={{ padding: "8px 14", cursor: "pointer", fontSize: 13, background: i === sel ? "var(--dsw-alias-interactive-bg-hover)" : "transparent", color: "var(--dsw-alias-label-primary)" }}>
-                    {it.title}
+                    <div>{it.title}</div>
+                    {it.desc && <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{it.desc}</div>}
                   </div>
                 ))}
               </div>
@@ -3127,6 +3128,7 @@ function apply(ctx: any): void {
       "wiki.selectedCount": "已选 {n} 项", "wiki.batchMove": "移动到…", "wiki.batchMoveTo": "移动到文件夹",
       "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
       "wiki.trash": "回收站", "wiki.trashEmpty": "回收站为空", "wiki.trashEmptyAll": "清空回收站", "wiki.confirmEmptyTrash": "确定清空回收站？此操作不可恢复", "wiki.trashEmptied": "已清空回收站",
+      "wiki.cmdNewDesc": "在根目录创建新 Markdown", "wiki.cmdImportDesc": "从磁盘导入文件", "wiki.cmdSearchDesc": "聚焦搜索框", "wiki.cmdTrashDesc": "打开回收站视图", "wiki.cmdEmptyTrashDesc": "清空回收站所有内容", "wiki.cmdExportDesc": "导出当前文档为 Markdown", "wiki.cmdSettingsDesc": "打开设置视图",
       "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
       "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
       "wiki.cmdPlaceholder": "输入命令或搜索文档…",
@@ -3200,6 +3202,7 @@ function apply(ctx: any): void {
       "wiki.selectedCount": "{n} selected", "wiki.batchMove": "Move to…", "wiki.batchMoveTo": "Move to folder",
       "wiki.batchDeleteConfirm": "Delete {n} selected documents? This cannot be undone.",
       "wiki.trash": "Trash", "wiki.trashEmpty": "Trash is empty", "wiki.trashEmptyAll": "Empty trash", "wiki.confirmEmptyTrash": "Empty trash? This cannot be undone", "wiki.trashEmptied": "Trash emptied",
+      "wiki.cmdNewDesc": "Create a new Markdown at root", "wiki.cmdImportDesc": "Import files from disk", "wiki.cmdSearchDesc": "Focus the search box", "wiki.cmdTrashDesc": "Open the trash view", "wiki.cmdEmptyTrashDesc": "Remove all items in trash", "wiki.cmdExportDesc": "Export current doc as Markdown", "wiki.cmdSettingsDesc": "Open settings view",
       "wiki.trashRestored": "Restored", "wiki.trashPurged": "Permanently deleted",
       "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
       "wiki.cmdPlaceholder": "Type a command or search documents…",
