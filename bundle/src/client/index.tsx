@@ -1513,6 +1513,10 @@ function WikiSidebar(props: WikiSidebarProps) {
   }, [tree]);
 
   // ---------- 树扁平化为虚拟滚动行（展开的空文件夹追加占位行） ----------
+  // 大列表（5000行）状态路径复查（v0.0.13d）：
+  //   rows useMemo 依赖最小 [tree, expandedFolders]；scroll 事件 rAF 合并（见 onScroll）；
+  //   visibleRows=rows.slice 只渲染视口±2缓冲；文档切换 openDoc 不触发 rows 重算。
+  //   结论：setState 频率可控，无需进一步优化。
   const rows: FlatRow[] = useMemo(() => {
     const base: FlatRow[] = [];
     flattenTree(tree, 0, expandedFolders, base);
