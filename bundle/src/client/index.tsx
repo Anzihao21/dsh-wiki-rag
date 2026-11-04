@@ -598,6 +598,8 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [linkMenu, setLinkMenu] = useState<{ x: number; y: number; q: string } | null>(null);
   const [linkSel, setLinkSel] = useState(0);
   const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
+  const [backlinks, setBacklinks] = useState<any[] | null>(null);
+  const [showBack, setShowBack] = useState(false);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -1264,6 +1266,16 @@ function WikiSidebar(props: WikiSidebarProps) {
       if (editor) editor.commands.setContent(mdToHtml(c));
     }
   }, [editor]);
+
+  // 反向链接：用当前文档标题搜 /search，列出引用它的其他文档
+  const loadBacklinks = useCallback(async () => {
+    if (!activeDoc?.title) { setBacklinks([]); return; }
+    setBacklinks(null);
+    try {
+      const hits = await apiSearch(activeDoc.title);
+      setBacklinks(dedupeRefs(hits || [], activeDoc.id));
+    } catch { setBacklinks([]); }
+  }, [activeDoc]);
 
   // 未保存离开守卫：编辑态有改动时先弹确认（保存并离开 / 放弃 / 取消）
   const requestLeave = useCallback((action: () => void) => {
@@ -2311,6 +2323,25 @@ function WikiSidebar(props: WikiSidebarProps) {
                     );
                   })()}
                 </div>
+                <div style={{ position: "relative" }}>
+                  <button title={tt(t, "wiki.backlinks")} onClick={() => { setBacklinks(null); loadBacklinks(); setTocOpen(false); setShowBack(!showBack); }} style={iconBtn}>@</button>
+                  {showBack && (
+                    <>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowBack(false)} />
+                      <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 240, maxHeight: 320, overflowY: "auto", boxShadow: "var(--dsw-shadow-lv2)" }}>
+                        <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>{tt(t, "wiki.backlinks")}</div>
+                        {backlinks === null ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>…</div>
+                          : backlinks.length === 0 ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.backlinksEmpty")}</div>
+                          : backlinks.map((b, i) => (
+                            <div key={i} onClick={() => { setShowBack(false); if (b.fileId != null) { setPendingHighlight(b.content || null); openDoc(String(b.fileId)); } }}
+                              style={{ padding: "6px 8px", fontSize: 12, cursor: "pointer", color: "var(--dsw-alias-label-primary)" }}>
+                              <div style={{ fontWeight: 600 }}>📄 {b.title || b.fileName}</div>
+                              <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(b.content || "").slice(0, 60)}</div>
+                            </div>))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得；超宽行长限 720px */}
               <div ref={editorScrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}
@@ -2976,6 +3007,7 @@ function apply(ctx: any): void {
       "wiki.slashBullet": "无序列表", "wiki.slashTask": "任务列表", "wiki.slashQuote": "引用",
       "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
       "wiki.resultsCount": "相关文档 {n} 篇",
+      "wiki.backlinks": "被引用", "wiki.backlinksEmpty": "暂无文档引用本文",
       "wiki.clear": "清空",
     },
     en: {
@@ -3047,6 +3079,7 @@ function apply(ctx: any): void {
       "wiki.slashBullet": "Bullet list", "wiki.slashTask": "Task list", "wiki.slashQuote": "Quote",
       "wiki.slashCode": "Code block", "wiki.slashDivider": "Divider", "wiki.slashText": "Text",
       "wiki.resultsCount": "{n} related documents",
+      "wiki.backlinks": "Backlinks", "wiki.backlinksEmpty": "No documents reference this",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
