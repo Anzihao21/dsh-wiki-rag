@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { filterLinks, filterCommands, dedupeRefs, countRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
+import { filterLinks, filterCommands, dedupeRefs, countRefs, filterActiveRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
 
 // 模拟客户端交互流：不渲染整个 Tiptap 组件，只验证其依赖的纯函数与 fetch 桩。
 beforeEach(() => { try { localStorage.clear(); } catch {} });
@@ -117,5 +117,15 @@ describe("回收站操作端点序列", () => {
       "POST http://localhost:3081/api/wiki/trash/empty",
     ]);
     vi.unstubAllGlobals();
+  });
+});
+
+describe("清扫错误分支", () => {
+  it("反链计数排除软删引用后正确", () => {
+    const refs = [{ fileId: 1 }, { fileId: 2, deleted: true }, { fileId: 3 }];
+    expect(countRefs(filterActiveRefs(refs), "1")).toBe(1);
+  });
+  it("全部软删时计数为 0（面板空态）", () => {
+    expect(countRefs(filterActiveRefs([{ fileId: 1, deletedAt: "2026" }]), "9")).toBe(0);
   });
 });
