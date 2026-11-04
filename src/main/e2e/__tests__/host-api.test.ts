@@ -333,3 +333,35 @@ describe('host-api 错误分支清扫', () => {
     expect(r.status).toBe(400);
   });
 });
+
+describe('host-api 不存在 id 语义', () => {
+  it('POST /trash/restore 不存在 id → 200（no-op，不抛）', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/trash/restore', EMPTY_QUERY, JSON.stringify({ id: 99999, type: 'file' }));
+    expect(r.status).toBe(200);
+    expect(r.body.status).toBe('restored');
+  });
+
+  it('DELETE /trash/file/99999 → 200（no-op）', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('DELETE', '/api/wiki/trash/file/99999', EMPTY_QUERY, '');
+    expect(r.status).toBe(200);
+    expect(r.body.status).toBe('purged');
+  });
+});
