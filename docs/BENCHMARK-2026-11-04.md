@@ -133,3 +133,17 @@ npx vitest run
 - 同步策略：vector_chunks 写入路径已有 `vectorChunksReplace` 单事务——在同事务内追加 `INSERT INTO chunks_fts ...` 或用触发器（AFTER INSERT/DELETE）。触发器方案对业务代码侵入最小。
 - 风险：MATCH 是词法匹配（空格分词），LIKE 是子串匹配——CJK 文本需要 `tokenize='unicode61'` 或 trigram tokenizer 才合理。当前 chunk_text 含中文，MATCH 默认 unicode61 对中文按单字切分，召回质量需实测。
 - 建议：若要切换，先在测试库验证中文 query 的召回率（MATCH '知识库' vs LIKE '%知识库%'），再决定是否上。
+
+## embedding fallback LRU 命中率实测（2026-11-04 第四批轮5）
+
+场景：1000 条唯一 chunk 文本 + 500 条完全重复 = 1500 次 embedText 调用。
+
+| 指标 | 值 |
+|---|---|
+| 总调用 | 1500 |
+| LRU 命中 | 500 |
+| LRU 未命中（实际计算） | 1000 |
+| 命中率 | **33.3%** |
+| 总耗时 | 54ms |
+
+**结论**：在重复率 33% 场景下，LRU memo 避免了 1/3 的 sha256 ngram 计算。缓存上限 2000 在 1000 unique 规模下不触发淘汰（size=1000），行为正确。当 unique 规模 >2000 时，最久未用会被淘汰（已由单测覆盖）。
