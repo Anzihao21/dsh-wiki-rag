@@ -90,3 +90,12 @@ describe("双链键盘流边界", () => {
     expect(Math.min(10, Math.max(0, c.length - 1))).toBe(1);
   });
 });
+
+describe("命令面板命令矩阵", () => {
+  const cmds = [
+    { key: "new", title: "新建文档" }, { key: "import", title: "导入文件" },
+    { key: "trash", title: "回收站" }, { key: "settings", title: "设置" },
+  ];
+  it("全部命令可被空查询列出", () => expect(filterCommands("", cmds).length).toBe(4));
+  it("无匹配返回空", () => expect(filterCommands("xyz", cmds)).toEqual([]));
+});
