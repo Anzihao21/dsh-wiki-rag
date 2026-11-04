@@ -321,6 +321,11 @@ export function filterActiveRefs<T extends { deleted?: boolean; deletedAt?: stri
   return (results || []).filter((r) => !r.deleted && !r.deletedAt);
 }
 
+/** 按 score 降序排序引用结果（无 score 排末尾，稳定排序） */
+export function sortRefsByScore<T extends { score?: number }>(results: T[]): T[] {
+  return [...(results || [])].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+}
+
 /** 归一化搜索命中为行模型（与渲染解耦，便于测试） */
 export function normalizeSearchHits(hits: any[]): { id: string; title: string; summary: string; score?: number; fileId?: number }[] {
   return (hits || []).map((r, i) => ({

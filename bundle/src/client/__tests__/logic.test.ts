@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits, filterActiveRefs,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits, filterActiveRefs, sortRefsByScore,
   type TreeNode,
 } from "../logic";
 
@@ -271,4 +271,17 @@ describe("filterActiveRefs", () => {
     expect(r.map((x) => x.fileId)).toEqual([1]);
   });
   it("空数组返回空", () => expect(filterActiveRefs([])).toEqual([]));
+});
+
+describe("sortRefsByScore", () => {
+  it("按 score 降序", () => {
+    const r = sortRefsByScore([{ fileId: 1, score: 0.2 }, { fileId: 2, score: 0.9 }, { fileId: 3, score: 0.5 }]);
+    expect(r.map((x) => x.fileId)).toEqual([2, 3, 1]);
+  });
+  it("无 score 排末尾且不变异原数组", () => {
+    const arr = [{ fileId: 1 }, { fileId: 2, score: 0.8 }];
+    const r = sortRefsByScore(arr);
+    expect(r.map((x) => x.fileId)).toEqual([2, 1]);
+    expect(arr[0].fileId).toBe(1);
+  });
 });
