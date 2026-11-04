@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { initDatabase, closeDatabase, get, all, run, SCHEMA_VERSION } from '../sqlite-init';
+import { initDatabase, closeDatabase, get, all, run, lastInsertId, SCHEMA_VERSION } from '../sqlite-init';
 
 let dir: string;
 let dbPath: string;
@@ -155,5 +155,24 @@ describe('v5 兼容性', () => {
     );
     expect(row?.file_name).toBe('old.md');
     expect(row?.deleted_at).toBeNull();
+  });
+});
+
+describe('v6 FTS5 幂等', () => {
+  it('v6 库重复 init 不 double-insert chunks_fts（行数 = vector_chunks 行数）', async () => {
+    await initDatabase(dbPath);
+    // 插入一个 chunk
+    await run(`INSERT INTO knowledge_files (file_name, source_path, md_path, zip_archive_path, file_type, create_time)
+               VALUES ('x.md', '/x.md', '/x.md.m', '/x.zip', 'md', 1)`);
+    const fid = lastInsertId();
+    await run(`INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, 'hello fts', x'00')`, [fid]);
+    const before = get<{ n: number }>('SELECT COUNT(*) AS n FROM chunks_fts');
+    const vcCount = get<{ n: number }>('SELECT COUNT(*) AS n FROM vector_chunks');
+    expect(before?.n).toBe(vcCount?.n);
+    // 重复 init
+    closeDatabase();
+    await initDatabase(dbPath);
+    const after = get<{ n: number }>('SELECT COUNT(*) AS n FROM chunks_fts');
+    expect(after?.n).toBe(vcCount?.n);
   });
 });
