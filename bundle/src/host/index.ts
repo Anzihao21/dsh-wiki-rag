@@ -62,6 +62,27 @@ import { AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
 import { createApiHandler } from '../../../src/main/host-api/handler';
 import { validateSettingsPatch } from '../../../src/main/settings-validation';
 
+// 白名单路径（handler 接管）——模块级导出，供测试防复发校验
+export const HANDLED_PATHS: ReadonlySet<string> = new Set([
+  'POST /api/wiki/import',
+  'POST /api/wiki/search',
+  'GET /api/wiki/logs',
+  'GET /api/wiki/stats',
+  'GET /api/wiki/settings',
+  'POST /api/wiki/settings',
+  'GET /api/wiki/trash',
+  'POST /api/wiki/trash/restore',
+  'POST /api/wiki/trash/empty',
+  'POST /api/wiki/export/zip',
+]);
+
+/** 判断路径是否在 handler 接管白名单内（含 DELETE /trash/:type/:id 前缀分支） */
+export function isHandledPath(method: string, pathname: string): boolean {
+  if (HANDLED_PATHS.has(`${method} ${pathname}`)) return true;
+  if (method === 'DELETE' && pathname.startsWith('/api/wiki/trash/')) return true;
+  return false;
+}
+
 const logger = createLogger('dsh-wiki-rag');
 
 export const name = 'dsh-wiki-rag';
@@ -779,24 +800,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
       // 可测 API handler 接管核心路由（import/search/logs/stats/settings/trash/export）；
       // 返回 404 表示该路由不在 handler 子集内，继续走下面的内联路由
-      const HANDLED_PATHS = new Set([
-        'POST /api/wiki/import',
-        'POST /api/wiki/search',
-        'GET /api/wiki/logs',
-        'GET /api/wiki/stats',
-        'GET /api/wiki/settings',
-        'POST /api/wiki/settings',
-        'GET /api/wiki/trash',
-        'POST /api/wiki/trash/restore',
-        'POST /api/wiki/trash/empty',
-        'POST /api/wiki/export/zip',
-      ]);
-      if (HANDLED_PATHS.has(`${req.method} ${pathname}`)) {
-        const r = await apiHandler(req.method!, pathname, url.searchParams, body);
-        return json(r.status, r.body);
-      }
-      // 回收站动态路径：DELETE /trash/:type/:id（handler 内做段数与 type 校验）
-      if (req.method === 'DELETE' && pathname.startsWith('/api/wiki/trash/')) {
+      if (isHandledPath(req.method!, pathname)) {
         const r = await apiHandler(req.method!, pathname, url.searchParams, body);
         return json(r.status, r.body);
       }
