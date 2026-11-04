@@ -2700,8 +2700,10 @@ function WikiSidebar(props: WikiSidebarProps) {
       {cmdOpen && createPortal((() => {
         const cmds = [
           { key: "new", title: tt(t, "wiki.newDoc"), run: () => { setCmdOpen(false); requestLeave(() => { setUrlDialog(true); }); } },
+          { key: "import", title: tt(t, "wiki.import"), run: () => { setCmdOpen(false); fileInputRef.current?.click(); } },
           { key: "search", title: tt(t, "wiki.search"), run: () => { setCmdOpen(false); searchInputRef.current?.focus(); } },
           { key: "trash", title: tt(t, "wiki.trash"), run: () => { setCmdOpen(false); requestLeave(() => { setView("trash"); loadTrash(); }); } },
+          { key: "exportDoc", title: tt(t, "wiki.export"), run: () => { setCmdOpen(false); if (activeId) exportDoc(activeId); } },
           { key: "settings", title: tt(t, "wiki.settings"), run: () => { setCmdOpen(false); requestLeave(() => setView("settings")); } },
         ];
         const docItems = docs.slice(0, 50).map((d) => ({ key: "doc:" + d.id, title: d.title, run: () => { setCmdOpen(false); openDoc(d.id); } }));
