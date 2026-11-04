@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { filterLinks, filterCommands, dedupeRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
+import { filterLinks, filterCommands, dedupeRefs, countRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
 
 // 模拟客户端交互流：不渲染整个 Tiptap 组件，只验证其依赖的纯函数与 fetch 桩。
 beforeEach(() => { try { localStorage.clear(); } catch {} });
@@ -54,5 +54,18 @@ describe("反向链接去重流", () => {
 describe("导出下载流", () => {
   it("非法字符文件名清洗后 .md", () => {
     expect(buildDownloadName("a/b:c", undefined)).toBe("a_b_c.md");
+  });
+});
+
+describe("错误分支", () => {
+  const docs = [{ id: "1", title: "Alpha" }, { id: "2", title: "Beta" }];
+  it("命令面板无匹配命令返回空（空态）", () => {
+    expect(filterCommands("zzzznope", docs)).toEqual([]);
+  });
+  it("反向链接 search 失败空结果 → countRefs 为 0", () => {
+    expect(countRefs([], "1")).toBe(0);
+  });
+  it("反向链接结果含自身时排除后计数正确", () => {
+    expect(countRefs([{ fileId: "1" }, { fileId: "2" }], "1")).toBe(1);
   });
 });
