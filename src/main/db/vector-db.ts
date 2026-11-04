@@ -66,15 +66,26 @@ export async function getChunksForSearch(
 ): Promise<VectorChunk[]> {
   const SMALL_DB_THRESHOLD = 200;
   const total = await countChunks();
+  // 小库全表分支：过滤软删文件
   if (total <= SMALL_DB_THRESHOLD) {
-    return all<VectorChunk>('SELECT * FROM vector_chunks');
+    return all<VectorChunk>(
+      `SELECT vc.* FROM vector_chunks vc
+       JOIN knowledge_files kf ON kf.id = vc.file_id
+       WHERE kf.deleted_at IS NULL`
+    );
   }
 
   const safeKw = (keywords || []).filter((k) => typeof k === 'string' && k.length > 0);
   if (safeKw.length === 0) {
-    return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
+    return all<VectorChunk>(
+      `SELECT vc.* FROM vector_chunks vc
+       JOIN knowledge_files kf ON kf.id = vc.file_id
+       WHERE kf.deleted_at IS NULL
+       ORDER BY vc.id DESC LIMIT ?`,
+      [maxCandidates]
+    );
   }
-  // FTS5 trigram 预过滤（≥3 字符走 MATCH，短词退回 LIKE 子串）
+  // FTS5 trigram 预过滤（≥3 字符走 MATCH，短词退回 LIKE 子串）；两路都 JOIN knowledge_files 过滤软删
   const longKw = safeKw.filter((k) => k.length >= 3);
   const shortKw = safeKw.filter((k) => k.length < 3);
   let rows: VectorChunk[] = [];
@@ -84,7 +95,9 @@ export async function getChunksForSearch(
       rows = await all<VectorChunk>(
         `SELECT vc.* FROM vector_chunks vc
          JOIN chunks_fts ON chunks_fts.rowid = vc.id
-         WHERE chunks_fts MATCH ? LIMIT ?`,
+         JOIN knowledge_files kf ON kf.id = vc.file_id
+         WHERE chunks_fts MATCH ? AND kf.deleted_at IS NULL
+         LIMIT ?`,
         [matchExpr, maxCandidates]
       );
     } catch {
@@ -92,16 +105,25 @@ export async function getChunksForSearch(
     }
   }
   if (rows.length === 0 && shortKw.length > 0) {
-    const clauses = shortKw.map(() => 'chunk_text LIKE ?').join(' OR ');
+    const clauses = shortKw.map(() => 'vc.chunk_text LIKE ?').join(' OR ');
     const params = shortKw.map((k) => `%${k}%`);
     rows = await all<VectorChunk>(
-      `SELECT * FROM vector_chunks WHERE ${clauses} LIMIT ?`,
+      `SELECT vc.* FROM vector_chunks vc
+       JOIN knowledge_files kf ON kf.id = vc.file_id
+       WHERE (${clauses}) AND kf.deleted_at IS NULL
+       LIMIT ?`,
       [...params, maxCandidates]
     );
   }
   if (rows.length > 0) return rows;
-  // 关键词零命中：纯语义查询，退化为最近 N 条
-  return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
+  // 关键词零命中：纯语义查询，退化为最近 N 条（过滤软删）
+  return all<VectorChunk>(
+    `SELECT vc.* FROM vector_chunks vc
+     JOIN knowledge_files kf ON kf.id = vc.file_id
+     WHERE kf.deleted_at IS NULL
+     ORDER BY vc.id DESC LIMIT ?`,
+    [maxCandidates]
+  );
 }
 
 /** 获取切片总数 */
