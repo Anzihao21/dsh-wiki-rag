@@ -176,3 +176,40 @@ describe('v6 FTS5 幂等', () => {
     expect(after?.n).toBe(vcCount?.n);
   });
 });
+
+describe('v6 迁移中途失败恢复语义', () => {
+  it('v5 库半迁移状态（建表但未建触发器）重跑 initDatabase 收敛', async () => {
+    // 先建一个 v5 库
+    await initDatabase(dbPath);
+    closeDatabase();
+    // 手动降级 user_version 到 5
+    const raw = new Database(dbPath);
+    raw.pragma('user_version = 5');
+    // 手动建 chunks_fts 但不建触发器（模拟半迁移）
+    raw.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(chunk_text, content='vector_chunks', content_rowid='id', tokenize='trigram')`);
+    raw.close();
+    // 重跑 initDatabase
+    await initDatabase(dbPath);
+    const v = get<{ user_version: number }>('PRAGMA user_version');
+    expect(v?.user_version).toBe(6);
+    // 触发器应已补齐
+    const trigs = all<{ name: string }>("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='vector_chunks'");
+    expect(trigs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('迁移失败不破坏既有业务数据', async () => {
+    await initDatabase(dbPath);
+    // 插入业务数据
+    await run(`INSERT INTO knowledge_files (file_name, source_path, md_path, zip_archive_path, file_type, create_time)
+               VALUES ('keep.md', '/k.md', '/k.md', '/k.zip', 'md', 123)`);
+    const fid = lastInsertId();
+    await run(`INSERT INTO vector_chunks (file_id, chunk_text, vector_blob) VALUES (?, 'keep me', x'00')`, [fid]);
+    // 重跑 init（幂等）
+    closeDatabase();
+    await initDatabase(dbPath);
+    const row = get<{ n: number }>('SELECT COUNT(*) AS n FROM knowledge_files');
+    expect(row?.n).toBe(1);
+    const vc = get<{ n: number }>('SELECT COUNT(*) AS n FROM vector_chunks');
+    expect(vc?.n).toBe(1);
+  });
+});
