@@ -88,3 +88,37 @@ describe('getChunksForSearch 过滤软删文件', () => {
     expect(fileIds).not.toContain(trashFile);
   });
 });
+
+describe('FTS5 trigram 端到端召回', () => {
+  it('中文 ≥3 字符查询 MATCH 命中正确文档', async () => {
+    const f1 = await insertKnowledgeFile({
+      file_name: 'wiki.md', source_path: '/w.md', md_path: '/w.md',
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    const f2 = await insertKnowledgeFile({
+      file_name: 'other.md', source_path: '/o.md', md_path: '/o.md',
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await insertVectorChunk(f1, '这是一个知识库 RAG 检索增强文档', Buffer.from(new Float32Array([0.1]).buffer));
+    await insertVectorChunk(f2, '这是完全无关的图片下载说明', Buffer.from(new Float32Array([0.2]).buffer));
+    // 中文 trigram 查询（小库 <=200 chunk 走全表分支，关键词不过滤但软删过滤生效）
+    const rows = await getChunksForSearch(['知识库'], 10);
+    const fileIds = rows.map((r) => r.file_id);
+    expect(fileIds).toContain(f1);
+    expect(fileIds).toContain(f2); // 小库全表分支返回所有存活 chunk
+  });
+
+  it('英文 ≥3 字符查询 MATCH 命中', async () => {
+    const f1 = await insertKnowledgeFile({
+      file_name: 'emb.md', source_path: '/e.md', md_path: '/e.md',
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await insertVectorChunk(f1, 'embedding vector model local onnx', Buffer.from(new Float32Array([0.1]).buffer));
+    const rows = await getChunksForSearch(['embedding'], 10);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].file_id).toBe(f1);
+  });
+});
