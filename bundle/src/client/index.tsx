@@ -150,6 +150,9 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.leaveUnsaved": "有未保存的修改",
   "wiki.saveAndLeave": "保存并离开",
   "wiki.discard": "放弃修改",
+  "wiki.noFavHint": "暂无收藏，点文件行 ☆ 收藏",
+  "wiki.noRecentHint": "暂无最近打开",
+  "wiki.searchHistory": "搜索历史",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -749,6 +752,18 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [activeResultIdx, setActiveResultIdx] = useState(0);
+  // 搜索历史（localStorage 最近 10 条）
+  const [searchHistory, setSearchHistory] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("dsh-wiki-rag:searchHistory") || "[]"); } catch { return []; } });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const pushHistory = useCallback((term: string) => {
+    const v = term.trim();
+    if (!v) return;
+    setSearchHistory((prev) => {
+      const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+      try { localStorage.setItem("dsh-wiki-rag:searchHistory", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number; byType: Record<string, number> }>({ total: 0, ready: 0, stale: 0, byType: {} });
   // 历史版本：当前查看文件 + 版本列表 + 版本内容预览（每文件最多保留 3 个版本）
   const [verFileId, setVerFileId] = useState<string | null>(null);
@@ -1119,6 +1134,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     try {
       const hits = await apiSearch(qq);
       if (seq !== searchSeq.current) return; // 已有更新的查询，丢弃过期响应
+      pushHistory(qq);
       setSearchResults(hits.map((r: any, i: number) => ({
         id: String(r.fileId ?? i),
         fileId: r.fileId as number | undefined,
@@ -1492,6 +1508,21 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   const activeDoc = docs.find((d) => d.id === activeId);
 
+  // 每个文件夹的直接子文档数（角标用）
+  const folderDocCounts: Record<number, number> = useMemo(() => {
+    const out: Record<number, number> = {};
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.children) {
+          out[n.id] = n.children.filter((c) => !c.children).length;
+          walk(n.children);
+        }
+      }
+    };
+    walk(tree);
+    return out;
+  }, [tree]);
+
   // ---------- 树扁平化为虚拟滚动行（展开的空文件夹追加占位行） ----------
   const rows: FlatRow[] = useMemo(() => {
     const base: FlatRow[] = [];
@@ -1730,6 +1761,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                       </div>
                     ) : null;
                   })}
+                  {showFavs && favs.size === 0 && (
+                    <div style={{ padding: "4px 6px 4px 18px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>★ {tt(t, "wiki.noFavHint")}</div>
+                  )}
                 </>
               )}
               {recent.length > 0 && (
@@ -1751,6 +1785,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                       </div>
                     ) : null;
                   })}
+                  {showRecent && recent.length === 0 && (
+                    <div style={{ padding: "4px 6px 4px 18px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>🕘 {tt(t, "wiki.noRecentHint")}</div>
+                  )}
                 </>
               )}
             </div>
@@ -1761,6 +1798,8 @@ function WikiSidebar(props: WikiSidebarProps) {
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--dsw-alias-label-tertiary)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 8, pointerEvents: "none" }}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
               <input ref={searchInputRef}
                 value={q}
+                onFocus={() => setHistoryOpen(true)}
+                onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
                 onChange={(e) => {
                   const v = e.target.value;
                   setQ(v);
@@ -1771,6 +1810,19 @@ function WikiSidebar(props: WikiSidebarProps) {
                 onKeyDown={(e) => { if (e.key === "Enter") { if (searchTimer.current) clearTimeout(searchTimer.current); doSearch(q); } }}
                 placeholder={tt(t, "wiki.search")}
                 style={{ ...searchInputStyle, flex: 1, paddingLeft: 28 }} />
+              {historyOpen && !q.trim() && searchHistory.length > 0 && (
+                <div style={{ position: "absolute", top: 34, left: 0, right: 0, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", padding: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 6px", fontSize: 10, color: "var(--dsw-alias-label-tertiary)" }}>
+                    <span>{tt(t, "wiki.searchHistory")}</span>
+                    <button style={{ border: "none", background: "none", cursor: "pointer", color: "var(--dsw-alias-label-tertiary)", fontSize: 10 }}
+                      onClick={() => { setSearchHistory([]); try { localStorage.removeItem("dsh-wiki-rag:searchHistory"); } catch {} }}>{tt(t, "wiki.clear")}</button>
+                  </div>
+                  {searchHistory.map((h) => (
+                    <div key={h} onMouseDown={() => { setQ(h); doSearch(h); setHistoryOpen(false); searchInputRef.current?.blur(); }}
+                      style={{ padding: "4px 8px", fontSize: 12, cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", color: "var(--dsw-alias-label-primary)" }}>🕘 {h}</div>
+                  ))}
+                </div>
+              )}
             </div>
             {searchingMode && (
               <button title={tt(t, "wiki.cancel")} onClick={() => { setQ(""); setSearchResults(null); setActiveResultIdx(0); }} style={iconBtn}>✕</button>
@@ -1989,6 +2041,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                             style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", fontSize: 13 }} />
                         ) : (
                           <span title={row.title} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" }}>{row.title}</span>
+                        )}
+                        {(folderDocCounts[row.id] || 0) > 0 && (
+                          <span style={{ fontSize: 10, color: "var(--dsw-alias-label-caption)", flexShrink: 0, opacity: rowHovered ? 0 : 1, transition: "opacity 120ms ease-out" }}>{folderDocCounts[row.id]}</span>
                         )}
                         <button title={tt(t, "wiki.more")}
                           onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setContextMenu({ x: Math.max(4, r.left), y: r.bottom + 2, kind: "folder", id: row.id }); }}
