@@ -99,3 +99,23 @@ describe("命令面板命令矩阵", () => {
   it("全部命令可被空查询列出", () => expect(filterCommands("", cmds).length).toBe(4));
   it("无匹配返回空", () => expect(filterCommands("xyz", cmds)).toEqual([]));
 });
+
+describe("回收站操作端点序列", () => {
+  it("restore/purge/empty 调用正确端点", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, opts: any) => {
+      calls.push(`${opts?.method || "GET"} ${url}`);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    }));
+    const api = (p: string, o?: any) => fetch("http://localhost:3081/api/wiki" + p, o).then((r: any) => r.json());
+    await api("/trash/restore", { method: "POST", body: JSON.stringify({ id: "5", type: "file" }) });
+    await api("/trash/file/5", { method: "DELETE" });
+    await api("/trash/empty", { method: "POST" });
+    expect(calls).toEqual([
+      "POST http://localhost:3081/api/wiki/trash/restore",
+      "DELETE http://localhost:3081/api/wiki/trash/file/5",
+      "POST http://localhost:3081/api/wiki/trash/empty",
+    ]);
+    vi.unstubAllGlobals();
+  });
+});
