@@ -1541,6 +1541,26 @@ function WikiSidebar(props: WikiSidebarProps) {
     clearParaTimer();
     paraHideTimer.current = window.setTimeout(() => { setParaBar(null); setVertBar(null); }, 220);
   };
+
+  // 块上移/下移：交换当前顶层块与相邻兄弟（ProseMirror 事务，进撤销栈）
+  const moveBlock = (delta: -1 | 1) => {
+    if (!editor) return;
+    const { $from } = editor.state.selection;
+    const depth = Math.max(0, $from.depth);
+    if (depth === 0) return;
+    const parent = $from.node(depth - 1);
+    const index = $from.index(depth - 1);
+    const target = index + delta;
+    if (target < 0 || target >= parent.childCount) return;
+    const node = parent.child(index);
+    const from = $from.before(depth);
+    const to = $from.after(depth);
+    const tr = editor.state.tr.delete(from, to);
+    // 上移：插到原位置（前一兄弟之前）；下移：插到原位置+1（后一兄弟之后）
+    const newPos = delta < 0 ? from : from + 1;
+    tr.insert(newPos, node);
+    editor.view.dispatch(tr.scrollIntoView());
+  };
   const blockLabel = (node: any): string => {
     if (node.type.name === "heading") return `标题 ${node.attrs.level}`;
     if (node.type.name === "bulletList") return "无序列表";
@@ -2484,6 +2504,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                   <VertBtn label="引用" active={editor?.isActive("blockquote")} onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
                   <VertBtn label="代码块" active={editor?.isActive("codeBlock")} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
                   <VertBtn label="分隔线" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
+                  <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
+                  <VertBtn label="↑ 上移" title="块上移" onClick={() => moveBlock(-1)} />
+                  <VertBtn label="↓ 下移" title="块下移" onClick={() => moveBlock(1)} />
                   <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
                   <VertBtn label="粗体" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
                   <VertBtn label="斜体" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
