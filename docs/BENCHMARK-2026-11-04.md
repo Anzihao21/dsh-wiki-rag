@@ -198,3 +198,9 @@ LRU 命中率曲线（5k 段，重复率变化）：
 - 5050 节点 flatten 复测：1ms（连续三批无回归）。
 - 语义面板时间线：输入防抖 → doSearch(seq守卫) → searching骨架 → 结果渲染，无重复请求/无闪烁。
 - IME 门控：composition 期间不弹联想菜单，确认后再弹。
+
+## 第八批收口（2026-11-04）
+
+- FTS5 MATCH 大库端到端：200+ chunk 触发 MATCH 路径，中文 trigram 命中正确，软删文件被 JOIN 过滤。
+- purge 级联：purgeFileRow 删 knowledge_files + file_versions；触发器同步删 chunks_fts。
+- 497 例全绿，Errors=0。
