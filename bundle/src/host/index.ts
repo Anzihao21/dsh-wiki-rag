@@ -28,6 +28,15 @@ import {
   getKnowledgeFileById,
   insertKnowledgeFile,
   deleteKnowledgeFile,
+  softDeleteFile,
+  softDeleteFolderCascade,
+  listTrash,
+  restoreFile,
+  restoreFolderCascade,
+  purgeFileRow,
+  purgeFolderRow,
+  listTrashFiles,
+  listTrashFolderIds,
   updateMdPath,
   updateZipPath,
   countByType,
@@ -893,15 +902,93 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           return json(200, { id: fid, parentId });
         }
 
-        // ---- 删除文件夹：DELETE /folders/:id ----
+        // ---- 删除文件夹：DELETE /folders/:id（软删除+级联） ----
         if (req.method === 'DELETE' && seg.length === 4 && seg[2] === 'folders') {
           const fid = parseInt(seg[3] || '');
           if (Number.isNaN(fid)) return json(400, { error: '非法文件夹 id' });
           const target = await getFolderById(fid);
           if (!target) return json(404, { error: '文件夹不存在' });
-          await deleteFolder(fid);
-          await writeLog('folder-delete', `id=${fid}（文档/子文件夹移入根）`);
-          return json(200, { status: 'deleted' });
+          await softDeleteFolderCascade(fid);
+          await writeLog('folder-soft-delete', `文件夹 id=${fid} 及其内容已移入回收站`);
+          return json(200, { status: 'deleted', soft: true, id: fid });
+        }
+
+        // ---- 回收站：GET /trash ----
+        if (req.method === 'GET' && seg.length === 3 && seg[2] === 'trash') {
+          const t = await listTrash();
+          return json(200, t);
+        }
+
+        // ---- 回收站：POST /trash/restore ----
+        if (req.method === 'POST' && seg.length === 4 && seg[2] === 'trash' && seg[3] === 'restore') {
+          let parsed: any;
+          try { parsed = JSON.parse(body || '{}'); } catch {
+            return json(400, { error: '请求体不是合法 JSON' });
+          }
+          const id = Number(parsed.id);
+          const type = parsed.type;
+          if (!Number.isFinite(id) || (type !== 'file' && type !== 'folder')) {
+            return json(400, { error: '需要 {id:number, type:"file"|"folder"}' });
+          }
+          if (type === 'file') {
+            await restoreFile(id);
+          } else {
+            await restoreFolderCascade(id);
+          }
+          await writeLog('trash-restore', `${type} id=${id}`);
+          return json(200, { status: 'restored', id, type });
+        }
+
+        // ---- 回收站：DELETE /trash/:type/:id（彻底删除） ----
+        if (req.method === 'DELETE' && seg.length === 5 && seg[2] === 'trash') {
+          const type = seg[3];
+          const id = parseInt(seg[4] || '');
+          if (type !== 'file' && type !== 'folder') return json(400, { error: 'type 必须为 file|folder' });
+          if (Number.isNaN(id)) return json(400, { error: '非法 id' });
+          if (type === 'file') {
+            const rec = await getKnowledgeFileById(id);
+            if (rec) {
+              try { await fs.unlink(rec.md_path); } catch { /* ignore */ }
+              try { if (rec.zip_archive_path) await fs.unlink(rec.zip_archive_path); } catch { /* ignore */ }
+            }
+            await purgeFileRow(id);
+          } else {
+            // 文件夹彻底删除：递归收集子项
+            const queue: number[] = [id];
+            const allFolders: number[] = [];
+            while (queue.length) {
+              const fid = queue.shift()!;
+              allFolders.push(fid);
+              const children = await all<{ id: number }>('SELECT id FROM folders WHERE parent_id = ?', [fid]);
+              for (const c of children) queue.push(c.id);
+            }
+            for (const fid of allFolders) {
+              const files = await all<{ id: number; md_path: string; zip_archive_path: string }>(
+                'SELECT id, md_path, zip_archive_path FROM knowledge_files WHERE folder_id = ?', [fid]);
+              for (const f of files) {
+                try { await fs.unlink(f.md_path); } catch { /* ignore */ }
+                try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
+                await purgeFileRow(f.id);
+              }
+              await purgeFolderRow(fid);
+            }
+          }
+          await writeLog('trash-purge', `${type} id=${id} 已物理删除`);
+          return json(200, { status: 'purged', id, type });
+        }
+
+        // ---- 回收站：POST /trash/empty（清空全部） ----
+        if (req.method === 'POST' && seg.length === 4 && seg[2] === 'trash' && seg[3] === 'empty') {
+          const trashFiles = await listTrashFiles();
+          for (const f of trashFiles) {
+            try { await fs.unlink(f.md_path); } catch { /* ignore */ }
+            try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
+            await purgeFileRow(f.id);
+          }
+          const trashFolders = await listTrashFolderIds();
+          for (const fid of trashFolders) await purgeFolderRow(fid);
+          await writeLog('trash-empty', `清空回收站：${trashFiles.length} 文件 / ${trashFolders.length} 文件夹`);
+          return json(200, { status: 'emptied', files: trashFiles.length, folders: trashFolders.length });
         }
 
         // ---- 文件移动：POST /files/:id/move ----
@@ -1223,15 +1310,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             if (!acquire(opKey)) return json(409, { error: 'operation-in-progress' });
             try {
               if (record) {
-                try { await fs.unlink(record.md_path); } catch { /* ignore */ }
-                try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
-                // 条目删除时同步摘掉源文件监听
+                // 软删除：保留 md/zip 物理文件，仅标记 deleted_at；摘源监听
                 try { watcher.unwatchPath(record.source_path); } catch { /* ignore */ }
               }
-              await deleteKnowledgeFile(id);
+              await softDeleteFile(id);
               pendingChanges.splice(0, pendingChanges.length, ...pendingChanges.filter((p) => p.fileId !== id));
-              await writeLog('delete', `删除 fileId=${id}`);
-              return json(200, { status: 'deleted', id });
+              await writeLog('soft-delete', `回收站 fileId=${id}`);
+              return json(200, { status: 'deleted', soft: true, id });
             } finally {
               release(opKey);
             }
