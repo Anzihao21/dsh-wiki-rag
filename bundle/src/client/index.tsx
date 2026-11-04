@@ -116,6 +116,17 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.statusReady": "已索引",
   "wiki.statusStale": "待同步",
   "wiki.statusError": "异常",
+  "wiki.confirmDeleteDoc": "确定删除该文档？删除后不可恢复。",
+  "wiki.confirmDeleteFolder": "确定删除该文件夹及其下所有文档？删除后不可恢复。",
+  "wiki.autoSaveConflict": "检测到外部修改，请用“保存”按钮处理",
+  "wiki.autoSaveFailed": "自动保存失败",
+  "wiki.webModeHint": "网页抓取模式",
+  "wiki.webModeInSettings": "见设置",
+  "wiki.newSubFolder": "新建子文件夹",
+  "wiki.underFolder": "位于",
+  "wiki.expandAll": "全部展开",
+  "wiki.collapseAll": "全部折叠",
+  "wiki.charCount": "字符",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -263,6 +274,8 @@ const apiCreateFolder = (name: string, parentId: number | null = null) =>
   request("/folders", { method: "POST", body: JSON.stringify({ name, parentId }) });
 const apiRenameFolder = (id: number, name: string) =>
   request(`/folders/${id}/rename`, { method: "POST", body: JSON.stringify({ name }) });
+const apiMoveFolder = (id: number, parentId: number | null) =>
+  request(`/folders/${id}/move`, { method: "POST", body: JSON.stringify({ parentId }) });
 const apiDeleteFolder = (id: number) =>
   request(`/folders/${id}`, { method: "DELETE" });
 const apiMoveFile = (fileId: string, folderId: number | null) =>
@@ -561,6 +574,10 @@ function flattenTree(nodes: TreeNode[] | undefined, depth: number, expanded: Set
     }
   });
 }
+function collectFolderIds(nodes: TreeNode[] | undefined, out: Set<number>): Set<number> {
+  (nodes || []).forEach((n) => { if (n.type === "folder") { out.add(n.id!); collectFolderIds(n.children, out); } });
+  return out;
+}
 
 const ROW_H = 38;
 
@@ -630,6 +647,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
+  const [scrollToFolderId, setScrollToFolderId] = useState<number | null>(null);
+  const [treeExpanded, setTreeExpanded] = useState(true);
   const [restorePreview, setRestorePreview] = useState<{ snapshotId: number; added: string[]; removed: string[]; modified: string[] } | null>(null);
   const [settings, setSettings] = useState<Partial<SettingsState>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -638,6 +658,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [offline, setOffline] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderParentId, setNewFolderParentId] = useState<number | null>(null);
   // 新增：待确认变更 / 重绑定源路径（文件级 + 文件夹级）
   const [pendingChanges, setPendingChanges] = useState<any[]>([]);
   const [rebindState, setRebindState] = useState<{ fileId: string; value: string } | null>(null);
@@ -780,13 +801,18 @@ function WikiSidebar(props: WikiSidebarProps) {
     }
   };
 
-  // ---------- 删除 ----------
-  const doDelete = async (id: string) => {
-    try {
-      await apiDelete(id);
-      notify("success", tt(t, "wiki.deleted"));
-      refreshList();
-    } catch (e: any) { notify("error", e?.message || "删除失败"); }
+  // ---------- 删除（DSH 风格确认弹窗） ----------
+  const doDelete = (id: string) => {
+    setConfirmState({
+      message: tt(t, "wiki.confirmDeleteDoc"),
+      onYes: async () => {
+        try {
+          await apiDelete(id);
+          notify("success", tt(t, "wiki.deleted"));
+          refreshList();
+        } catch (e: any) { notify("error", e?.message || "删除失败"); }
+      },
+    });
   };
 
   // ---------- 搜索（in-flight 去重） ----------
@@ -825,9 +851,17 @@ function WikiSidebar(props: WikiSidebarProps) {
   // ---------- 文件夹操作 ----------
   const doCreateFolder = async () => {
     if (!newFolderName.trim()) return;
-    try { await apiCreateFolder(newFolderName.trim()); notify("success", tt(t, "wiki.folderCreated")); }
-    catch (e: any) { notify("error", e?.message || "创建失败"); }
-    setNewFolderName(""); setShowNewFolder(false); refreshList();
+    const parentId = newFolderParentId;
+    try {
+      const r = await apiCreateFolder(newFolderName.trim(), parentId);
+      notify("success", tt(t, "wiki.folderCreated"));
+      // 创建后展开父级（子文件夹场景）并定位到新文件夹
+      if (r?.id) {
+        if (parentId != null) setExpandedFolders((prev) => { const n = new Set(prev); n.add(parentId); return n; });
+        setScrollToFolderId(r.id);
+      }
+    } catch (e: any) { notify("error", e?.message || "创建失败"); }
+    setNewFolderName(""); setShowNewFolder(false); setNewFolderParentId(null); refreshList();
   };
   const doRenameFolder = async (id: number) => {
     if (!renameText.trim()) return;
@@ -835,13 +869,23 @@ function WikiSidebar(props: WikiSidebarProps) {
     catch (e: any) { notify("error", e?.message || "重命名失败"); }
     setRenamingId(null); setRenameText(""); refreshList();
   };
-  const doDeleteFolder = async (id: number) => {
-    try { await apiDeleteFolder(id); notify("success", tt(t, "wiki.folderDeleted")); }
-    catch (e: any) { notify("error", e?.message || "删除失败"); }
-    refreshList();
+  const doDeleteFolder = (id: number) => {
+    setConfirmState({
+      message: tt(t, "wiki.confirmDeleteFolder"),
+      onYes: async () => {
+        try { await apiDeleteFolder(id); notify("success", tt(t, "wiki.folderDeleted")); }
+        catch (e: any) { notify("error", e?.message || "删除失败"); }
+        refreshList();
+      },
+    });
   };
   const doMoveDoc = async (fileId: string, folderId: number | null) => {
     try { await apiMoveFile(fileId, folderId); notify("success", tt(t, "wiki.moved")); refreshList(); }
+    catch (e: any) { notify("error", e?.message || "移动失败"); }
+  };
+  const doMoveFolder = async (id: number, targetParentId: number | null) => {
+    if (id === targetParentId) return; // 拖到自身，忽略
+    try { await apiMoveFolder(id, targetParentId); notify("success", tt(t, "wiki.moved")); refreshList(); }
     catch (e: any) { notify("error", e?.message || "移动失败"); }
   };
 
@@ -892,6 +936,26 @@ function WikiSidebar(props: WikiSidebarProps) {
       notify("error", e?.message || "保存失败");
     }
   }, [activeId, mdContent, editor, notify, refreshList, t]);
+
+  // ---------- 编辑器自动保存（防抖 900ms，静默；遇外部冲突不弹窗打断） ----------
+  useEffect(() => {
+    if (!activeId || mdContent === savedContent) return;
+    const timer = setTimeout(async () => {
+      try {
+        const final = await apiSaveContent(activeId, mdContent, savedContent);
+        baselineRef.current = final;
+        setSavedContent(final);
+      } catch (e: any) {
+        if (e?.status === 409) {
+          // 自动保存不打断编辑：提示有外部修改，交手动“保存”按钮处理
+          notify("info", tt(t, "wiki.autoSaveConflict"));
+        } else {
+          notify("error", e?.message || tt(t, "wiki.autoSaveFailed"));
+        }
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [activeId, mdContent, savedContent, notify, t]);
 
   // ---------- 加载文档真实内容 ----------
   const openDoc = useCallback(async (id: string) => {
@@ -1049,6 +1113,23 @@ function WikiSidebar(props: WikiSidebarProps) {
   const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportH) / ROW_H) + 2);
   const visibleRows = rows.slice(startIndex, endIndex);
 
+  // 新建文件夹后滚动定位到新行
+  useEffect(() => {
+    if (scrollToFolderId == null) return;
+    const idx = rows.findIndex((r) => r.rowType === "folder" && r.id === scrollToFolderId);
+    if (idx >= 0 && listScrollRef.current) {
+      listScrollRef.current.scrollTop = Math.max(0, idx * ROW_H - viewportH / 2);
+      setScrollToFolderId(null);
+    }
+  }, [rows, scrollToFolderId, viewportH]);
+
+  // 树全展开 / 全折叠
+  const toggleTreeExpand = useCallback(() => {
+    if (treeExpanded) setExpandedFolders(new Set());
+    else setExpandedFolders(collectFolderIds(tree, new Set()));
+    setTreeExpanded(!treeExpanded);
+  }, [treeExpanded, tree]);
+
   const searchingMode = searchResults !== null;
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
@@ -1105,10 +1186,31 @@ function WikiSidebar(props: WikiSidebarProps) {
               <path d="M14 2v6h6" /><path d="M12 18v-6M9 15h6" />
             </svg>
           </button>
-          {/* 主操作：导入 / 新建文件夹 / 刷新 */}
-          <button title={tt(t, "wiki.import")} onClick={() => setShowImport(!showImport)} style={headerBtn}>＋</button>
-          <button title={tt(t, "wiki.newFolder")} onClick={() => setShowNewFolder(!showNewFolder)} style={headerBtn}>{tt(t, "wiki.newFolder")}</button>
-          <button title={tt(t, "wiki.refresh")} onClick={() => refreshList()} style={headerBtn}>⟳</button>
+          {/* 主操作：导入 / 新建文件夹 / 刷新（统一 SVG 图标 + tooltip） */}
+          <button title={tt(t, "wiki.import")} onClick={() => setShowImport(!showImport)} style={headerBtn}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </button>
+          <button title={tt(t, "wiki.newFolder")} onClick={() => { setNewFolderParentId(null); setShowNewFolder(!showNewFolder); }} style={headerBtn}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+          <button title={tt(t, "wiki.refresh")} onClick={() => refreshList()} style={headerBtn}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+              <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
+          {/* 树全展开 / 全折叠 */}
+          <button title={treeExpanded ? tt(t, "wiki.collapseAll") : tt(t, "wiki.expandAll")}
+            onClick={toggleTreeExpand} style={headerBtn}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
+              {treeExpanded
+                ? <><path d="M3 17l6-6-6-6" /><path d="M13 17l6-6-6-6" /></>
+                : <><path d="M6 9l6 6 6-6" /></>}
+            </svg>
+          </button>
           {/* 全屏 / 退出全屏 */}
           <button title={fullscreen ? tt(t, "wiki.exitFullscreen") : tt(t, "wiki.fullscreen")}
             onClick={() => setFullscreen(!fullscreen)} style={headerBtn}>
@@ -1155,8 +1257,8 @@ function WikiSidebar(props: WikiSidebarProps) {
 
       {/* 左右分栏主区域 */}
       <div style={mainLayoutStyle}>
-        {/* 左侧：文件树 */}
-        <div style={sidebarStyle}>
+        {/* 左侧：文件树（全屏时加宽，缓解左右失衡） */}
+        <div style={fullscreen ? { ...sidebarStyle, width: 340 } : sidebarStyle}>
           {/* 搜索框 + 退出搜索 */}
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input ref={searchInputRef}
@@ -1172,13 +1274,18 @@ function WikiSidebar(props: WikiSidebarProps) {
 
           {/* 新建文件夹 */}
           {showNewFolder && (
+            <>
             <div style={{ display: "flex", gap: 4 }}>
               <input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") doCreateFolder(); }}
-                placeholder={tt(t, "wiki.folderName")} autoFocus
+                placeholder={newFolderParentId != null ? tt(t, "wiki.newSubFolder") : tt(t, "wiki.folderName")} autoFocus
                 style={smallInput} />
               <button onClick={doCreateFolder} style={primaryBtn}>{tt(t, "wiki.new")}</button>
             </div>
+            {newFolderParentId != null && (
+              <div style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.underFolder")}：{treeFindName(tree, newFolderParentId)}</div>
+            )}
+            </>
           )}
 
           {/* 导入面板 */}
@@ -1194,6 +1301,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 ))}
               </div>
               {importType !== "note" ? (
+                <>
                 <div style={{ display: "flex", gap: 4 }}>
                   <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
                     placeholder={importType === "url" ? "https://example.com/article" : "输入文件路径…"} style={smallInput} />
@@ -1205,6 +1313,12 @@ function WikiSidebar(props: WikiSidebarProps) {
                     </>
                   )}
                 </div>
+                {importType === "url" && (
+                  <div style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)" }}>
+                    {tt(t, "wiki.webModeHint")}：{settings.webMode === "extranet" ? tt(t, "webModeExtranet") : tt(t, "webModeIntranet")}（{tt(t, "wiki.webModeInSettings")}）
+                  </div>
+                )}
+                </>
               ) : (
                 <>
                   <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="笔记标题…" style={smallInput} />
@@ -1269,9 +1383,18 @@ function WikiSidebar(props: WikiSidebarProps) {
                     const open = expandedFolders.has(row.id);
                     return (
                       <div key={"f" + row.id}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("text/folder-id", String(row.id))}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => { e.preventDefault(); const fid = e.dataTransfer.getData("text/doc-id"); if (fid) doMoveDoc(fid, row.id); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const fid = e.dataTransfer.getData("text/doc-id");
+                          const fld = e.dataTransfer.getData("text/folder-id");
+                          if (fid) doMoveDoc(fid, row.id);
+                          else if (fld && Number(fld) !== row.id) doMoveFolder(Number(fld), row.id);
+                        }}
                         onClick={() => setExpandedFolders((prev) => { const n = new Set(prev); if (n.has(row.id)) n.delete(row.id); else n.add(row.id); return n; })}
+                        onDoubleClick={() => { setRenamingId(row.id); setRenameText(row.title); }}
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id }); }}
                         style={{
                           position: "absolute", top, left: 0, right: 0, height: ROW_H,
@@ -1280,7 +1403,14 @@ function WikiSidebar(props: WikiSidebarProps) {
                         }}>
                         <span style={{ fontSize: 10, color: "var(--dsw-alias-label-secondary)" }}>{open ? "▼" : "▶"}</span>
                         <FolderIcon size={14} />
-                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                        {renamingId === row.id ? (
+                          <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") doRenameFolder(row.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
+                            onBlur={() => doRenameFolder(row.id)}
+                            style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-0)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                        ) : (
+                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                        )}
                         <button title={tt(t, "wiki.more")}
                           onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setContextMenu({ x: Math.max(4, r.left), y: r.bottom + 2, kind: "folder", id: row.id }); }}
                           style={{ ...iconBtn, flexShrink: 0, fontSize: 14, width: 20, height: 20 }}>⋯</button>
@@ -1295,6 +1425,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
                       onClick={() => { openDoc(d.id); }}
+                      onDoubleClick={() => { setRenamingId(d.id); setRenameText(row.title); }}
                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id }); }}
                       style={{
                         position: "absolute", top, left: 0, right: 0, height: ROW_H,
@@ -1464,6 +1595,10 @@ function WikiSidebar(props: WikiSidebarProps) {
               <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
                 <EditorContent editor={editor} />
               </div>
+              {/* 字数统计 */}
+              <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", padding: "4px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", display: "flex", gap: 12 }}>
+                <span>{mdContent.length.toLocaleString()} {tt(t, "wiki.charCount")}</span>
+              </div>
               {/* 浮动格式工具栏：选中文本时在选区上方弹出，无选中自动隐藏 */}
               {selToolbar && (
                 <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10002, display: "flex", gap: 2, padding: 4,
@@ -1529,6 +1664,14 @@ function WikiSidebar(props: WikiSidebarProps) {
               const cur = contextMenu.kind === "doc" ? docs.find((d) => d.id === String(contextMenu.id))?.title : treeFindName(tree, Number(contextMenu.id));
               setRenameText(cur || ""); setContextMenu(null);
             }} style={menuItem}>{tt(t, "wiki.rename")}</div>
+            {contextMenu.kind === "folder" && (
+              <div onClick={() => {
+                setNewFolderParentId(Number(contextMenu.id));
+                setNewFolderName("");
+                setShowNewFolder(true);
+                setContextMenu(null);
+              }} style={menuItem}>{tt(t, "wiki.newSubFolder")}</div>
+            )}
             {contextMenu.kind === "doc" && (
               <div onClick={async () => {
                 const docId = String(contextMenu.id); setContextMenu(null);
@@ -1577,6 +1720,23 @@ function WikiSidebar(props: WikiSidebarProps) {
         catch (e: any) { notify("error", e?.message || "忽略失败"); }
         setDiffModal(null);
       }} onShelve={(ft) => doShelve(ft)} />}
+
+      {/* 删除确认弹窗（DSH 风格） */}
+      {confirmState && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{
+            width: "min(90%, 420px)", background: "var(--dsw-alias-bg-layer-1)",
+            borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 16,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{confirmState.message}</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmState(null)} style={ghostBtn}>{tt(t, "wiki.cancel")}</button>
+              <button onClick={() => { const cb = confirmState.onYes; setConfirmState(null); cb(); }}
+                style={{ ...primaryBtn, background: "var(--dsw-alias-state-danger)" }}>{tt(t, "wiki.confirm")}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 快照恢复预览弹窗 */}
       {restorePreview && (
