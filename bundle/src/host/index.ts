@@ -263,6 +263,22 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     switch (kind) {
       case 'folder':
         return { summary: importer.summarize(await importer.importFolder(source, body.folderId ?? null)) };
+      case 'upload': {
+        // 前端文件内容上传（浏览器/植入式面板拿不到 File.path 时走此通道）
+        const fileName = (body.fileName || '').trim();
+        const content = typeof body.content === 'string' ? body.content : '';
+        if (!fileName) throw new Error('缺少文件名');
+        const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
+        await fs.mkdir(tmpDir, { recursive: true });
+        const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
+        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`);
+        await fs.writeFile(tmpPath, Buffer.from(content, 'base64'));
+        try {
+          return importer.importLocalFile(tmpPath, body.folderId ?? null);
+        } finally {
+          fs.rm(tmpPath, { force: true }).catch(() => {});
+        }
+      }
       case 'url':
         await guardUrlImport(source);
         return importer.importUrl(source, !!body.intranet);
@@ -522,6 +538,15 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     if (patch.rerankProvider === 'local' || patch.rerankProvider === 'openai' || patch.rerankProvider === 'none') {
       settings.rerankProvider = patch.rerankProvider;
     }
+    // 模型子字段（嵌入/重排 + OpenAI 兼容）
+    if (typeof patch.embeddingModelPath === 'string') settings.embeddingModelPath = patch.embeddingModelPath;
+    if (typeof patch.embeddingOpenAIBaseURL === 'string') settings.embeddingOpenAIBaseURL = patch.embeddingOpenAIBaseURL;
+    if (typeof patch.embeddingOpenAIAPIKey === 'string') settings.embeddingOpenAIAPIKey = patch.embeddingOpenAIAPIKey;
+    if (typeof patch.embeddingOpenAIModel === 'string') settings.embeddingOpenAIModel = patch.embeddingOpenAIModel;
+    if (typeof patch.rerankModelPath === 'string') settings.rerankModelPath = patch.rerankModelPath;
+    if (typeof patch.rerankOpenAIBaseURL === 'string') settings.rerankOpenAIBaseURL = patch.rerankOpenAIBaseURL;
+    if (typeof patch.rerankOpenAIAPIKey === 'string') settings.rerankOpenAIAPIKey = patch.rerankOpenAIAPIKey;
+    if (typeof patch.rerankOpenAIModel === 'string') settings.rerankOpenAIModel = patch.rerankOpenAIModel;
 
     // 用新配置重建 importer
     importer = new FileImporter({
@@ -532,6 +557,9 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       chunkMode: settings.chunkMode,
       webTimeout: settings.webTimeout,
     });
+    // 模型配置变更后重载 embedding/rerank（本地模型热切换）
+    await initEmbedding(settings);
+    await initRerank(settings);
   }
 
   // 读取 bundle/package.json 当前版本（供检查更新）

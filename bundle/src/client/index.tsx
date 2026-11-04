@@ -202,7 +202,15 @@ interface SettingsState {
   autoSnapshot: boolean;
   snapshotKeep: number;
   embeddingProvider: string;
+  embeddingModelPath: string;
+  embeddingOpenAIBaseURL: string;
+  embeddingOpenAIAPIKey: string;
+  embeddingOpenAIModel: string;
   rerankProvider: string;
+  rerankModelPath: string;
+  rerankOpenAIBaseURL: string;
+  rerankOpenAIAPIKey: string;
+  rerankOpenAIModel: string;
   rerankTopK: number;
 }
 
@@ -496,23 +504,29 @@ interface Toast { id: number; type: "error" | "success" | "info"; msg: string; }
 function ToastStack({ toasts }: { toasts: Toast[] }) {
   return (
     <div style={{
-      position: "fixed", top: 12, right: 12, zIndex: 10001,
-      display: "flex", flexDirection: "column", gap: 6, maxWidth: 320,
+      position: "fixed", bottom: 16, right: 16, zIndex: 10002,
+      display: "flex", flexDirection: "column", gap: 8, maxWidth: 320,
+      pointerEvents: "none",
     }}>
+      <style>{`@keyframes dsw-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .dsw-toast { animation: dsw-toast-in .18s ease-out; }`}</style>
       {toasts.map((t) => (
-        <div key={t.id} style={{
-          padding: "8px 12px", borderRadius: "var(--dsw-radius-md)",
-          background: "var(--dsw-alias-bg-layer-1)",
+        <div key={t.id} className="dsw-toast" style={{
+          padding: "10px 14px", borderRadius: "var(--dsw-radius-md)",
+          background: "var(--dsw-alias-bg-layer-2)",
           border: "1px solid var(--dsw-alias-border-l4)",
-          borderLeft: "3px solid " + (
-            t.type === "error" ? "var(--dsw-alias-state-danger)"
-            : t.type === "success" ? "var(--dsw-alias-state-success)"
-            : "var(--dsw-alias-state-business-primary)"
-          ),
           color: "var(--dsw-alias-label-primary)", fontSize: 12,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          display: "flex", gap: 8, alignItems: "flex-start",
+          pointerEvents: "auto",
         }}>
-          {t.msg}
+          <span style={{
+            flexShrink: 0, fontWeight: 700, fontSize: 12, lineHeight: "16px",
+            color: t.type === "error" ? "var(--dsw-alias-state-danger)"
+              : t.type === "success" ? "var(--dsw-alias-state-success)"
+              : "var(--dsw-alias-state-business-primary)",
+          }}>{t.type === "error" ? "✕" : t.type === "success" ? "✓" : "ℹ"}</span>
+          <span style={{ flex: 1 }}>{t.msg}</span>
         </div>
       ))}
     </div>
@@ -906,6 +920,63 @@ function WikiSidebar(props: WikiSidebarProps) {
       if (e?.offline) notify("error", tt(t, "wiki.offline"));
       else notify("error", e?.message || "导入失败");
     } finally { importInflight.current = false; }
+  };
+
+  // ---------- 按内容上传导入（植入式面板拿不到 File.path 时走此通道，浏览器安全允许读所选文件内容） ----------
+  const toBase64 = (buf: Uint8Array): string => {
+    let s = "";
+    const CH = 0x8000;
+    for (let i = 0; i < buf.length; i += CH) s += String.fromCharCode(...buf.subarray(i, i + CH));
+    return btoa(s);
+  };
+  const importFilesContent = async (files: File[], folderId: number | null = null): Promise<void> => {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    const over = list.filter((f) => f.size > 10 * 1024 * 1024);
+    const okList = list.filter((f) => f.size <= 10 * 1024 * 1024);
+    if (over.length) notify("error", `${over.length} 个文件超过 10MB 已跳过：${over.slice(0, 3).map((f) => f.name).join("、")}`);
+    if (!okList.length) return;
+    importInflight.current = true;
+    const results: string[] = [];
+    const CONC = 4;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < okList.length) {
+        const f = okList[idx++];
+        try {
+          const b64 = toBase64(new Uint8Array(await f.arrayBuffer()));
+          const r = await request("/import", { method: "POST", body: JSON.stringify({ fileName: f.name, content: b64, kind: "upload", async: true, folderId }) });
+          results.push(r?.skipped ? `跳过 ${f.name}：${r.reason || "未解析"}` : `成功 ${f.name}`);
+        } catch (e: any) { results.push(`失败 ${f.name}：${e?.message || "未知错误"}`); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONC, okList.length) }, () => worker()));
+    importInflight.current = false;
+    const ok = results.filter((r) => r.startsWith("成功")).length;
+    const fail = results.filter((r) => r.startsWith("失败")).length;
+    const skip = results.filter((r) => r.startsWith("跳过")).length;
+    const firstFail = results.find((r) => r.startsWith("失败"));
+    if (!fail && !skip) notify("success", `${tt(t, "wiki.importDone")}：${ok} 条`);
+    else if (!fail) notify("success", `导入完成：成功 ${ok}，跳过 ${skip}`);
+    else notify("error", `导入完成：成功 ${ok}，失败 ${fail}，跳过 ${skip}${firstFail ? `（${firstFail}）` : ""}`);
+    refreshList();
+  };
+
+  // 文件夹内容上传：还原顶层目录（找/建同名文件夹后平铺导入）
+  const importFolderContent = async (files: File[]) => {
+    const rel = (files[0] as any)?.webkitRelativePath || "";
+    const topName = rel.split("/")[0] || "导入文件夹";
+    let folderId: number | null = null;
+    try {
+      const existing = rows.find((r: any) => r.kind === "folder" && r.title === topName && r.parentId == null);
+      if (existing) { folderId = Number(existing.id); }
+      else {
+        const r = await apiCreateFolder(topName, null);
+        folderId = r?.id ?? null;
+      }
+      if (folderId != null) setExpandedFolders((prev) => { const n = new Set(prev); n.add(folderId); return n; });
+    } catch { /* 建文件夹失败则平铺到根目录 */ }
+    await importFilesContent(files, folderId);
   };
 
   // ---------- 删除（DSH 风格确认弹窗） ----------
@@ -1332,8 +1403,10 @@ function WikiSidebar(props: WikiSidebarProps) {
         const files = Array.from(e.dataTransfer?.files || []);
         if (files.length) {
           e.preventDefault();
-          const paths = files.map((f) => (f as any).path || f.name).filter(Boolean);
-          if (paths.length) importSystemFiles(paths);
+          const withPath = files.filter((f) => (f as any).path);
+          const noPath = files.filter((f) => !(f as any).path);
+          if (withPath.length) importSystemFiles(withPath.map((f) => (f as any).path));
+          if (noPath.length) importFilesContent(noPath);
         }
       }}>
       {/* 拖拽悬停提示遮罩 */}
@@ -1479,12 +1552,14 @@ function WikiSidebar(props: WikiSidebarProps) {
                 </>
               )}
             </div>
-            {/* 原生文件/文件夹选择器（点菜单项触发，选中即导入） */}
+            {/* 原生文件/文件夹选择器（点菜单项触发，选中即导入；有 File.path 走路径通道，否则内容上传） */}
             <input ref={fileInputRef} type="file" multiple style={{ display: "none" }}
               onChange={(e) => {
                 const files = Array.from(e.target.files || []);
-                const paths = files.map((f) => (f as any).path || f.name).filter(Boolean);
-                if (paths.length) importSystemFiles(paths);
+                const withPath = files.filter((f) => (f as any).path);
+                const noPath = files.filter((f) => !(f as any).path);
+                if (withPath.length) importSystemFiles(withPath.map((f) => (f as any).path));
+                if (noPath.length) importFilesContent(noPath);
                 e.target.value = "";
               }} />
             <input ref={folderInputRef} type="file" multiple webkitdirectory style={{ display: "none" }}
@@ -1494,8 +1569,16 @@ function WikiSidebar(props: WikiSidebarProps) {
                 if (!f0) return;
                 const rel = f0.webkitRelativePath || "";
                 const full = f0.path || "";
-                const source = rel && full ? full.slice(0, full.length - rel.length - 1) : (rel.split("/")[0] || full);
-                if (source) doImportFolder(source);
+                if (full && rel) {
+                  const source = full.slice(0, full.length - rel.length - 1);
+                  if (source) doImportFolder(source);
+                  else importFolderContent(files);
+                } else if (full) {
+                  doImportFolder(full);
+                } else {
+                  // 无路径环境：还原顶层目录 + 内容上传
+                  importFolderContent(files);
+                }
                 e.target.value = "";
               }} />
           </div>
@@ -1709,6 +1792,56 @@ function WikiSidebar(props: WikiSidebarProps) {
                     <option value="extranet">{tt(t, "webModeExtranet")}</option>
                   </select>
                 </div>
+                {/* 嵌入模型配置 */}
+                <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>{tt(t, "wiki.embedModel")}</div>
+                <select value={settings.embeddingProvider || "fallback"}
+                  onChange={(e) => setSettings({ ...settings, embeddingProvider: e.target.value })}
+                  style={{ ...smallInput, height: 28 }}>
+                  <option value="fallback">{tt(t, "wiki.embedFallback")}</option>
+                  <option value="local">{tt(t, "wiki.embedLocal")}</option>
+                  <option value="openai">{tt(t, "wiki.embedOpenAI")}</option>
+                </select>
+                {(settings.embeddingProvider || "fallback") === "local" && (
+                  <div>
+                    <input placeholder={tt(t, "wiki.modelPath")} value={settings.embeddingModelPath || ""}
+                      onChange={(e) => setSettings({ ...settings, embeddingModelPath: e.target.value })} style={smallInput} />
+                  </div>
+                )}
+                {(settings.embeddingProvider || "fallback") === "openai" && (
+                  <>
+                    <input placeholder={tt(t, "wiki.openaiBaseURL")} value={settings.embeddingOpenAIBaseURL || ""}
+                      onChange={(e) => setSettings({ ...settings, embeddingOpenAIBaseURL: e.target.value })} style={smallInput} />
+                    <input placeholder={tt(t, "wiki.openaiAPIKey")} type="password" value={settings.embeddingOpenAIAPIKey || ""}
+                      onChange={(e) => setSettings({ ...settings, embeddingOpenAIAPIKey: e.target.value })} style={smallInput} />
+                    <input placeholder={tt(t, "wiki.openaiModel")} value={settings.embeddingOpenAIModel || ""}
+                      onChange={(e) => setSettings({ ...settings, embeddingOpenAIModel: e.target.value })} style={smallInput} />
+                  </>
+                )}
+                {/* 重排模型配置 */}
+                <div style={{ fontSize: 12, marginBottom: 4, fontWeight: 600 }}>{tt(t, "wiki.rerankModel")}</div>
+                <select value={settings.rerankProvider || "none"}
+                  onChange={(e) => setSettings({ ...settings, rerankProvider: e.target.value })}
+                  style={{ ...smallInput, height: 28 }}>
+                  <option value="none">{tt(t, "wiki.rerankNone")}</option>
+                  <option value="local">{tt(t, "wiki.embedLocal")}</option>
+                  <option value="openai">{tt(t, "wiki.embedOpenAI")}</option>
+                </select>
+                {(settings.rerankProvider || "none") === "local" && (
+                  <div>
+                    <input placeholder={tt(t, "wiki.modelPath")} value={settings.rerankModelPath || ""}
+                      onChange={(e) => setSettings({ ...settings, rerankModelPath: e.target.value })} style={smallInput} />
+                  </div>
+                )}
+                {(settings.rerankProvider || "none") === "openai" && (
+                  <>
+                    <input placeholder={tt(t, "wiki.openaiBaseURL")} value={settings.rerankOpenAIBaseURL || ""}
+                      onChange={(e) => setSettings({ ...settings, rerankOpenAIBaseURL: e.target.value })} style={smallInput} />
+                    <input placeholder={tt(t, "wiki.openaiAPIKey")} type="password" value={settings.rerankOpenAIAPIKey || ""}
+                      onChange={(e) => setSettings({ ...settings, rerankOpenAIAPIKey: e.target.value })} style={smallInput} />
+                    <input placeholder={tt(t, "wiki.openaiModel")} value={settings.rerankOpenAIModel || ""}
+                      onChange={(e) => setSettings({ ...settings, rerankOpenAIModel: e.target.value })} style={smallInput} />
+                  </>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, marginBottom: 4 }}>{tt(t, "wiki.rerankTopK")}</div>
@@ -2234,6 +2367,10 @@ function apply(ctx: any): void {
       "wiki.autoSnapshot": "自动快照",
       "wiki.chunkMode": "切片模式", "chunkModeFixed": "固定切片", "chunkModeHeading": "标题分层切片",
       "wiki.pendingChanges": "待确认变更",
+      "wiki.embedModel": "嵌入模型", "wiki.rerankModel": "重排模型",
+      "wiki.embedFallback": "离线哈希（默认）", "wiki.embedLocal": "本地模型", "wiki.embedOpenAI": "OpenAI 兼容",
+      "wiki.rerankNone": "关闭重排", "wiki.modelPath": "本地模型路径", "wiki.openaiBaseURL": "Base URL（如 https://api.openai.com/v1）",
+      "wiki.openaiAPIKey": "API Key", "wiki.openaiModel": "模型名",
       "wiki.versions": "历史版本", "wiki.selectFile": "选择文件", "wiki.selectFileFirst": "请先选择文件", "wiki.noVersions": "暂无历史版本",
       "wiki.versionsHint": "人工编辑保存时自动生成历史版本，每文件最多保留 3 个",
       "wiki.view": "查看", "wiki.importFile": "导入文件", "wiki.importFolder": "导入文件夹", "wiki.importWeb": "导入网页",
@@ -2268,6 +2405,10 @@ function apply(ctx: any): void {
       "wiki.autoSnapshot": "Auto snapshot",
       "wiki.chunkMode": "Chunk Mode", "chunkModeFixed": "Fixed", "chunkModeHeading": "Heading-based",
       "wiki.pendingChanges": "Pending changes",
+      "wiki.embedModel": "Embedding model", "wiki.rerankModel": "Rerank model",
+      "wiki.embedFallback": "Offline hash (default)", "wiki.embedLocal": "Local model", "wiki.embedOpenAI": "OpenAI-compatible",
+      "wiki.rerankNone": "Disabled", "wiki.modelPath": "Local model path", "wiki.openaiBaseURL": "Base URL (e.g. https://api.openai.com/v1)",
+      "wiki.openaiAPIKey": "API Key", "wiki.openaiModel": "Model name",
       "wiki.versions": "History versions", "wiki.selectFile": "Select file", "wiki.selectFileFirst": "Select a file first", "wiki.noVersions": "No versions yet",
       "wiki.versionsHint": "A version is created on each manual save, max 3 per file",
       "wiki.view": "View", "wiki.importFile": "Import files", "wiki.importFolder": "Import folder", "wiki.importWeb": "Import web page",
