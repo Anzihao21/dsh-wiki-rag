@@ -53,6 +53,38 @@ export async function getAllChunks(): Promise<VectorChunk[]> {
   return all<VectorChunk>('SELECT * FROM vector_chunks');
 }
 
+/**
+ * 检索候选池预过滤：
+ * - 小库（chunk 数 < SMALL_DB_THRESHOLD）直接全表返回，避免预过滤误伤向量兜底
+ * - 大库时传入关键词集合，用 chunk_text LIKE '%kw%' 做 OR 命中预过滤
+ * - 命中行作为候选池（maxCandidates 截断），避免对全表数万 chunk 做向量打分
+ * - 若关键词命中为 0（纯语义查询），退化为按 rowid 取最近 maxCandidates 条
+ */
+export async function getChunksForSearch(
+  keywords: string[],
+  maxCandidates = 1000
+): Promise<VectorChunk[]> {
+  const SMALL_DB_THRESHOLD = 200;
+  const total = await countChunks();
+  if (total <= SMALL_DB_THRESHOLD) {
+    return all<VectorChunk>('SELECT * FROM vector_chunks');
+  }
+
+  const safeKw = (keywords || []).filter((k) => typeof k === 'string' && k.length > 0);
+  if (safeKw.length === 0) {
+    return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
+  }
+  const clauses = safeKw.map(() => 'chunk_text LIKE ?').join(' OR ');
+  const params = safeKw.map((k) => `%${k}%`);
+  const rows = await all<VectorChunk>(
+    `SELECT * FROM vector_chunks WHERE ${clauses} LIMIT ?`,
+    [...params, maxCandidates]
+  );
+  if (rows.length > 0) return rows;
+  // 关键词零命中：纯语义查询，退化为最近 N 条
+  return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
+}
+
 /** 获取切片总数 */
 export async function countChunks(): Promise<number> {
   const row = await get<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM vector_chunks');

@@ -1,4 +1,4 @@
-import { getAllChunks, getChunkOrdinal } from '../db/vector-db';
+import { getChunksForSearch, getChunkOrdinal } from '../db/vector-db';
 import { getKnowledgeFileById } from '../db/knowledge-db';
 import { embedText, cosineSimilarity } from './embedding';
 import { rerank } from './rerank';
@@ -60,7 +60,9 @@ export async function ragSearch(
   }
 
   const qVec = await embedText(query);
-  const chunks = await getAllChunks();
+  // 关键词预过滤：SQL 层 LIKE 命中候选池（上限 1000），避免全表数万 chunk 做向量打分
+  const kw = query.split(/\s+/).filter((w) => w.length > 0);
+  const chunks = await getChunksForSearch(kw, 1000);
   if (chunks.length === 0) {
     return [];
   }
@@ -68,7 +70,6 @@ export async function ragSearch(
   // 先取更多候选供 rerank 用
   const candidateCount = Math.max(topK * 3, 10);
 
-  const kw = query.split(/\s+/).filter((w) => w.length > 0);
   const scored: Array<{ fileId: number; chunkId: number; text: string; score: number }> = [];
   for (const c of chunks) {
     const vecScore = cosineSimilarity(qVec, c.vector_blob);
