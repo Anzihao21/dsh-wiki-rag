@@ -17,14 +17,16 @@ CREATE TABLE IF NOT EXISTS knowledge_files (
     last_sync_time INTEGER NOT NULL DEFAULT 0,
     folder_id INTEGER DEFAULT NULL,
     sha256 TEXT,
-    status TEXT NOT NULL DEFAULT 'ready'
+    status TEXT NOT NULL DEFAULT 'ready',
+    deleted_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     parent_id INTEGER,
-    create_time INTEGER NOT NULL
+    create_time INTEGER NOT NULL,
+    deleted_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS vector_chunks (
@@ -102,7 +104,7 @@ export async function initDatabase(filePath?: string): Promise<void> {
 }
 
 /** 当前 schema 版本（user_version） */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * 迁移清单：索引 i 对应「把库从版本 i+1 升到 i+2」。
@@ -129,6 +131,11 @@ const MIGRATIONS: Array<() => void> = [
       create_time INTEGER NOT NULL
     )`).run();
     getDb().prepare(`CREATE INDEX IF NOT EXISTS idx_fv_file ON file_versions(file_id, version)`).run();
+  },
+  // v4 → v5：回收站软删除——knowledge_files / folders 加 deleted_at（NULL=未删除，否则为删除时间戳）
+  () => {
+    ensureColumn('knowledge_files', 'deleted_at', 'INTEGER');
+    ensureColumn('folders', 'deleted_at', 'INTEGER');
   },
 ];
 
