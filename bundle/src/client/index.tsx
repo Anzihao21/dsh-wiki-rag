@@ -529,6 +529,12 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [paraBar, setParaBar] = useState<{ x: number; y: number; label: string } | null>(null);
   const [vertBar, setVertBar] = useState<{ x: number; y: number } | null>(null);
   // Tiptap 富文本内核：StarterKit + Link + Table；onUpdate 同步回 MD、选区驱动浮动工具栏
+  // 快捷键矩阵（StarterKit 默认 keymap，无需重复绑定）：
+  //   Mod-b Bold / Mod-i Italic / Mod-u Underline(本扩展显式补) / Mod-shift-x Strike / Mod-e 行内Code
+  //   Mod-shift-7 有序列表 / Mod-shift-8 无序列表 / Mod-shift-b 引用块 / Mod-alt-1..6 标题
+  //   Mod-z 撤销 / Mod-shift-z 重做 / Mod-a 全选（ProseMirror 默认）
+  // 与宿主冲突：Ctrl-F(全局搜索占用)、Ctrl-P(命令面板占用)、Ctrl-S(保存占用，已 preventDefault)——
+  //   上述均不与编辑态文字快捷键冲突；Strike/Code 无宿主占用，由 StarterKit 自带生效，不重复绑定。
   const editor = useEditor({
     extensions: [
       StarterKit,
