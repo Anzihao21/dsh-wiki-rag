@@ -284,3 +284,27 @@ export function findLineIndex(content: string, snippet: string): number {
   for (let i = 0; i < lines.length; i++) if (head && lines[i].includes(head)) return i;
   return -1;
 }
+
+/** 双链 [[ 联想：按 q 过滤文档标题，排除自身，最多 8 条 */
+export function filterLinks<T extends { id: string; title: string }>(
+  q: string, items: T[], excludeId?: string, limit = 8,
+): T[] {
+  const s = q.trim().toLowerCase();
+  return items
+    .filter((it) => it.id !== excludeId)
+    .filter((it) => !s || it.title.toLowerCase().includes(s))
+    .slice(0, limit);
+}
+
+/** 反向链接去重：按 fileId 去重，排除自身 */
+export function dedupeRefs<T extends { fileId?: number | string }>(results: T[], excludeId?: string | number): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of results) {
+    const key = String(r.fileId ?? out.length);
+    if (String(r.fileId) === String(excludeId)) continue;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(r);
+  }
+  return out;
+}

@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs,
   type TreeNode,
 } from "../logic";
 
@@ -228,4 +228,22 @@ describe("findLineIndex", () => {
   it("命中行号", () => expect(findLineIndex("a\nbcd\ne", "bcd")).toBe(1));
   it("找不到返回 -1", () => expect(findLineIndex("a\nb", "zzz")).toBe(-1));
   it("空片段返回 -1", () => expect(findLineIndex("abc", "")).toBe(-1));
+});
+
+// ---------------- 轮1 双链 ----------------
+describe("filterLinks", () => {
+  const items = [{ id: "1", title: "Alpha" }, { id: "2", title: "Beta" }, { id: "3", title: "Alphabet" }];
+  it("空 q 返回全部除自身", () => expect(filterLinks("", items, "1").map((x) => x.id)).toEqual(["2", "3"]));
+  it("按标题过滤", () => expect(filterLinks("alp", items, undefined).map((x) => x.id)).toEqual(["1", "3"]));
+  it("上限 8", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ id: String(i), title: `doc${i}` }));
+    expect(filterLinks("", many).length).toBe(8);
+  });
+});
+
+describe("dedupeRefs", () => {
+  it("按 fileId 去重并排除自身", () => {
+    const r = dedupeRefs([{ fileId: 1 }, { fileId: 2 }, { fileId: 1 }, { fileId: 3 }], 2);
+    expect(r.map((x) => x.fileId)).toEqual([1, 3]);
+  });
 });

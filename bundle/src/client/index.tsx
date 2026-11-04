@@ -30,7 +30,7 @@ import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
   loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -533,6 +533,12 @@ function WikiSidebar(props: WikiSidebarProps) {
         const c = editor.view.coordsAtPos($from.pos);
         setSlashMenu({ x: c.left, y: c.bottom }); setSlashSel(0);
       } else setSlashMenu(null);
+      // 双链 [[：行首输入 [[ 后跟随过滤文本（不含 ]]）
+      const lm = text.match(/^\s*\[\[([^\]]*)$/);
+      if (empty && lm) {
+        const c2 = editor.view.coordsAtPos($from.pos);
+        setLinkMenu({ x: c2.left, y: c2.bottom, q: lm[1] }); setLinkSel(0);
+      } else setLinkMenu(null);
     },
     // 选中文字松开后，在选区上方显示横向格式工具栏（无选中自动隐藏）；
     // 拖动选字过程中防抖 120ms，避免工具栏跟着光标闪烁
@@ -589,6 +595,8 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [tocOpen, setTocOpen] = useState(false);
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number } | null>(null);
   const [slashSel, setSlashSel] = useState(0);
+  const [linkMenu, setLinkMenu] = useState<{ x: number; y: number; q: string } | null>(null);
+  const [linkSel, setLinkSel] = useState(0);
   const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
@@ -2336,6 +2344,35 @@ function WikiSidebar(props: WikiSidebarProps) {
                     ))}
                   </div>
                 )}
+                {linkMenu && editor && (() => {
+                  const candidates = filterLinks(linkMenu.q, docs, activeId);
+                  const sel = Math.min(linkSel, Math.max(0, candidates.length - 1));
+                  const pick = (i: number) => {
+                    const hit = candidates[i]; if (!hit) return;
+                    // 删除 "[[xxx" 并插入 "[[标题]]"
+                    const { $from } = editor.state.selection;
+                    const start = $from.pos - $from.parent.textContent.length;
+                    editor.chain().focus().deleteRange({ from: start, to: $from.pos }).insertContent(`[[${hit.title}]]`).run();
+                    setLinkMenu(null);
+                  };
+                  return (
+                  <div style={{ position: "fixed", left: linkMenu.x, top: linkMenu.y + 4, zIndex: 10002, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", padding: 4, minWidth: 200, maxHeight: 280, overflowY: "auto" }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") { e.preventDefault(); setLinkSel((s) => Math.min(s + 1, candidates.length - 1)); }
+                      else if (e.key === "ArrowUp") { e.preventDefault(); setLinkSel((s) => Math.max(s - 1, 0)); }
+                      else if (e.key === "Enter") { e.preventDefault(); pick(sel); }
+                      else if (e.key === "Escape") { e.preventDefault(); setLinkMenu(null); }
+                    }}>
+                    {candidates.length === 0 && <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.noResult")}</div>}
+                    {candidates.map((d, i) => (
+                      <div key={d.id} onMouseEnter={() => setLinkSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(i); }}
+                        style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", background: i === sel ? "var(--dsw-alias-interactive-bg-hover)" : "transparent", color: "var(--dsw-alias-label-primary)" }}>
+                        📄 {d.title}
+                      </div>
+                    ))}
+                  </div>
+                  );
+                })()}
               </div>
               {/* 字数统计 */}
               <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", padding: "4px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", display: "flex", gap: 12 }}>
