@@ -482,6 +482,32 @@ function statusStyle(status: WikiDoc["status"]) {
   return { label: "已索引", color: "var(--dsw-alias-state-success-primary)" };
 }
 
+/** 轻量焦点陷阱：打开时焦点移入首个可聚焦元素，Tab 在首尾循环，关闭时还原焦点到触发器 */
+function useFocusTrap<T extends HTMLElement>(active: boolean) {
+  const ref = useRef<T>(null);
+  const opener = useRef<Element | null>(null);
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    opener.current = document.activeElement;
+    const focusables = ref.current.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+    (focusables[0] || ref.current).focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !ref.current) return;
+      const f = Array.from(ref.current.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")).filter((el) => !el.hasAttribute("disabled"));
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    ref.current.addEventListener("keydown", onKey);
+    return () => {
+      ref.current?.removeEventListener("keydown", onKey);
+      (opener.current as HTMLElement | null)?.focus?.();
+    };
+  }, [active]);
+  return ref;
+}
+
 function WikiSidebar(props: WikiSidebarProps) {
   const { wide = true, expandSidebar, t } = props;
 
@@ -606,6 +632,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
   const [backlinks, setBacklinks] = useState<any[] | null>(null);
   const [showBack, setShowBack] = useState(false);
+  const confirmRef = useFocusTrap<HTMLDivElement>(!!confirmState);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -2696,7 +2723,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* 删除确认弹窗（DSH 风格） */}
       {confirmState && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-          <div role="dialog" aria-modal="true" style={{
+          <div ref={confirmRef} role="dialog" aria-modal="true" style={{
             width: "min(90%, 420px)", background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 16,
           }}>
