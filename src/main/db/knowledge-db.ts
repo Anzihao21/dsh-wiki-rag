@@ -227,8 +227,9 @@ export async function restoreFolderCascade(id: number): Promise<void> {
   }
 }
 
-/** 物理删除文件（连同 DB 行；调用方负责动物理文件） */
+/** 物理删除文件（连同 DB 行与 file_versions 历史版本；调用方负责动物理文件） */
 export async function purgeFileRow(id: number): Promise<void> {
+  await run('DELETE FROM file_versions WHERE file_id = ?', [id]);
   await run('DELETE FROM knowledge_files WHERE id = ?', [id]);
 }
 

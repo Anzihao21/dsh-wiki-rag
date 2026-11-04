@@ -109,3 +109,27 @@ describe('软删后重新导入', () => {
     expect(trash.files.find((f) => f.id === id2)).toBeUndefined();
   });
 });
+
+describe('purge 清理 file_versions 孤儿', () => {
+  it('purgeFileRow 后 file_versions 对应行也被删除', async () => {
+    const fid = await insertKnowledgeFile({
+      file_name: 'v.md', source_path: '/v.md', md_path: path.join(dir, 'v.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    // 插入一条历史版本
+    await (await import('../sqlite-init')).run(
+      'INSERT INTO file_versions (file_id, version, content, create_time) VALUES (?, 1, ?, ?)',
+      [fid, '# old', Date.now()]
+    );
+    const before = await (await import('../sqlite-init')).all<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM file_versions WHERE file_id = ?', [fid]
+    );
+    expect(before[0].n).toBe(1);
+    await purgeFileRow(fid);
+    const after = await (await import('../sqlite-init')).all<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM file_versions WHERE file_id = ?', [fid]
+    );
+    expect(after[0].n).toBe(0);
+  });
+});
