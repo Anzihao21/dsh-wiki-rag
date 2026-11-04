@@ -2019,6 +2019,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                     const dangerDrop = draggedFolderId.current != null && subtreeFolderIds(tree, draggedFolderId.current, new Set()).has(row.id);
                     return (
                       <div key={rowKey} role="treeitem" aria-expanded={open} aria-label={row.title}
+                        aria-level={row.depth + 1} aria-setsize={rows.length} aria-posinset={startIndex + vi + 1}
                         draggable
                         onDragStart={(e) => { draggedFolderId.current = row.id; e.dataTransfer.setData("text/folder-id", String(row.id)); }}
                         onDragEnd={() => { draggedFolderId.current = null; setDropTargetId(null); }}
@@ -2084,6 +2085,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   const flashing = flashRowKey === rowKey;
                   return (
                     <div key={rowKey} role="treeitem" aria-selected={active} aria-label={row.title}
+                      aria-level={row.depth + 1} aria-setsize={rows.length} aria-posinset={startIndex + vi + 1}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
                       onClick={() => { requestLeave(() => openDoc(d.id)); }}
