@@ -322,5 +322,5 @@ dompurify/dist/purify.es.mjs:
    * LICENSE file in the root directory of this source tree.
    *)
 */
-exports.inject = inject;exports.apply = apply;return module.exports;}});
+return module.exports;}});
 //# sourceMappingURL=index.js.map

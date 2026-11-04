@@ -77,8 +77,8 @@ async function main() {
     // 外壳结尾：导出 apply/inject + return + 收尾
     footer: {
       js:
-        'exports.inject = inject;' +
-        'exports.apply = apply;' +
+        // apply/inject 由 esbuild 的 export 语句自行写入 exports，
+        // footer 不再硬编码引用本地变量（minify 后会重命名 → ReferenceError）
         'return module.exports;' +
         '}' +
         '});',
