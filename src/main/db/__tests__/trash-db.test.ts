@@ -81,3 +81,31 @@ describe('回收站软删除', () => {
     expect(await getKnowledgeFileById(fid)).toBeUndefined();
   });
 });
+
+describe('软删后重新导入', () => {
+  it('同路径重新导入：新建行正常、旧行保持 deleted（不复活）', async () => {
+    const mdPath = path.join(dir, 'reimport.md');
+    writeFileSync(mdPath, '# v1');
+    const id1 = await insertKnowledgeFile({
+      file_name: 'reimport.md', source_path: mdPath, md_path: mdPath,
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(id1);
+    // 重新导入同路径 → 新行
+    const id2 = await insertKnowledgeFile({
+      file_name: 'reimport.md', source_path: mdPath, md_path: mdPath,
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    expect(id2).not.toBe(id1);
+    // list 只看到新行
+    const active = await listKnowledgeFiles();
+    expect(active.find((f) => f.id === id1)).toBeUndefined();
+    expect(active.find((f) => f.id === id2)).toBeTruthy();
+    // trash 仍有旧行
+    const trash = await listTrash();
+    expect(trash.files.find((f) => f.id === id1)).toBeTruthy();
+    expect(trash.files.find((f) => f.id === id2)).toBeUndefined();
+  });
+});
