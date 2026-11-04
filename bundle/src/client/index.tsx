@@ -153,17 +153,24 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.noFavHint": "暂无收藏，点文件行 ☆ 收藏",
   "wiki.noRecentHint": "暂无最近打开",
   "wiki.searchHistory": "搜索历史",
+  "wiki.selectedCount": "已选 {n} 项",
+  "wiki.batchMove": "移动到…",
+  "wiki.batchMoveTo": "移动到文件夹",
+  "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
 };
 
-/** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
-function tt(t: ((key: string) => string) | undefined, key: string): string {
+/** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典；支持 {n} 插值 */
+function tt(t: ((key: string) => string) | undefined, key: string, params?: Record<string, string | number>): string {
+  let s: string;
   if (t) {
     try {
       const v = t(key);
-      if (v && v !== key) return v;
-    } catch { /* ignore */ }
-  }
-  return LOCAL_FALLBACK[key] || key;
+      if (v && v !== key) s = v;
+      else s = LOCAL_FALLBACK[key] || key;
+    } catch { s = LOCAL_FALLBACK[key] || key; }
+  } else s = LOCAL_FALLBACK[key] || key;
+  if (params) for (const k of Object.keys(params)) s = s.replace(new RegExp(`\\{${k}\\}`, "g"), String(params[k]));
+  return s;
 }
 
 // ============================================================================
@@ -774,6 +781,10 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
+  // 多选批量操作
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchMoveOpen, setBatchMoveOpen] = useState(false);
+  const [batchMoveName, setBatchMoveName] = useState("");
   const [scrollToFolderId, setScrollToFolderId] = useState<number | null>(null);
   const [scrollToFileId, setScrollToFileId] = useState<number | null>(null);
   // 拖拽导入悬停遮罩
@@ -1357,6 +1368,22 @@ function WikiSidebar(props: WikiSidebarProps) {
     action?.();
   };
 
+  // 批量移动：按名称找/建目标文件夹后移动
+  const doBatchMove = async () => {
+    const name = batchMoveName.trim();
+    if (!name) return;
+    setBatchMoveOpen(false); setBatchMoveName("");
+    try {
+      let target = rows.find((r) => r.rowType === "folder" && r.title === name);
+      let folderId = target ? Number(target.id) : null;
+      if (!folderId) { const r = await apiCreateFolder(name, null); folderId = r?.id ?? null; }
+      for (const id of selectedIds) await doMoveDoc(id, folderId).catch(() => {});
+      setSelectedIds(new Set());
+      refreshList();
+      notify("success", tt(t, "wiki.moved"));
+    } catch (e: any) { notify("error", e?.message || "批量移动失败"); }
+  };
+
   // ---------- 导出 Markdown：a[download]+Blob，受限则复制内容兜底 ----------
   const exportDoc = useCallback(async (id: string) => {
     const doc = docs.find((d) => d.id === id);
@@ -1886,6 +1913,22 @@ function WikiSidebar(props: WikiSidebarProps) {
             ))}
           </div>
 
+          {/* 批量操作条：勾选 ≥1 时出现 */}
+          {selectedIds.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 6px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-specific-sidebar-nav-item-active)", marginBottom: 4, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-state-business-primary)" }}>{tt(t, "wiki.selectedCount", { n: selectedIds.size })}</span>
+              <button onClick={() => setBatchMoveOpen(true)} style={{ ...ghostBtn, height: 22, fontSize: 11 }}>{tt(t, "wiki.batchMove")}</button>
+              <button onClick={() => {
+                const ids = [...selectedIds];
+                setConfirmState({
+                  message: tt(t, "wiki.batchDeleteConfirm", { n: ids.length }),
+                  onYes: async () => { for (const id of ids) await doDelete(id).catch(() => {}); setSelectedIds(new Set()); refreshList(); },
+                });
+              }} style={{ ...ghostBtn, height: 22, fontSize: 11, color: "var(--dsw-alias-state-error-primary)" }}>{tt(t, "wiki.delete")}</button>
+              <button onClick={() => setSelectedIds(new Set())} style={{ ...ghostBtn, height: 22, fontSize: 11, marginLeft: "auto" }}>{tt(t, "wiki.cancel")}</button>
+            </div>
+          )}
+
           {/* 文件列表区 */}
           <div ref={listScrollRef}
             onScroll={(e) => {
@@ -2075,6 +2118,22 @@ function WikiSidebar(props: WikiSidebarProps) {
                         transition: "background 120ms ease-out",
                       }}>
                       {guides}
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIds((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(d.id)) n.delete(d.id); else n.add(d.id);
+                            return n;
+                          });
+                        }}
+                        style={{
+                          flexShrink: 0, width: 14, height: 14, borderRadius: 3, cursor: "pointer",
+                          border: "1px solid var(--dsw-alias-border-l2)",
+                          background: selectedIds.has(d.id) ? "var(--dsw-alias-state-business-primary)" : "transparent",
+                          color: "var(--dsw-alias-label-primary-foreground)", fontSize: 10, lineHeight: "12px", textAlign: "center",
+                          opacity: selectedIds.has(d.id) ? 1 : rowHovered ? 1 : 0, transition: "opacity 120ms ease-out",
+                        }}>{selectedIds.has(d.id) ? "✓" : ""}</span>
                       <FileIcon size={13} />
                       {renamingId === d.id ? (
                         <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
@@ -2529,7 +2588,23 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       )}
 
-      {/* 未保存离开确认：保存并离开 / 放弃修改 / 取消 */}
+      {/* 批量移动弹层：输入目标文件夹名 */}
+      {batchMoveOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{ width: "min(90%, 360px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{tt(t, "wiki.batchMoveTo")}</div>
+            <input autoFocus value={batchMoveName} onChange={(e) => setBatchMoveName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") doBatchMove(); }}
+              placeholder={tt(t, "wiki.folderName")}
+              style={smallInput} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => { setBatchMoveOpen(false); setBatchMoveName(""); }} style={ghostBtn}>{tt(t, "wiki.cancel")}</button>
+              <button onClick={doBatchMove} style={primaryBtn}>{tt(t, "wiki.confirm")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {leaveGuard && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
