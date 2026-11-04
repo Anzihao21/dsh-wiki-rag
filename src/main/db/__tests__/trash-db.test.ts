@@ -152,3 +152,30 @@ describe('listKnowledgeFiles 过滤软删（ZIP 导出同源）', () => {
     expect(active.find((f) => f.id === id2)).toBeUndefined();
   });
 });
+
+describe('purge/restore 并发幂等', () => {
+  it('连续 purge 同一 id 不抛错（第二次行已不存在）', async () => {
+    const fid = await insertKnowledgeFile({
+      file_name: 'concurrent.md', source_path: '/c.md', md_path: path.join(dir, 'c.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(fid);
+    await purgeFileRow(fid);
+    // 第二次 purge 不应抛错（DELETE WHERE id=? 匹配 0 行是 no-op）
+    await expect(purgeFileRow(fid)).resolves.toBeUndefined();
+    expect(await getKnowledgeFileById(fid)).toBeUndefined();
+  });
+
+  it('restore 已 purge 的 id 是 no-op（行不存在不抛错）', async () => {
+    const fid = await insertKnowledgeFile({
+      file_name: 'gone.md', source_path: '/g.md', md_path: path.join(dir, 'g.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(fid);
+    await purgeFileRow(fid);
+    // restoreFile 对不存在的 id 是 UPDATE no-op，不抛
+    await expect(restoreFile(fid)).resolves.toBeUndefined();
+  });
+});
