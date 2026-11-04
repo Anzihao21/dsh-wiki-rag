@@ -639,6 +639,8 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [backlinks, setBacklinks] = useState<any[] | null>(null);
   const [showBack, setShowBack] = useState(false);
   const confirmRef = useFocusTrap<HTMLDivElement>(!!confirmState);
+  const cmdRef = useFocusTrap<HTMLDivElement>(cmdOpen);
+  const urlRef = useFocusTrap<HTMLDivElement>(urlDialog);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -2718,7 +2720,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         return (
           <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", zIndex: 10003, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
             onMouseDown={() => setCmdOpen(false)}>
-            <div onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: "min(90%, 480px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", overflow: "hidden" }}>
+            <div ref={cmdRef} onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: "min(90%, 480px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", overflow: "hidden" }}>
               <input autoFocus value={cmdQ} onChange={(e) => { setCmdQ(e.target.value); setCmdSel(0); }} placeholder={tt(t, "wiki.cmdPlaceholder")}
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 14", background: "transparent", border: "none", outline: "none", color: "var(--dsw-alias-label-primary)", fontSize: 14 }}
                 onKeyDown={(e) => {
@@ -2831,7 +2833,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* 导入网页 URL 对话框 */}
       {urlDialog && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-          <div style={{
+          <div ref={urlRef} role="dialog" aria-modal="true" style={{
             width: "90%", maxWidth: 440, background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
           }}>
