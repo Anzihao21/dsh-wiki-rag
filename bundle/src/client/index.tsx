@@ -144,6 +144,12 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.emptyFolder": "空文件夹",
   "wiki.rootAll": "全部文件",
   "wiki.create": "新建 / 导入",
+  "wiki.export": "导出 Markdown",
+  "wiki.exported": "已导出 Markdown",
+  "wiki.copiedContent": "已复制内容到剪贴板",
+  "wiki.leaveUnsaved": "有未保存的修改",
+  "wiki.saveAndLeave": "保存并离开",
+  "wiki.discard": "放弃修改",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -766,6 +772,15 @@ function WikiSidebar(props: WikiSidebarProps) {
   // 最近打开 + 收藏（localStorage 持久化）
   const [favs, setFavs] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem("dsh-wiki-rag:favs") || "[]")); } catch { return new Set(); } });
   const [recent, setRecent] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("dsh-wiki-rag:recent") || "[]"); } catch { return []; } });
+  // 最近编辑时间戳（保存成功时写入），用于最近区按时间排序置顶
+  const [editTimes, setEditTimes] = useState<Record<string, number>>(() => { try { return JSON.parse(localStorage.getItem("dsh-wiki-rag:editTimes") || "{}"); } catch { return {}; } });
+  const markEdited = useCallback((id: string) => {
+    setEditTimes((prev) => {
+      const next = { ...prev, [id]: Date.now() };
+      try { localStorage.setItem("dsh-wiki-rag:editTimes", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   const [showFavs, setShowFavs] = useState(true);
   const [showRecent, setShowRecent] = useState(false);
   const toggleFav = (id: string) => {
@@ -790,6 +805,9 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  // 按 fileId 记住编辑区滚动位置
+  const editorScrollMap = useRef<Map<string, number>>(new Map());
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(400);
   const searchInflight = useRef(false);
@@ -1219,6 +1237,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       baselineRef.current = finalMd;
       setMdContent(finalMd);
       setSavedContent(finalMd);
+      markEdited(activeId);
       notify("success", tt(t, "wiki.contentSaved"));
       refreshList();
     } catch (e: any) {
@@ -1258,6 +1277,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         baselineRef.current = final;
         setSavedContent(final);
         setSaveState("saved");
+        markEdited(activeId);
       } catch (e: any) {
         setSaveState("error");
         if (e?.status === 409) {
@@ -1270,6 +1290,15 @@ function WikiSidebar(props: WikiSidebarProps) {
     }, 900);
     return () => clearTimeout(timer);
   }, [activeId, mdContent, savedContent, notify, t]);
+
+  // 切换文档 / 从其他 view 返回编辑态时恢复编辑区滚动位置
+  useEffect(() => {
+    if (view !== "editor" || !activeId || !editor || !editorScrollRef.current) return;
+    const target = editorScrollMap.current.get(activeId) || 0;
+    // 等待内容渲染后恢复
+    const raf = requestAnimationFrame(() => { if (editorScrollRef.current) editorScrollRef.current.scrollTop = target; });
+    return () => cancelAnimationFrame(raf);
+  }, [view, activeId, editor, mdContent]);
 
   // ---------- 加载文档真实内容 ----------
   const openDoc = useCallback(async (id: string) => {
@@ -1296,6 +1325,28 @@ function WikiSidebar(props: WikiSidebarProps) {
       if (editor) editor.commands.setContent(mdToHtml(c));
     }
   }, [editor]);
+
+  // ---------- 导出 Markdown：a[download]+Blob，受限则复制内容兜底 ----------
+  const exportDoc = useCallback(async (id: string) => {
+    const doc = docs.find((d) => d.id === id);
+    let content = id === activeId ? mdContent : "";
+    if (!content) {
+      try { const r = await apiGetContent(id); content = r?.content || ""; } catch { content = ""; }
+    }
+    const base = (doc?.fileName || doc?.title || "document").replace(/\.(md|txt)$/i, "");
+    try {
+      const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = base + ".md";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      notify("success", tt(t, "wiki.exported"));
+    } catch {
+      try { await navigator.clipboard.writeText(content); notify("success", tt(t, "wiki.copiedContent")); }
+      catch (e: any) { notify("error", e?.message || "导出失败"); }
+    }
+  }, [docs, activeId, mdContent, notify]);
 
   // ---------- 新建文档（空白 MD，人工创作链路） ----------
   // 新建文档：直接创建空白文档并进入名称编辑态（不再先弹窗输入标题）
@@ -1667,7 +1718,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   <div onClick={() => setShowRecent(!showRecent)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: "var(--dsw-alias-label-secondary)", padding: "2px 6px", fontWeight: 600 }}>
                     <span>{showRecent ? "▾" : "▸"}</span> {tt(t, "wiki.recentSection")}
                   </div>
-                  {showRecent && recent.map((fid) => {
+                  {showRecent && [...recent].sort((a, b) => (editTimes[b] || 0) - (editTimes[a] || 0)).map((fid) => {
                     const d = docs.find((x) => x.id === fid);
                     return d ? (
                       <div key={fid} onClick={() => openDoc(fid)} title={d.fileName || d.title}
@@ -2158,7 +2209,8 @@ function WikiSidebar(props: WikiSidebarProps) {
                 </button>
               </div>
               {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得；超宽行长限 720px */}
-              <div style={{ flex: 1, overflowY: "auto", padding: 12 }}
+              <div ref={editorScrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}
+                onScroll={(e) => { if (activeId) editorScrollMap.current.set(activeId, e.currentTarget.scrollTop); }}
                 onMouseMove={onEditorHover}
                 onMouseLeave={paraLeave}>
                 <style>{`.dsh-wiki-editor p { font-size: 14px; line-height: 1.7; margin: 4px 0; }
@@ -2350,6 +2402,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                 setRebindState({ fileId: String(contextMenu.id), value: "" });
                 setContextMenu(null);
               }} style={menuItem}>{tt(t, "wiki.rebindSource")}</div>
+            )}
+            {contextMenu.kind === "doc" && (
+              <div onClick={() => { exportDoc(String(contextMenu.id)); setContextMenu(null); }} style={menuItem}>{tt(t, "wiki.export")}</div>
             )}
             {contextMenu.kind === "folder" && (
               <div onClick={() => {
