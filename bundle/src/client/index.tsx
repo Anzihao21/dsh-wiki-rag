@@ -753,10 +753,12 @@ function WikiSidebar(props: WikiSidebarProps) {
   // 历史版本：当前查看文件 + 版本列表 + 版本内容预览（每文件最多保留 3 个版本）
   const [verFileId, setVerFileId] = useState<string | null>(null);
   const [versions, setVersions] = useState<{ version: number; create_time: number }[]>([]);
-  const [verPreview, setVerPreview] = useState<{ title: string; content: string } | null>(null);
+  const [verPreview, setVerPreview] = useState<{ title: string; old: string; new: string } | null>(null);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
+  // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
+  const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   const [scrollToFolderId, setScrollToFolderId] = useState<number | null>(null);
   const [scrollToFileId, setScrollToFileId] = useState<number | null>(null);
   // 拖拽导入悬停遮罩
@@ -1326,6 +1328,19 @@ function WikiSidebar(props: WikiSidebarProps) {
     }
   }, [editor]);
 
+  // 未保存离开守卫：编辑态有改动时先弹确认（保存并离开 / 放弃 / 取消）
+  const requestLeave = useCallback((action: () => void) => {
+    if (view === "editor" && activeId && mdContent !== savedContent) setLeaveGuard({ action });
+    else action();
+  }, [view, activeId, mdContent, savedContent]);
+
+  const doSaveThenLeave = async () => {
+    const action = leaveGuard?.action;
+    setLeaveGuard(null);
+    try { await saveEdit(); } catch {}
+    action?.();
+  };
+
   // ---------- 导出 Markdown：a[download]+Blob，受限则复制内容兜底 ----------
   const exportDoc = useCallback(async (id: string) => {
     const doc = docs.find((d) => d.id === id);
@@ -1430,12 +1445,16 @@ function WikiSidebar(props: WikiSidebarProps) {
     } catch (e: any) { notify("error", e?.message || "加载版本失败"); }
   };
 
-  // ---------- 历史版本：查看内容（只读预览） ----------
+  // ---------- 历史版本：查看内容（只读，与当前内容行级 diff） ----------
   const doViewVersion = async (fileId: string, ver: number) => {
     try {
       const r = await apiGetVersion(fileId, ver);
       const doc = docs.find((d) => d.id === fileId);
-      setVerPreview({ title: `${doc?.fileName || "文档"} · ${new Date(ver).toLocaleString()}`, content: r?.content || "" });
+      // 当前内容：打开的文档直接用 mdContent，否则拉取
+      let current = "";
+      if (fileId === activeId) current = mdContent;
+      else { try { const c = await apiGetContent(fileId); current = c?.content || ""; } catch {} }
+      setVerPreview({ title: `${doc?.fileName || "文档"} · ${new Date(ver).toLocaleString()}`, old: r?.content || "", new: current });
     } catch (e: any) { notify("error", e?.message || "加载版本内容失败"); }
   };
 
@@ -1675,9 +1694,9 @@ function WikiSidebar(props: WikiSidebarProps) {
               <>
                 <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowMore(false)} />
                 <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "var(--dsw-shadow-lv2)" }}>
-                  <div onClick={() => { setView("versions"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.versions")}</div>
-                  <div onClick={() => { setView("logs"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
-                  <div onClick={() => { setView("settings"); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
+                  <div onClick={() => { requestLeave(() => { setView("versions"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.versions")}</div>
+                  <div onClick={() => { requestLeave(() => { setView("logs"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
+                  <div onClick={() => { requestLeave(() => { setView("settings"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
                 </div>
               </>
             )}
@@ -1985,7 +2004,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                     <div key={rowKey}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
-                      onClick={() => { openDoc(d.id); }}
+                      onClick={() => { requestLeave(() => openDoc(d.id)); }}
                       onDoubleClick={() => { setRenamingId(d.id); setRenameText(row.title); }}
                       onMouseEnter={() => { setHoveredRowKey(rowKey); setHoverRowDepth(row.depth); }}
                       onMouseLeave={() => { setHoveredRowKey(null); setHoverRowDepth(null); }}
@@ -2455,25 +2474,60 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       )}
 
-      {/* 历史版本内容只读预览弹窗（渲染 MD + 只读提示条） */}
-      {verPreview && (
+      {/* 未保存离开确认：保存并离开 / 放弃修改 / 取消 */}
+      {leaveGuard && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
-            width: "90%", maxWidth: 560, background: "var(--dsw-alias-bg-layer-1)",
+            width: "min(90%, 420px)", background: "var(--dsw-alias-bg-layer-1)",
+            borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 16,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{tt(t, "wiki.leaveUnsaved")}</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button onClick={() => setLeaveGuard(null)} style={ghostBtn}>{tt(t, "wiki.cancel")}</button>
+              <button onClick={() => { const a = leaveGuard.action; setLeaveGuard(null); a(); }} style={ghostBtn}>{tt(t, "wiki.discard")}</button>
+              <button onClick={doSaveThenLeave} style={primaryBtn}>{tt(t, "wiki.saveAndLeave")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 历史版本 vs 当前内容：行级 diff（只读） */}
+      {verPreview && (() => {
+        const rows = computeDiff(verPreview.old, verPreview.new);
+        const rowStyle: Record<string, any> = {
+          add: { background: "var(--dsw-alias-code-diff-added)", color: "var(--dsw-alias-state-success-primary)" },
+          del: { background: "var(--dsw-alias-code-diff-deleted)", color: "var(--dsw-alias-state-error-primary)" },
+          mod: { background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-primary)" },
+          ctx: { background: "transparent", color: "var(--dsw-alias-label-secondary)" },
+        };
+        return (
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{
+            width: "92%", maxWidth: 720, background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", display: "flex", flexDirection: "column", gap: 0,
-            maxHeight: "80vh", overflow: "hidden",
+            maxHeight: "82vh", overflow: "hidden",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, paddingBottom: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{verPreview.title}</div>
               <button onClick={() => setVerPreview(null)} style={iconBtn}>✕</button>
             </div>
             <div style={{ padding: "6px 12px", background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-label)", fontSize: 12, borderRadius: "var(--dsw-radius-sm)", margin: "0 12px 8px" }}>
-              正在查看历史版本 — 此为只读预览
+              历史版本 vs 当前内容 — 只读（绿=新增 红=删除 黄=修改）
             </div>
-            <div style={{ flex: 1, overflow: "auto", fontSize: 13, lineHeight: 1.6, padding: "0 12px 12px", color: "var(--dsw-alias-label-primary)" }}>{renderMdSafe(verPreview.content)}</div>
+            <div style={{ flex: 1, overflow: "auto", padding: "0 0 12px", fontSize: 12, lineHeight: 1.6, fontFamily: "var(--dsw-font-family-mono, monospace)" }}>
+              {rows.map((r, i) => {
+                const s = rowStyle[r.type] || rowStyle.ctx;
+                return (
+                  <div key={i} style={{ padding: "1px 12px", whiteSpace: "pre-wrap", wordBreak: "break-word", ...s }}>
+                    <span style={{ opacity: 0.6, marginRight: 8 }}>{s.background === rowStyle.add.background ? "+" : s.background === rowStyle.del.background ? "-" : s.background === rowStyle.mod.background ? "~" : " "}</span>{r.text}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 导入网页 URL 对话框 */}
       {urlDialog && (
