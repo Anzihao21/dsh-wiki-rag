@@ -1884,7 +1884,7 @@ function WikiSidebar(props: WikiSidebarProps) {
           )}
 
           {/* 文件列表区 */}
-          <div ref={listScrollRef}
+          <div ref={listScrollRef} role="tree" aria-label={tt(t, "wiki.title")}
             onScroll={(e) => {
               const el = e.currentTarget;
               // rAF 合并滚动事件，避免滚动期间每帧重复 setState
@@ -1991,7 +1991,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                     const isDropTarget = dropTargetId === row.id;
                     const dangerDrop = draggedFolderId.current != null && subtreeFolderIds(tree, draggedFolderId.current, new Set()).has(row.id);
                     return (
-                      <div key={rowKey}
+                      <div key={rowKey} role="treeitem" aria-expanded={open} aria-label={row.title}
                         draggable
                         onDragStart={(e) => { draggedFolderId.current = row.id; e.dataTransfer.setData("text/folder-id", String(row.id)); }}
                         onDragEnd={() => { draggedFolderId.current = null; setDropTargetId(null); }}
@@ -2056,7 +2056,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   const active = d.id === activeId;
                   const flashing = flashRowKey === rowKey;
                   return (
-                    <div key={rowKey}
+                    <div key={rowKey} role="treeitem" aria-selected={active} aria-label={row.title}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
                       onClick={() => { requestLeave(() => openDoc(d.id)); }}
@@ -2671,7 +2671,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         return (
           <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", zIndex: 10003, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
             onMouseDown={() => setCmdOpen(false)}>
-            <div onMouseDown={(e) => e.stopPropagation()} style={{ width: "min(90%, 480px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", overflow: "hidden" }}>
+            <div onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: "min(90%, 480px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", overflow: "hidden" }}>
               <input autoFocus value={cmdQ} onChange={(e) => { setCmdQ(e.target.value); setCmdSel(0); }} placeholder={tt(t, "wiki.cmdPlaceholder")}
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 14", background: "transparent", border: "none", outline: "none", color: "var(--dsw-alias-label-primary)", fontSize: 14 }}
                 onKeyDown={(e) => {
@@ -2696,7 +2696,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       {/* 删除确认弹窗（DSH 风格） */}
       {confirmState && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-          <div style={{
+          <div role="dialog" aria-modal="true" style={{
             width: "min(90%, 420px)", background: "var(--dsw-alias-bg-layer-1)",
             borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 16,
           }}>
