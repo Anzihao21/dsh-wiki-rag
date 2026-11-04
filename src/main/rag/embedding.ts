@@ -39,8 +39,8 @@ export async function initEmbedding(s: PluginSettings): Promise<void> {
 export async function embedText(text: string): Promise<Buffer> {
   const provider = settings?.embeddingProvider ?? 'fallback';
 
-  // 1. OpenAI 兼容 API
-  if (provider === 'openai' && settings?.embeddingOpenAIAPIKey) {
+  // 1. OpenAI 兼容 API（参数缺失时由 embedOpenAI 抛清晰错误，不再静默降级）
+  if (provider === 'openai') {
     return embedOpenAI(text);
   }
 
@@ -55,20 +55,37 @@ export async function embedText(text: string): Promise<Buffer> {
 
 // ---------- OpenAI 兼容 embedding ----------
 async function embedOpenAI(text: string): Promise<Buffer> {
-  const baseURL = settings!.embeddingOpenAIBaseURL.replace(/\/+$/, '');
-  const resp = await fetch(`${baseURL}/embeddings`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings!.embeddingOpenAIAPIKey}`,
-    },
-    body: JSON.stringify({
-      model: settings!.embeddingOpenAIModel,
-      input: text,
-    }),
-  });
+  const s = settings!;
+  const baseURL = (s.embeddingOpenAIBaseURL || '').trim().replace(/\/+$/, '');
+  const model = (s.embeddingOpenAIModel || '').trim();
+  const apiKey = (s.embeddingOpenAIAPIKey || '').trim();
+
+  if (!baseURL) {
+    throw new Error('embeddingProvider=openai 但 embeddingOpenAIBaseURL 为空');
+  }
+  if (!model) {
+    throw new Error('embeddingProvider=openai 但 embeddingOpenAIModel 为空');
+  }
+  if (!apiKey) {
+    throw new Error('embeddingProvider=openai 但 embeddingOpenAIAPIKey 为空');
+  }
+
+  const url = `${baseURL}/embeddings`;
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, input: text }),
+    });
+  } catch (e) {
+    throw new Error(`[embedding/openai] 网络请求失败 ${url}: ${(e as Error).message}`);
+  }
   if (!resp.ok) {
-    throw new Error(`OpenAI embedding failed: ${resp.status} ${resp.statusText}`);
+    throw new Error(`[embedding/openai] ${url} 返回 ${resp.status} ${resp.statusText}`);
   }
   const data = await resp.json() as { data: Array<{ embedding: number[] }> };
   const vec = data.data[0].embedding;

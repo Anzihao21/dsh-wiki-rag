@@ -67,26 +67,43 @@ async function rerankOpenAI(
   query: string,
   results: RagSearchResult[]
 ): Promise<RagSearchResult[]> {
-  const baseURL = settings!.rerankOpenAIBaseURL.replace(/\/+$/, '');
-  const documents = results.map((r) => r.chunk_text);
+  const s = settings!;
+  const baseURL = (s.rerankOpenAIBaseURL || '').trim().replace(/\/+$/, '');
+  const model = (s.rerankOpenAIModel || '').trim();
+  const apiKey = (s.rerankOpenAIAPIKey || '').trim();
 
-  const resp = await fetch(`${baseURL}/rerank`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings!.rerankOpenAIAPIKey}`,
-    },
-    body: JSON.stringify({
-      model: settings!.rerankOpenAIModel,
-      query,
-      documents,
-      top_n: settings!.rerankTopK,
-    }),
-  });
+  if (!baseURL) {
+    throw new Error('rerankProvider=openai 但 rerankOpenAIBaseURL 为空');
+  }
+  if (!model) {
+    throw new Error('rerankProvider=openai 但 rerankOpenAIModel 为空');
+  }
+  if (!apiKey) {
+    throw new Error('rerankProvider=openai 但 rerankOpenAIAPIKey 为空');
+  }
+
+  const documents = results.map((r) => r.chunk_text);
+  const url = `${baseURL}/rerank`;
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, query, documents, top_n: s.rerankTopK }),
+    });
+  } catch (e) {
+    // 网络错误降级为原结果，但在日志中带 provider 名
+    console.warn(`[rerank/openai] 网络请求失败 ${url}: ${(e as Error).message}`);
+    return results.slice(0, s.rerankTopK);
+  }
 
   if (!resp.ok) {
-    console.warn(`[dsh-wiki-rag] rerank API failed: ${resp.status}, returning original results`);
-    return results.slice(0, settings!.rerankTopK);
+    console.warn(`[rerank/openai] ${url} 返回 ${resp.status}，降级为原结果`);
+    return results.slice(0, s.rerankTopK);
   }
 
   const data = await resp.json() as {

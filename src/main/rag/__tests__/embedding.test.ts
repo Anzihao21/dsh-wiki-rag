@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { embedText, cosineSimilarity } from '../embedding';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { embedText, cosineSimilarity, initEmbedding } from '../embedding';
+import type { PluginSettings } from '../../types';
 
 // 未调用 initEmbedding 时 settings=null，provider 默认 'fallback' 哈希向量
 const DIM_BYTES = 256 * 4; // embedDim=256, Float32Array
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  // 重置回 fallback，避免污染其它用例
+  initEmbedding({ embeddingProvider: 'fallback' } as PluginSettings);
+});
 
 describe('embedding fallback 哈希向量', () => {
   it('同一文本两次嵌入结果字节完全一致（确定性）', async () => {
@@ -38,5 +45,69 @@ describe('embedding fallback 哈希向量', () => {
     expect(v.length).toBe(DIM_BYTES);
     // 零向量自相似按代码定义返回 0
     expect(cosineSimilarity(v, v)).toBe(0);
+  });
+});
+
+describe('embedding openai provider 校验', () => {
+  const baseCfg: PluginSettings = {
+    embeddingProvider: 'openai',
+    embeddingOpenAIBaseURL: 'https://api.example.com/v1/',
+    embeddingOpenAIAPIKey: 'sk-test',
+    embeddingOpenAIModel: 'text-embedding-test',
+  } as PluginSettings;
+
+  it('缺 baseURL 抛清晰错误，不发请求', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await initEmbedding({ ...baseCfg, embeddingOpenAIBaseURL: '' });
+    await expect(embedText('hello')).rejects.toThrow(/embeddingOpenAIBaseURL/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('缺 model 抛清晰错误，不发请求', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await initEmbedding({ ...baseCfg, embeddingOpenAIModel: '   ' });
+    await expect(embedText('hello')).rejects.toThrow(/embeddingOpenAIModel/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('缺 API Key 抛清晰错误，不发请求', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await initEmbedding({ ...baseCfg, embeddingOpenAIAPIKey: '' });
+    await expect(embedText('hello')).rejects.toThrow(/embeddingOpenAIAPIKey/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('baseURL 尾部斜杠归一后拼出正确 URL，POST 体含 model/input', async () => {
+    let captured: { url: string; opts: any } | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, opts: any) => {
+      captured = { url, opts };
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { data: [{ embedding: new Array(8).fill(0.1) }] };
+        },
+      } as any;
+    }));
+    await initEmbedding({ ...baseCfg, embeddingOpenAIBaseURL: 'https://api.example.com/v1///' });
+    await embedText('你好');
+    expect(captured).not.toBeNull();
+    expect(captured!.url).toBe('https://api.example.com/v1/embeddings');
+    expect(captured!.opts.method).toBe('POST');
+    const body = JSON.parse(captured!.opts.body);
+    expect(body.model).toBe('text-embedding-test');
+    expect(body.input).toBe('你好');
+    expect(captured!.opts.headers.Authorization).toBe('Bearer sk-test');
+  });
+
+  it('网络错误时错误信息包含 [embedding/openai] provider 标记', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }));
+    await initEmbedding(baseCfg);
+    await expect(embedText('x')).rejects.toThrow(/\[embedding\/openai\]/);
   });
 });
