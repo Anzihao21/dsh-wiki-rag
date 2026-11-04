@@ -8,7 +8,7 @@
  * 初始化 DB、加载设置、把操作注册成 defineTool。资源清理交给 ctx.effect。
  */
 import path from 'node:path';
-import { promises as fs, readFileSync } from 'node:fs';
+import { promises as fs, readFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { Context } from '@deepseek-ai/cordis';
@@ -706,6 +706,33 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         // ---- 待确认变更（文件监听 Diff 队列）----
         if (req.method === 'GET' && pathname === '/api/wiki/pending-changes') {
           return json(200, pendingChanges);
+        }
+
+        // ---- 导出 ZIP：POST /export/zip（打包全部 md 到 zipStoragePath）----
+        if (req.method === 'POST' && pathname === '/api/wiki/export/zip') {
+          const files = await listKnowledgeFiles();
+          if (files.length === 0) return json(400, { error: '知识库为空，无可导出内容' });
+          const archiver = (await import('archiver')).default;
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const fileName = `wiki-export-${stamp}.zip`;
+          const outPath = path.join(settings.zipStoragePath, fileName);
+          await fs.mkdir(settings.zipStoragePath, { recursive: true });
+          const output = fs.createWriteStream(outPath);
+          const archive = archiver('zip', { zlib: { level: 6 } });
+          await new Promise<void>((resolve, reject) => {
+            output.on('close', () => resolve());
+            archive.on('error', (err: Error) => reject(err));
+            archive.pipe(output);
+            for (const f of files) {
+              if (existsSync(f.md_path)) {
+                archive.file(f.md_path, { name: f.file_name });
+              }
+            }
+            archive.finalize();
+          });
+          const size = (await fs.stat(outPath)).size;
+          await writeLog('export-zip', `导出 ${files.length} 文件 → ${fileName} (${size} bytes)`);
+          return json(200, { path: outPath, fileName, size, count: files.length });
         }
 
         // ---- 快照：列表 / 新建 ----
