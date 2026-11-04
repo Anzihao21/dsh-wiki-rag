@@ -50,7 +50,7 @@ import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 import { createLogger } from '../../../src/main/utils/logger';
 import { AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
-import { createApiHandler } from './api-handler';
+import { createApiHandler } from '../../../src/main/host-api/handler';
 import { validateSettingsPatch } from '../../../src/main/settings-validation';
 
 const logger = createLogger('dsh-wiki-rag');
