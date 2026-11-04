@@ -529,7 +529,7 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
       position: "fixed", bottom: 16, right: 16, zIndex: 10002,
       display: "flex", flexDirection: "column", gap: 8, maxWidth: 320,
       pointerEvents: "none",
-    }}>
+    }} role="status" aria-live="polite">
       <style>{`@keyframes dsw-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .dsw-toast { animation: dsw-toast-in 160ms ease-out; }
         @media (prefers-reduced-motion: reduce) { .dsw-toast { animation: none; } }`}</style>
@@ -1824,6 +1824,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--dsw-alias-label-tertiary)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 8, pointerEvents: "none" }}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
               <input ref={searchInputRef}
+                role="searchbox"
                 value={q}
                 onFocus={() => setHistoryOpen(true)}
                 onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
@@ -2945,6 +2946,12 @@ function apply(ctx: any): void {
       "wiki.emptyHint": "Import or search documents from the left, then click to view and edit. Supports local files / web pages / notes / Excel / PPT.",
       "wiki.newSubFolder": "New subfolder",
       "wiki.webModeHint": "Web fetch mode", "wiki.webModeInSettings": "See settings",
+      "wiki.export": "Export Markdown", "wiki.exported": "Markdown exported", "wiki.copiedContent": "Content copied to clipboard",
+      "wiki.leaveUnsaved": "You have unsaved changes", "wiki.saveAndLeave": "Save and leave", "wiki.discard": "Discard changes",
+      "wiki.noFavHint": "No favorites yet — click ☆ on a file row", "wiki.noRecentHint": "No recent documents",
+      "wiki.searchHistory": "Search history",
+      "wiki.selectedCount": "{n} selected", "wiki.batchMove": "Move to…", "wiki.batchMoveTo": "Move to folder",
+      "wiki.batchDeleteConfirm": "Delete {n} selected documents? This cannot be undone.",
     },
   }), "wiki: dictionaries");
 
