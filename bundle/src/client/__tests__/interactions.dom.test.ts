@@ -69,3 +69,12 @@ describe("错误分支", () => {
     expect(countRefs([{ fileId: "1" }, { fileId: "2" }], "1")).toBe(1);
   });
 });
+
+describe("反链面板错误态", () => {
+  it("search 失败空结果 → countRefs 为 0（面板显示空态/失败态）", () => {
+    expect(countRefs([], "1")).toBe(0);
+  });
+  it("结果含自身时排除后计数 1", () => {
+    expect(countRefs([{ fileId: "1" }, { fileId: "2" }], "1")).toBe(1);
+  });
+});

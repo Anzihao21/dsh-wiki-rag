@@ -1342,13 +1342,16 @@ function WikiSidebar(props: WikiSidebarProps) {
   }, [editor]);
 
   // 反向链接：用当前文档标题搜 /search，列出引用它的其他文档
+  const backlinksSeq = useRef(0);
   const loadBacklinks = useCallback(async () => {
+    const seq = ++backlinksSeq.current;
     if (!activeDoc?.title) { setBacklinks([]); setBacklinksErr(false); return; }
     setBacklinks(null); setBacklinksErr(false);
     try {
       const hits = await apiSearch(activeDoc.title);
+      if (seq !== backlinksSeq.current) return; // 快速切换文档丢弃过期响应
       setBacklinks(dedupeRefs(hits || [], activeDoc.id));
-    } catch { setBacklinks([]); setBacklinksErr(true); }
+    } catch { if (seq === backlinksSeq.current) { setBacklinks([]); setBacklinksErr(true); } }
   }, [activeDoc]);
 
   // 未保存离开守卫：编辑态有改动时先弹确认（保存并离开 / 放弃 / 取消）
