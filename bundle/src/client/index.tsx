@@ -1027,7 +1027,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         try {
           await apiDelete(id);
           notify("success", tt(t, "wiki.deleted"));
-          refreshList();
+          refreshList(); loadTrash();
         } catch (e: any) { notify("error", e?.message || "删除失败"); }
       },
     });
@@ -1127,7 +1127,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       onYes: async () => {
         try { await apiDeleteFolder(id); notify("success", tt(t, "wiki.folderDeleted")); }
         catch (e: any) { notify("error", e?.message || "删除失败"); }
-        refreshList();
+        refreshList(); loadTrash();
       },
     });
   };
