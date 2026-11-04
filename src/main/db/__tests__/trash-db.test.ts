@@ -133,3 +133,22 @@ describe('purge 清理 file_versions 孤儿', () => {
     expect(after[0].n).toBe(0);
   });
 });
+
+describe('listKnowledgeFiles 过滤软删（ZIP 导出同源）', () => {
+  it('软删后 listKnowledgeFiles 不含该文件，导出语义正确', async () => {
+    const id1 = await insertKnowledgeFile({
+      file_name: 'active.md', source_path: '/a.md', md_path: path.join(dir, 'a.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    const id2 = await insertKnowledgeFile({
+      file_name: 'deleted.md', source_path: '/d.md', md_path: path.join(dir, 'd.md'),
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    await softDeleteFile(id2);
+    const active = await listKnowledgeFiles();
+    expect(active.find((f) => f.id === id1)).toBeTruthy();
+    expect(active.find((f) => f.id === id2)).toBeUndefined();
+  });
+});
