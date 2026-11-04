@@ -90,3 +90,18 @@ npx vitest run
 - embedding ×1000：< 600ms
 - writeLog ×1000：< 200ms
 - 20 文件并发导入：< 500ms
+
+## 搜索全链路 handler 耗时（2026-11-04 追加）
+
+路径：POST /api/wiki/search → createApiHandler → normalizeSearchInput → ragSearch（LIKE 预过滤 LIMIT 1000 → 内存打分 topK）→ 序列化返回。
+
+基于代码路径分析（未实跑 100k 库）：
+
+- normalizeSearchInput：纯字符串 trim + topK clamp，< 0.01ms
+- ragSearch 预过滤 SQL（chunk_text LIKE %kw% LIMIT 1000）：100k chunk 库上预期 20~80ms（依赖 SQLite FTS 是否启用；当前未启用 FTS，走 B-tree 扫描）
+- 内存打分：候选 ≤1000 条，余弦相似度 O(1000 × 256) ≈ 0.25M 浮点运算，< 5ms
+- 序列化返回：< 1ms
+
+**预期全链路**：命中查询 30~100ms；零命中（LIKE 无匹配直接返回空集）< 20ms。
+
+瓶颈在 SQLite 未启用 FTS5——后续若要降到 < 20ms 量级，应迁移到 virtual table + MATCH 查询，而非继续优化 JS 侧。
