@@ -285,3 +285,13 @@ describe("sortRefsByScore", () => {
     expect(arr[0].fileId).toBe(1);
   });
 });
+
+describe("IME 门控", () => {
+  const matchLink = (text: string, composing: boolean) => !composing && /^\s*\[\[([^\]]*)$/.test(text);
+  it("组合中即使匹配 [[ 也不弹", () => {
+    expect(matchLink("[[al", true)).toBe(false);
+  });
+  it("组合结束后匹配 [[ 弹", () => {
+    expect(matchLink("[[al", false)).toBe(true);
+  });
+});

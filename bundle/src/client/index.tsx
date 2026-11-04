@@ -563,6 +563,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     content: "",
     onUpdate: ({ editor }) => {
       setMdContent(htmlToMd(editor.getHTML()));
+      // IME 组合期间（中文拼音未确定）不弹联想菜单，避免候选闪烁
+      if (composingRef.current) return;
       // 斜杠命令：光标所在空段落文本恰为 "/" 时弹出块菜单
       const { $from, empty } = editor.state.selection;
       const text = $from.parent.textContent;
@@ -633,6 +635,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [tocOpen, setTocOpen] = useState(false);
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number } | null>(null);
   const [slashSel, setSlashSel] = useState(0);
+  const composingRef = useRef(false); // IME 组合中门控
   const [linkMenu, setLinkMenu] = useState<{ x: number; y: number; q: string } | null>(null);
   const [linkSel, setLinkSel] = useState(0);
   const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
@@ -2464,6 +2467,8 @@ function WikiSidebar(props: WikiSidebarProps) {
               <div ref={editorScrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}
                 onScroll={(e) => { if (activeId) editorScrollMap.current.set(activeId, e.currentTarget.scrollTop); }}
                 onMouseMove={onEditorHover}
+                onCompositionStart={() => { composingRef.current = true; }}
+                onCompositionEnd={() => { composingRef.current = false; }}
                 onMouseLeave={paraLeave}>
                 <style>{`.dsh-wiki-editor p { font-size: 14px; line-height: 1.7; margin: 4px 0; }
                   .dsh-wiki-editor h1 { font-size: 26px; font-weight: 700; line-height: 1.3; margin: 24px 0 12px; }
