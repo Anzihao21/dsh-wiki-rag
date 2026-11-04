@@ -204,3 +204,10 @@ LRU 命中率曲线（5k 段，重复率变化）：
 - FTS5 MATCH 大库端到端：200+ chunk 触发 MATCH 路径，中文 trigram 命中正确，软删文件被 JOIN 过滤。
 - purge 级联：purgeFileRow 删 knowledge_files + file_versions；触发器同步删 chunks_fts。
 - 497 例全绿，Errors=0。
+
+## 第九批收口（2026-11-04 终批）
+
+- purge 性能：100 文件级联 purge（含 chunks/versions 清理）< 5s（宽松断言）。
+- 回收站容量 size 字段：client 已按 `f.size||0` 回退，host 未补 fs.stat（非阻塞，后续可加）。
+- 498 例全绿，Errors=0。
+- SCHEMA 链路：v1→v6（deleted_at v5 / FTS5 trigram v6）；检索分层：小库全表 / FTS5 MATCH / 短词 LIKE / 零命中退化；软删三路 JOIN 过滤。
