@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
-  saveSearchHistory, loadEditTimes, markEdited, buildDownloadName,
+  saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
+  extractHeadings, findLineIndex,
   type TreeNode,
 } from "../logic";
 
@@ -206,4 +207,25 @@ describe("buildDownloadName", () => {
     expect(buildDownloadName(undefined, undefined)).toBe("document.md");
     expect(buildDownloadName("   ", "  ")).toBe("document.md");
   });
+});
+
+// ---------------- 轮8 新纯函数 ----------------
+describe("filterCommands", () => {
+  const items = [{ title: "Alpha" }, { title: "Beta" }, { title: "Gamma" }];
+  it("空查询返回全部", () => expect(filterCommands("  ", items).length).toBe(3));
+  it("大小写不敏感包含匹配", () => expect(filterCommands("alp", items)).toEqual([{ title: "Alpha" }]));
+});
+
+describe("extractHeadings", () => {
+  it("提取 #/##/### 与行号", () => {
+    const h = extractHeadings("# 标题\n正文\n## 子\n### 孙");
+    expect(h.map((x) => [x.level, x.text, x.line])).toEqual([[1, "标题", 0], [2, "子", 2], [3, "孙", 3]]);
+  });
+  it("空内容返回空", () => expect(extractHeadings("")).toEqual([]));
+});
+
+describe("findLineIndex", () => {
+  it("命中行号", () => expect(findLineIndex("a\nbcd\ne", "bcd")).toBe(1));
+  it("找不到返回 -1", () => expect(findLineIndex("a\nb", "zzz")).toBe(-1));
+  it("空片段返回 -1", () => expect(findLineIndex("abc", "")).toBe(-1));
 });
