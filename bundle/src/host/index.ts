@@ -777,7 +777,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       };
       const seg = pathname.split('/').filter(Boolean); // ['api','wiki',...]
 
-      // 可测 API handler 接管核心路由（import/search/logs/stats/settings）；
+      // 可测 API handler 接管核心路由（import/search/logs/stats/settings/trash/export）；
       // 返回 404 表示该路由不在 handler 子集内，继续走下面的内联路由
       const HANDLED_PATHS = new Set([
         'POST /api/wiki/import',
@@ -786,8 +786,17 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         'GET /api/wiki/stats',
         'GET /api/wiki/settings',
         'POST /api/wiki/settings',
+        'GET /api/wiki/trash',
+        'POST /api/wiki/trash/restore',
+        'POST /api/wiki/trash/empty',
+        'POST /api/wiki/export/zip',
       ]);
       if (HANDLED_PATHS.has(`${req.method} ${pathname}`)) {
+        const r = await apiHandler(req.method!, pathname, url.searchParams, body);
+        return json(r.status, r.body);
+      }
+      // 回收站动态路径：DELETE /trash/:type/:id（handler 内做段数与 type 校验）
+      if (req.method === 'DELETE' && pathname.startsWith('/api/wiki/trash/')) {
         const r = await apiHandler(req.method!, pathname, url.searchParams, body);
         return json(r.status, r.body);
       }
@@ -806,33 +815,6 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         // ---- 待确认变更（文件监听 Diff 队列）----
         if (req.method === 'GET' && pathname === '/api/wiki/pending-changes') {
           return json(200, pendingChanges);
-        }
-
-        // ---- 导出 ZIP：POST /export/zip（打包全部 md 到 zipStoragePath）----
-        if (req.method === 'POST' && pathname === '/api/wiki/export/zip') {
-          const files = await listKnowledgeFiles();
-          if (files.length === 0) return json(400, { error: '知识库为空，无可导出内容' });
-          const archiver = (await import('archiver')).default;
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const fileName = `wiki-export-${stamp}.zip`;
-          const outPath = path.join(settings.zipStoragePath, fileName);
-          await fs.mkdir(settings.zipStoragePath, { recursive: true });
-          const output = fs.createWriteStream(outPath);
-          const archive = archiver('zip', { zlib: { level: 6 } });
-          await new Promise<void>((resolve, reject) => {
-            output.on('close', () => resolve());
-            archive.on('error', (err: Error) => reject(err));
-            archive.pipe(output);
-            for (const f of files) {
-              if (existsSync(f.md_path)) {
-                archive.file(f.md_path, { name: f.file_name });
-              }
-            }
-            archive.finalize();
-          });
-          const size = (await fs.stat(outPath)).size;
-          await writeLog('export-zip', `导出 ${files.length} 文件 → ${fileName} (${size} bytes)`);
-          return json(200, { path: outPath, fileName, size, count: files.length });
         }
 
         // ---- 快照：列表 / 新建 ----
@@ -932,84 +914,6 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           await softDeleteFolderCascade(fid);
           await writeLog('folder-soft-delete', `文件夹 id=${fid} 及其内容已移入回收站`);
           return json(200, { status: 'deleted', soft: true, id: fid });
-        }
-
-        // ---- 回收站：GET /trash ----
-        if (req.method === 'GET' && seg.length === 3 && seg[2] === 'trash') {
-          const t = await listTrash();
-          return json(200, t);
-        }
-
-        // ---- 回收站：POST /trash/restore ----
-        if (req.method === 'POST' && seg.length === 4 && seg[2] === 'trash' && seg[3] === 'restore') {
-          let parsed: any;
-          try { parsed = JSON.parse(body || '{}'); } catch {
-            return json(400, { error: '请求体不是合法 JSON' });
-          }
-          const id = Number(parsed.id);
-          const type = parsed.type;
-          if (!Number.isFinite(id) || (type !== 'file' && type !== 'folder')) {
-            return json(400, { error: '需要 {id:number, type:"file"|"folder"}' });
-          }
-          if (type === 'file') {
-            await restoreFile(id);
-          } else {
-            await restoreFolderCascade(id);
-          }
-          await writeLog('trash-restore', `${type} id=${id}`);
-          return json(200, { status: 'restored', id, type });
-        }
-
-        // ---- 回收站：DELETE /trash/:type/:id（彻底删除） ----
-        if (req.method === 'DELETE' && seg.length === 5 && seg[2] === 'trash') {
-          const type = seg[3];
-          const id = parseInt(seg[4] || '');
-          if (type !== 'file' && type !== 'folder') return json(400, { error: 'type 必须为 file|folder' });
-          if (Number.isNaN(id)) return json(400, { error: '非法 id' });
-          if (type === 'file') {
-            const rec = await getKnowledgeFileById(id);
-            if (rec) {
-              try { await fs.unlink(rec.md_path); } catch { /* ignore */ }
-              try { if (rec.zip_archive_path) await fs.unlink(rec.zip_archive_path); } catch { /* ignore */ }
-            }
-            await purgeFileRow(id);
-          } else {
-            // 文件夹彻底删除：递归收集子项
-            const queue: number[] = [id];
-            const allFolders: number[] = [];
-            while (queue.length) {
-              const fid = queue.shift()!;
-              allFolders.push(fid);
-              const children = await all<{ id: number }>('SELECT id FROM folders WHERE parent_id = ?', [fid]);
-              for (const c of children) queue.push(c.id);
-            }
-            for (const fid of allFolders) {
-              const files = await all<{ id: number; md_path: string; zip_archive_path: string }>(
-                'SELECT id, md_path, zip_archive_path FROM knowledge_files WHERE folder_id = ?', [fid]);
-              for (const f of files) {
-                try { await fs.unlink(f.md_path); } catch { /* ignore */ }
-                try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
-                await purgeFileRow(f.id);
-              }
-              await purgeFolderRow(fid);
-            }
-          }
-          await writeLog('trash-purge', `${type} id=${id} 已物理删除`);
-          return json(200, { status: 'purged', id, type });
-        }
-
-        // ---- 回收站：POST /trash/empty（清空全部） ----
-        if (req.method === 'POST' && seg.length === 4 && seg[2] === 'trash' && seg[3] === 'empty') {
-          const trashFiles = await listTrashFiles();
-          for (const f of trashFiles) {
-            try { await fs.unlink(f.md_path); } catch { /* ignore */ }
-            try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
-            await purgeFileRow(f.id);
-          }
-          const trashFolders = await listTrashFolderIds();
-          for (const fid of trashFolders) await purgeFolderRow(fid);
-          await writeLog('trash-empty', `清空回收站：${trashFiles.length} 文件 / ${trashFolders.length} 文件夹`);
-          return json(200, { status: 'emptied', files: trashFiles.length, folders: trashFolders.length });
         }
 
         // ---- 文件移动：POST /files/:id/move ----
