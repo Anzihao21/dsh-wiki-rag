@@ -32,7 +32,7 @@ dsh plugin --profile web add dsh-wiki-rag
 或从 npm 安装指定版本：
 
 ```bash
-dsh plugin --profile web add dsh-wiki-rag@0.0.13
+dsh plugin --profile web add dsh-wiki-rag@0.0.14
 ```
 
 ## 开发构建
