@@ -1,6 +1,6 @@
 {
   "name": "dsh-wiki-rag",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "DeepSeek Harness Wiki风格知识库RAG插件",
   "type": "module",
   "engines": {
