@@ -482,7 +482,13 @@ function statusStyle(status: WikiDoc["status"]) {
   return { label: "已索引", color: "var(--dsw-alias-state-success-primary)" };
 }
 
-/** 轻量焦点陷阱：打开时焦点移入首个可聚焦元素，Tab 在首尾循环，关闭时还原焦点到触发器 */
+/**
+ * 轻量焦点陷阱：打开时焦点移入首个可聚焦元素，Tab 在首尾循环，关闭时还原焦点到触发器。
+ * 覆盖矩阵（v0.0.13g）：
+ *   ConfirmModal（confirmRef）✅ / 命令面板（cmdRef）✅ / urlDialog（urlRef）✅
+ *   leaveGuard / batchMove / 回收站操作确认 → 复用 confirmState ✅
+ *   斜杠菜单 / 双链菜单 / 反链面板 / 上下文菜单 → 编辑器内浮层，焦点留在 contenteditable，Esc 由全局 keydown 关闭，不强制 trap（避免打断输入流）。
+ */
 function useFocusTrap<T extends HTMLElement>(active: boolean) {
   const ref = useRef<T>(null);
   const opener = useRef<Element | null>(null);
