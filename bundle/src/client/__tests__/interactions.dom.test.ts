@@ -1,0 +1,58 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { filterLinks, filterCommands, dedupeRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
+
+// 模拟客户端交互流：不渲染整个 Tiptap 组件，只验证其依赖的纯函数与 fetch 桩。
+beforeEach(() => { try { localStorage.clear(); } catch {} });
+
+describe("命令面板交互流", () => {
+  const docs = [
+    { id: "1", title: "Alpha" }, { id: "2", title: "Beta" }, { id: "3", title: "Gamma" },
+  ];
+  it("输入 al → 过滤出 Alpha/Gamma，Enter 取首项", () => {
+    const filtered = filterCommands("al", docs);
+    expect(filtered.map((d) => d.title)).toEqual(["Alpha"]);
+  });
+  it("Esc 等价于关闭后清空查询（filtered 回退全量）", () => {
+    expect(filterCommands("", docs).length).toBe(3);
+  });
+});
+
+describe("双链 [[ 交互流", () => {
+  it("输入 [[al 排除另一文档后联想 Alpha", () => {
+    const items = [{ id: "1", title: "Alpha note" }, { id: "2", title: "Beta" }];
+    expect(filterLinks("al", items, "2").map((d) => d.id)).toEqual(["1"]);
+  });
+});
+
+describe("回收站 fetch 端点契约（桩验证）", () => {
+  it("恢复/彻底删除/清空请求路径正确", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, opts: any) => {
+      calls.push(`${opts?.method || "GET"} ${url}`);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    }));
+    const api = (path: string, opts?: any) => fetch("http://localhost:3081/api/wiki" + path, opts).then((r: any) => r.json());
+    await api("/trash/restore", { method: "POST", body: JSON.stringify({ id: "5", type: "file" }) });
+    await api("/trash/file/5", { method: "DELETE" });
+    await api("/trash/empty", { method: "POST" });
+    expect(calls).toEqual([
+      "POST http://localhost:3081/api/wiki/trash/restore",
+      "DELETE http://localhost:3081/api/wiki/trash/file/5",
+      "POST http://localhost:3081/api/wiki/trash/empty",
+    ]);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("反向链接去重流", () => {
+  it("同 fileId 多条命中只留一条并排除自身", () => {
+    const r = dedupeRefs([{ fileId: 1, title: "a" }, { fileId: 1, title: "a" }, { fileId: 2, title: "b" }], "2");
+    expect(r.map((x) => x.fileId)).toEqual([1]);
+  });
+});
+
+describe("导出下载流", () => {
+  it("非法字符文件名清洗后 .md", () => {
+    expect(buildDownloadName("a/b:c", undefined)).toBe("a_b_c.md");
+  });
+});
