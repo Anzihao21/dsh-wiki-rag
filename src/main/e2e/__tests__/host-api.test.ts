@@ -37,7 +37,7 @@ let importer: FileImporter;
 let jobs: Map<string, any>;
 let inProgress: Set<string>;
 
-beforeEach(() => {
+beforeEach(async () => {
   root = mkdtempSync(path.join(os.tmpdir(), 'host-api-'));
   mdDir = path.join(root, 'md');
   zipDir = path.join(root, 'zip');
@@ -45,7 +45,7 @@ beforeEach(() => {
   mkdirSync(mdDir, { recursive: true });
   mkdirSync(zipDir, { recursive: true });
   mkdirSync(srcDir, { recursive: true });
-  initDatabase(path.join(root, 'wiki.db'));
+  await initDatabase(path.join(root, 'wiki.db'));
   importer = new FileImporter({
     mdDir, zipDir, chunkSize: 200, chunkOverlap: 20, chunkMode: 'fixed', webTimeout: 5000,
   });
