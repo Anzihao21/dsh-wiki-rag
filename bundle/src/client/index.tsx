@@ -902,6 +902,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (selToolbarTimer.current != null) clearTimeout(selToolbarTimer.current);
     if (flashTimer.current != null) clearTimeout(flashTimer.current);
     if (scrollRaf.current != null) cancelAnimationFrame(scrollRaf.current);
+    if (paraHideTimer.current != null) clearTimeout(paraHideTimer.current);
+    if (hoverRaf.current != null) cancelAnimationFrame(hoverRaf.current);
   }, []);
 
   const pollJob = useCallback((jobId: string) => {
