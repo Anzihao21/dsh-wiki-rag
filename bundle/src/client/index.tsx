@@ -195,6 +195,14 @@ const apiGetVersion = (fileId: string, ver: number) => request(`/files/${fileId}
 const apiRestoreVersion = (fileId: string, ver: number) => request(`/files/${fileId}/versions/${ver}/restore`, { method: "POST" });
 const apiGetJobs = (jobId: string) => request(`/jobs/${jobId}`);
 
+// ---- 回收站 API ----
+const apiTrashList = () => request("/trash");
+const apiTrashRestore = (id: string, type: "file" | "folder") =>
+  request("/trash/restore", { method: "POST", body: JSON.stringify({ id, type }) });
+const apiTrashPurge = (type: "file" | "folder", id: string) =>
+  request(`/trash/${type}/${id}`, { method: "DELETE" });
+const apiTrashEmpty = () => request("/trash/empty", { method: "POST" });
+
 // ---- 新增 API ----
 const apiNewFile = (title: string, folderId: number | null) =>
   request("/files/new", { method: "POST", body: JSON.stringify({ title, folderId }) });
@@ -483,7 +491,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
   const [activeId, setActiveId] = useState<string>("");
-  const [view, setView] = useState<"list" | "editor" | "settings" | "versions" | "logs">("list");
+  const [view, setView] = useState<"list" | "editor" | "settings" | "versions" | "logs" | "trash">("list");
   const [mdContent, setMdContent] = useState<string>("");
   const [savedContent, setSavedContent] = useState<string>("");
   const [selToolbar, setSelToolbar] = useState<{ x: number; y: number; bottom: number } | null>(null);
@@ -562,6 +570,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [versions, setVersions] = useState<{ version: number; create_time: number }[]>([]);
   const [verPreview, setVerPreview] = useState<{ title: string; old: string; new: string } | null>(null);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
+  const [trash, setTrash] = useState<{ files: any[]; folders: any[] }>({ files: [], folders: [] });
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
@@ -668,6 +677,48 @@ function WikiSidebar(props: WikiSidebarProps) {
   }, []);
 
   useEffect(() => { refreshList(); }, [refreshList]);
+
+  // ---------- 加载回收站 ----------
+  const loadTrash = useCallback(async () => {
+    try {
+      const r = await apiTrashList();
+      setTrash({ files: r?.files || [], folders: r?.folders || [] });
+    } catch { setTrash({ files: [], folders: [] }); }
+  }, []);
+
+  const doTrashRestore = useCallback(async (id: string, type: "file" | "folder") => {
+    try {
+      await apiTrashRestore(id, type);
+      notify("success", tt(t, "wiki.trashRestored"));
+      loadTrash(); refreshList();
+    } catch (e: any) { notify("error", e?.message || "恢复失败"); }
+  }, [loadTrash, refreshList, t]);
+
+  const doTrashPurge = useCallback((type: "file" | "folder", id: string) => {
+    setConfirmState({
+      message: tt(t, "wiki.trashPurgeConfirm"),
+      onYes: async () => {
+        try {
+          await apiTrashPurge(type, id);
+          notify("success", tt(t, "wiki.trashPurged"));
+          loadTrash(); refreshList();
+        } catch (e: any) { notify("error", e?.message || "删除失败"); }
+      },
+    });
+  }, [loadTrash, refreshList, t]);
+
+  const doTrashEmpty = useCallback(() => {
+    setConfirmState({
+      message: tt(t, "wiki.trashEmptyConfirm"),
+      onYes: async () => {
+        try {
+          await apiTrashEmpty();
+          notify("success", tt(t, "wiki.trashPurged"));
+          loadTrash(); refreshList();
+        } catch (e: any) { notify("error", e?.message || "清空失败"); }
+      },
+    });
+  }, [loadTrash, refreshList, t]);
 
   // ---------- 加载设置 ----------
   useEffect(() => {
@@ -1551,6 +1602,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "var(--dsw-shadow-lv2)" }}>
                   <div onClick={() => { requestLeave(() => { setView("versions"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.versions")}</div>
                   <div onClick={() => { requestLeave(() => { setView("logs"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
+                  <div onClick={() => { requestLeave(() => { setView("trash"); loadTrash(); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.trash")}</div>
                   <div onClick={() => { requestLeave(() => { setView("settings"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
                 </div>
               </>
@@ -2125,6 +2177,39 @@ function WikiSidebar(props: WikiSidebarProps) {
                   ))}
               </div>
             </div>
+          ) : view === "trash" ? (
+            /* 回收站面板 */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{tt(t, "wiki.trash")}</span>
+                <button onClick={() => setView("list")} style={iconBtn}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {trash.folders.length === 0 && trash.files.length === 0 ? (
+                  <div style={emptyHint}>{tt(t, "wiki.trashEmpty")}</div>
+                ) : (
+                  <>
+                    {trash.folders.map((f: any) => (
+                      <div key={"f" + f.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)", fontSize: 12 }}>
+                        <span style={{ flex: 1 }}>📁 {f.name}</span>
+                        <button onClick={() => doTrashRestore(String(f.id), "folder")} style={iconBtn}>{tt(t, "wiki.restore")}</button>
+                        <button onClick={() => doTrashPurge("folder", String(f.id))} style={iconBtn}>🗑</button>
+                      </div>
+                    ))}
+                    {trash.files.map((f: any) => (
+                      <div key={"d" + f.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)", fontSize: 12 }}>
+                        <span style={{ flex: 1 }}>📄 {f.title || f.fileName}</span>
+                        <button onClick={() => doTrashRestore(String(f.id), "file")} style={iconBtn}>{tt(t, "wiki.restore")}</button>
+                        <button onClick={() => doTrashPurge("file", String(f.id))} style={iconBtn}>🗑</button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+              {(trash.folders.length + trash.files.length) > 0 && (
+                <button onClick={() => doTrashEmpty()} style={{ ...primaryBtn, alignSelf: "flex-end" }}>{tt(t, "wiki.trashEmptyAll")}</button>
+              )}
+            </div>
           ) : activeDoc ? (
             /* MD 编辑器 */
             <>
@@ -2689,8 +2774,8 @@ function apply(ctx: any): void {
       "wiki.view": "查看", "wiki.importFile": "导入文件", "wiki.importFolder": "导入文件夹", "wiki.importWeb": "导入网页",
       "wiki.cancel": "取消", "wiki.confirm": "确定", "wiki.contentSaved": "内容已保存",
       "wiki.importSubmitting": "已提交 {n} 个文件导入",
-      "wiki.confirmDeleteDoc": "确定删除该文档？此操作不可恢复。",
-      "wiki.confirmDeleteFolder": "确定删除该文件夹及其下所有文档？此操作不可恢复。",
+      "wiki.confirmDeleteDoc": "将该文档移入回收站？",
+      "wiki.confirmDeleteFolder": "将该文件夹及其下所有文档移入回收站？",
       "wiki.cannotMoveIntoSelf": "不能移动到自身的子文件夹下",
       "wiki.autoSaveConflict": "检测到外部修改，请用“保存”按钮处理",
       "wiki.autoSaveFailed": "自动保存失败",
@@ -2711,6 +2796,9 @@ function apply(ctx: any): void {
       "wiki.searchHistory": "搜索历史",
       "wiki.selectedCount": "已选 {n} 项", "wiki.batchMove": "移动到…", "wiki.batchMoveTo": "移动到文件夹",
       "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
+      "wiki.trash": "回收站", "wiki.trashEmpty": "回收站为空", "wiki.trashEmptyAll": "清空回收站",
+      "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
+      "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
       "wiki.clear": "清空",
     },
     en: {
@@ -2751,8 +2839,8 @@ function apply(ctx: any): void {
       "wiki.view": "View", "wiki.importFile": "Import files", "wiki.importFolder": "Import folder", "wiki.importWeb": "Import web page",
       "wiki.cancel": "Cancel", "wiki.confirm": "OK", "wiki.contentSaved": "Content saved",
       "wiki.importSubmitting": "Submitted {n} files for import",
-      "wiki.confirmDeleteDoc": "Delete this document? This cannot be undone.",
-      "wiki.confirmDeleteFolder": "Delete this folder and all documents inside? This cannot be undone.",
+      "wiki.confirmDeleteDoc": "Move this document to trash?",
+      "wiki.confirmDeleteFolder": "Move this folder and all documents inside to trash?",
       "wiki.cannotMoveIntoSelf": "Cannot move into its own subfolder",
       "wiki.autoSaveConflict": "External changes detected — use Save to resolve",
       "wiki.autoSaveFailed": "Auto-save failed",
@@ -2773,6 +2861,9 @@ function apply(ctx: any): void {
       "wiki.searchHistory": "Search history",
       "wiki.selectedCount": "{n} selected", "wiki.batchMove": "Move to…", "wiki.batchMoveTo": "Move to folder",
       "wiki.batchDeleteConfirm": "Delete {n} selected documents? This cannot be undone.",
+      "wiki.trash": "Trash", "wiki.trashEmpty": "Trash is empty", "wiki.trashEmptyAll": "Empty trash",
+      "wiki.trashRestored": "Restored", "wiki.trashPurged": "Permanently deleted",
+      "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
