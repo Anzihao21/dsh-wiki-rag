@@ -941,7 +941,8 @@ function WikiSidebar(props: WikiSidebarProps) {
         if (!editable) { e.preventDefault(); searchInputRef.current?.focus(); }
       } else if (e.key === "Escape") {
         // 分层关闭：弹窗 → 菜单 → 搜索面板；重命名/URL 输入框自身已有 Esc
-        if (diffModal) setDiffModal(null);
+        if (leaveGuard) setLeaveGuard(null);
+        else if (diffModal) setDiffModal(null);
         else if (verPreview) setVerPreview(null);
         else if (confirmState) setConfirmState(null);
         else if (urlDialog) { setUrlDialog(false); setUrlInput(""); }
@@ -956,7 +957,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, activeId, diffModal, verPreview, confirmState, urlDialog, rebindState, folderRebindState, contextMenu, showMore, showPlus, searchingMode]);
+  }, [view, activeId, diffModal, verPreview, confirmState, urlDialog, rebindState, folderRebindState, contextMenu, showMore, showPlus, searchingMode, leaveGuard]);
 
 
 
@@ -2666,7 +2667,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             <div style={{ padding: "6px 12px", background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-label)", fontSize: 12, borderRadius: "var(--dsw-radius-sm)", margin: "0 12px 8px" }}>
               历史版本 vs 当前内容 — 只读（绿=新增 红=删除 黄=修改）
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: "0 0 12px", fontSize: 12, lineHeight: 1.6, fontFamily: "var(--dsw-font-family-mono, monospace)" }}>
+            <div style={{ flex: 1, overflow: "auto", padding: "0 0 12px", fontSize: 12, lineHeight: 1.6, fontFamily: "var(--ds-font-family-code, monospace)" }}>
               {rows.map((r, i) => {
                 const s = rowStyle[r.type] || rowStyle.ctx;
                 return (
@@ -2973,6 +2974,7 @@ function apply(ctx: any): void {
       "wiki.searchHistory": "Search history",
       "wiki.selectedCount": "{n} selected", "wiki.batchMove": "Move to…", "wiki.batchMoveTo": "Move to folder",
       "wiki.batchDeleteConfirm": "Delete {n} selected documents? This cannot be undone.",
+      "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
 
