@@ -316,6 +316,11 @@ export function countRefs<T extends { fileId?: number | string }>(results: T[], 
   return dedupeRefs(results, excludeId).length;
 }
 
+/** 过滤软删引用结果（结果带 deleted/deletedAt 标记时剔除；client 无法独立知软删态，依赖 /search 返回标记） */
+export function filterActiveRefs<T extends { deleted?: boolean; deletedAt?: string | number | null }>(results: T[]): T[] {
+  return (results || []).filter((r) => !r.deleted && !r.deletedAt);
+}
+
 /** 归一化搜索命中为行模型（与渲染解耦，便于测试） */
 export function normalizeSearchHits(hits: any[]): { id: string; title: string; summary: string; score?: number; fileId?: number }[] {
   return (hits || []).map((r, i) => ({

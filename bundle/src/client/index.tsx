@@ -30,7 +30,7 @@ import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
   loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, filterActiveRefs,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -1350,7 +1350,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     try {
       const hits = await apiSearch(activeDoc.title);
       if (seq !== backlinksSeq.current) return; // 快速切换文档丢弃过期响应
-      setBacklinks(dedupeRefs(hits || [], activeDoc.id));
+      setBacklinks(dedupeRefs(filterActiveRefs(hits || []), activeDoc.id));
     } catch { if (seq === backlinksSeq.current) { setBacklinks([]); setBacklinksErr(true); } }
   }, [activeDoc]);
 

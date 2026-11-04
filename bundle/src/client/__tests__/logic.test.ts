@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits, filterActiveRefs,
   type TreeNode,
 } from "../logic";
 
@@ -263,4 +263,12 @@ describe("normalizeSearchHits", () => {
     expect(r[0].title).toBe("结果 1");
     expect(r[0].summary.length).toBe(160);
   });
+});
+
+describe("filterActiveRefs", () => {
+  it("剔除带 deleted/deletedAt 标记的软删引用", () => {
+    const r = filterActiveRefs([{ fileId: 1 }, { fileId: 2, deleted: true }, { fileId: 3, deletedAt: "2026" }]);
+    expect(r.map((x) => x.fileId)).toEqual([1]);
+  });
+  it("空数组返回空", () => expect(filterActiveRefs([])).toEqual([]));
 });
