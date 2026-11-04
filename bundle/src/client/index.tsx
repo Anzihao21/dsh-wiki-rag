@@ -685,7 +685,10 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [view, setView] = useState<"list" | "editor" | "settings" | "versions" | "logs">("list");
   const [mdContent, setMdContent] = useState<string>("");
   const [savedContent, setSavedContent] = useState<string>("");
-  const [selToolbar, setSelToolbar] = useState<{ x: number; y: number } | null>(null);
+  const [selToolbar, setSelToolbar] = useState<{ x: number; y: number; bottom: number } | null>(null);
+  const selToolbarTimer = useRef<number | null>(null);
+  const [linkInputOpen, setLinkInputOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
   // 段落左侧样式标签（悬停段落时显示）+ 点击"更多"展开的竖向完整工具栏
   const [paraBar, setParaBar] = useState<{ x: number; y: number; label: string } | null>(null);
   const [vertBar, setVertBar] = useState<{ x: number; y: number } | null>(null);
@@ -712,14 +715,16 @@ function WikiSidebar(props: WikiSidebarProps) {
     ],
     content: "",
     onUpdate: ({ editor }) => setMdContent(htmlToMd(editor.getHTML())),
-    // 选中文字松开后，在选区上方显示横向格式工具栏（无选中自动隐藏）
+    // 选中文字松开后，在选区上方显示横向格式工具栏（无选中自动隐藏）；
+    // 拖动选字过程中防抖 120ms，避免工具栏跟着光标闪烁
     onSelectionUpdate: ({ editor }) => {
       const { from, to, empty } = editor.state.selection;
-      if (!empty && from !== to) {
-        const a = editor.view.coordsAtPos(from);
-        const b = editor.view.coordsAtPos(to);
-        setSelToolbar({ x: (a.left + b.left) / 2, y: a.top });
-      } else setSelToolbar(null);
+      if (selToolbarTimer.current != null) { clearTimeout(selToolbarTimer.current); selToolbarTimer.current = null; }
+      if (empty || from === to) { setSelToolbar(null); setLinkInputOpen(false); return; }
+      const a = editor.view.coordsAtPos(from);
+      const b = editor.view.coordsAtPos(to);
+      const pos = { x: (a.left + b.left) / 2, y: a.top, bottom: a.bottom };
+      selToolbarTimer.current = window.setTimeout(() => setSelToolbar(pos), 120);
     },
     editorProps: { attributes: { class: "dsh-wiki-editor", style: "outline: none;" } },
   });
@@ -781,6 +786,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [pendingChanges, setPendingChanges] = useState<any[]>([]);
   const [rebindState, setRebindState] = useState<{ fileId: string; value: string } | null>(null);
   const [folderRebindState, setFolderRebindState] = useState<{ folderId: number; value: string } | null>(null);
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -1183,12 +1189,15 @@ function WikiSidebar(props: WikiSidebarProps) {
   // ---------- 编辑器自动保存（防抖 900ms，静默；遇外部冲突不弹窗打断） ----------
   useEffect(() => {
     if (!activeId || mdContent === savedContent) return;
+    setSaveState("saving");
     const timer = setTimeout(async () => {
       try {
         const final = await apiSaveContent(activeId, mdContent, savedContent);
         baselineRef.current = final;
         setSavedContent(final);
+        setSaveState("saved");
       } catch (e: any) {
+        setSaveState("error");
         if (e?.status === 409) {
           // 自动保存不打断编辑：提示有外部修改，交手动“保存”按钮处理
           notify("info", tt(t, "wiki.autoSaveConflict"));
@@ -2076,34 +2085,51 @@ function WikiSidebar(props: WikiSidebarProps) {
           ) : activeDoc ? (
             /* MD 编辑器 */
             <>
-              {/* 标题 + 保存（有改动才可用） */}
+              {/* 标题 + 保存状态 + 保存按钮 */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeDoc.title}</span>
                 <span style={typeBadge}>{typeLabel(activeDoc.type)}</span>
+                <span style={{ fontSize: 11, color: saveState === "error" ? "var(--dsw-alias-state-error-primary)" : saveState === "saving" ? "var(--dsw-alias-state-warn-primary)" : "var(--dsw-alias-label-tertiary)" }}>
+                  {saveState === "error" ? "保存失败" : saveState === "saving" ? "保存中…" : tt(t, "wiki.saved")}
+                </span>
                 <button onClick={saveEdit} disabled={mdContent === savedContent} style={{ ...primaryBtn, opacity: mdContent === savedContent ? 0.4 : 1, cursor: mdContent === savedContent ? "not-allowed" : "pointer" }}>
                   {tt(t, "wiki.save")}
                 </button>
               </div>
-              {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得 */}
+              {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得；超宽行长限 720px */}
               <div style={{ flex: 1, overflowY: "auto", padding: 12 }}
                 onMouseMove={onEditorHover}
                 onMouseLeave={paraLeave}>
-                <EditorContent editor={editor} />
+                <style>{`.dsh-wiki-editor p { font-size: 14px; line-height: 1.7; margin: 4px 0; }
+                  .dsh-wiki-editor h1 { font-size: 26px; font-weight: 700; line-height: 1.3; margin: 24px 0 12px; }
+                  .dsh-wiki-editor h2 { font-size: 20px; font-weight: 600; line-height: 1.35; margin: 20px 0 8px; }
+                  .dsh-wiki-editor h3 { font-size: 16px; font-weight: 600; margin: 16px 0 6px; }
+                  .dsh-wiki-editor code { background: var(--dsw-alias-markdown-inline-code); padding: "1px 4px"; border-radius: var(--dsw-radius-xs); font-size: 12px; }
+                  .dsh-wiki-editor pre { background: var(--dsw-alias-markdown-code-block); padding: 12px; border-radius: var(--dsw-radius-md); margin: 8px 0; }
+                  .dsh-wiki-editor blockquote { border-left: 3px solid var(--dsw-alias-border-l4); padding-left: 12px; color: var(--dsw-alias-label-secondary); margin: 8px 0; }
+                  .dsh-wiki-editor ::selection { background: var(--dsw-alias-bg-document-selection); }`}</style>
+                <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                  <EditorContent editor={editor} />
+                </div>
               </div>
               {/* 字数统计 */}
               <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", padding: "4px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", display: "flex", gap: 12 }}>
                 <span>{mdContent.length.toLocaleString()} {tt(t, "wiki.charCount")}</span>
               </div>
               {/* 浮动格式工具栏：选中文本松开后在选区上方弹出，无选中自动隐藏 */}
-              {selToolbar && (
-                <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10002, display: "flex", gap: 2, padding: 4,
-                  transform: `translate(${Math.max(10, Math.min(selToolbar.x, window.innerWidth - 10))}px, ${Math.max(4, selToolbar.y - 38)}px) translateX(-50%)`,
+              {selToolbar && (() => {
+                const clampedX = Math.max(80, Math.min(selToolbar.x, window.innerWidth - 80));
+                const below = selToolbar.y < 60;
+                const ty = below ? selToolbar.bottom + 6 : selToolbar.y - 40;
+                return (
+                <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10002, display: "flex", gap: 2, padding: 4, flexWrap: "wrap", maxWidth: "min(560px, calc(100vw - 24px))",
+                  transform: `translate(${clampedX}px, ${ty}px) translateX(-50%)`,
                   background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
-                  borderRadius: "var(--dsw-radius-md)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                  borderRadius: "var(--dsw-radius-md)", boxShadow: "var(--dsw-shadow-lv3)" }}
                   onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
-                  <ToolBtn label="B" title="粗体" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
-                  <ToolBtn label="I" title="斜体" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+                  <ToolBtn label="B" title="粗体 (Ctrl+B)" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
+                  <ToolBtn label="I" title="斜体 (Ctrl+I)" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
                   <ToolBtn label="U" title="下划线" active={editor?.isActive("underline")} onClick={() => editor?.chain().focus().toggleUnderline().run()} />
                   <ToolBtn label="S" title="删除线" active={editor?.isActive("strike")} onClick={() => editor?.chain().focus().toggleStrike().run()} />
                   <ToolBtn label="H1" title="一级标题" active={editor?.isActive("heading", { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} />
@@ -2121,14 +2147,19 @@ function WikiSidebar(props: WikiSidebarProps) {
                     else editor.chain().focus().setTextAlign("center").run();
                   }} />
                   <ToolBtn label="—" title="分隔线" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
-                  <ToolBtn label="链接" title="链接" active={editor?.isActive("link")} onClick={() => {
-                    if (!editor) return;
-                    const url = prompt("链接地址 URL：");
-                    if (url) editor.chain().focus().setLink({ href: url }).run();
-                    else editor.chain().focus().unsetLink().run();
-                  }} />
+                  <ToolBtn label="链接" title="插入链接" active={editor?.isActive("link")} onClick={() => { setLinkUrl(""); setLinkInputOpen((v) => !v); }} />
+                  {linkInputOpen && (
+                    <input autoFocus value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { if (linkUrl.trim()) editor?.chain().focus().setLink({ href: linkUrl.trim() }).run(); setLinkInputOpen(false); }
+                        else if (e.key === "Escape") { setLinkInputOpen(false); editor?.chain().focus().run(); }
+                      }}
+                      placeholder="https://…"
+                      style={{ width: 180, height: 22, fontSize: 12, border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "var(--dsw-radius-xs)", padding: "0 6px", background: "var(--dsw-alias-bg-base)", color: "var(--dsw-alias-label-primary)" }} />
+                  )}
                 </div>
-              )}
+                );
+              })()}
               {/* 段落左侧：悬停段落时显示当前样式 + 更多（点击"更多"展开竖向完整工具栏） */}
               {paraBar && (
                 <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10001, display: "flex", alignItems: "center", gap: 2, padding: "2px 4px",
@@ -2167,7 +2198,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                   <VertBtn label="删除线" active={editor?.isActive("strike")} onClick={() => editor?.chain().focus().toggleStrike().run()} />
                   <VertBtn label="链接" active={editor?.isActive("link")} onClick={() => {
                     if (!editor) return;
-                    const url = prompt("链接地址 URL：");
+                    const url = window.prompt("链接地址 URL：");
                     if (url) editor.chain().focus().setLink({ href: url }).run();
                     else editor.chain().focus().unsetLink().run();
                   }} />
@@ -2304,19 +2335,22 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       )}
 
-      {/* 历史版本内容只读预览弹窗 */}
+      {/* 历史版本内容只读预览弹窗（渲染 MD + 只读提示条） */}
       {verPreview && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{
             width: "90%", maxWidth: 560, background: "var(--dsw-alias-bg-layer-1)",
-            borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 12,
+            borderRadius: "var(--dsw-radius-lg)", display: "flex", flexDirection: "column", gap: 0,
             maxHeight: "80vh", overflow: "hidden",
           }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, paddingBottom: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{verPreview.title}</div>
               <button onClick={() => setVerPreview(null)} style={iconBtn}>✕</button>
             </div>
-            <pre style={{ flex: 1, overflow: "auto", margin: 0, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", padding: 10, borderRadius: "var(--dsw-radius-sm)", background: "var(--dsw-alias-bg-layer-2)" }}>{verPreview.content}</pre>
+            <div style={{ padding: "6px 12px", background: "var(--dsw-alias-state-warn-tertiary)", color: "var(--dsw-alias-state-warn-label)", fontSize: 12, borderRadius: "var(--dsw-radius-sm)", margin: "0 12px 8px" }}>
+              正在查看历史版本 — 此为只读预览
+            </div>
+            <div style={{ flex: 1, overflow: "auto", fontSize: 13, lineHeight: 1.6, padding: "0 12px 12px", color: "var(--dsw-alias-label-primary)" }}>{renderMdSafe(verPreview.content)}</div>
           </div>
         </div>
       )}
