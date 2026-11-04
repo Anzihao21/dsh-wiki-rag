@@ -284,3 +284,16 @@ describe('host-api /export/zip 分支', () => {
     expect(r.body.error).toMatch(/空/);
   });
 });
+
+describe('host-api /export/zip 失败路径', () => {
+  it('exportZip 抛错 → handler 返回 500 {error} 不泄露 stack', async () => {
+    const deps = makeDeps({
+      exportZip: async () => { throw new Error('disk full'); },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(500);
+    expect(r.body.error).toBe('disk full');
+    expect(JSON.stringify(r.body)).not.toMatch(/at\s+\w+/);
+  });
+});
