@@ -802,6 +802,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   // 相同 (type, msg) 在 1500ms 内去重：request 5xx 自动 notify 与业务 catch 里的
   // notify 会重复弹出同一条错误，收敛为一条。
   const lastToast = useRef<{ key: string; at: number } | null>(null);
+  const toastTimers = useRef<number[]>([]);
   const notify = useCallback((type: Toast["type"], msg: string) => {
     const key = type + "\u0001" + msg;
     const now = Date.now();
@@ -811,8 +812,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     // 堆叠上限 3 条：新 toast 挤掉最旧的（保留最近 2 条 + 新条 = 3）
     setToasts((prev) => [...prev.slice(-2), { id, type, msg }]);
     // 3.2s 后开始淡出，300ms 淡出过渡结束后再从 DOM 移除
-    setTimeout(() => setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t))), 3200);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+    toastTimers.current.push(window.setTimeout(() => setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t))), 3200));
+    toastTimers.current.push(window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500));
   }, []);
 
   useEffect(() => { bindNotifiers(notify, setOffline); }, [notify]);
@@ -871,7 +872,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     return () => clearInterval(t);
   }, [pollPending]);
 
-  // ---------- 快捷键 Ctrl+S 保存 / Ctrl+F、Ctrl+P 聚焦搜索 / Esc 分层关闭 ----------
+  // ---------- 快捷键 Ctrl+S 保存 / Ctrl+F、Ctrl+P、/ 聚焦搜索 / Esc 分层关闭 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -880,6 +881,11 @@ function WikiSidebar(props: WikiSidebarProps) {
       } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "p")) {
         e.preventDefault();
         searchInputRef.current?.focus();
+      } else if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const ae = document.activeElement as HTMLElement | null;
+        const tag = ae?.tagName;
+        const editable = tag === "INPUT" || tag === "TEXTAREA" || (!!ae && ae.isContentEditable);
+        if (!editable) { e.preventDefault(); searchInputRef.current?.focus(); }
       } else if (e.key === "Escape") {
         // 分层关闭：弹窗 → 菜单 → 搜索面板；重命名/URL 输入框自身已有 Esc
         if (diffModal) setDiffModal(null);
@@ -904,7 +910,15 @@ function WikiSidebar(props: WikiSidebarProps) {
   // ---------- 导入（async 任务 + 进度条） ----------
   const jobTimers = useRef<number[]>([]);
   const scrollRaf = useRef<number | null>(null);
-  useEffect(() => () => { jobTimers.current.forEach((t) => clearInterval(t)); }, []);
+  // 卸载统一清理：轮询 interval、toast 移除定时器、搜索/选区/flash 防抖窗口、滚动 rAF
+  useEffect(() => () => {
+    jobTimers.current.forEach((t) => clearInterval(t));
+    toastTimers.current.forEach((t) => clearTimeout(t));
+    if (searchTimer.current != null) clearTimeout(searchTimer.current);
+    if (selToolbarTimer.current != null) clearTimeout(selToolbarTimer.current);
+    if (flashTimer.current != null) clearTimeout(flashTimer.current);
+    if (scrollRaf.current != null) cancelAnimationFrame(scrollRaf.current);
+  }, []);
 
   const pollJob = useCallback((jobId: string) => {
     const timer = setInterval(async () => {
@@ -1461,24 +1475,6 @@ function WikiSidebar(props: WikiSidebarProps) {
     else setExpandedFolders(collectFolderIds(tree, new Set()));
     setTreeExpanded(!treeExpanded);
   }, [treeExpanded, tree]);
-
-  // 键盘快捷键：Ctrl/Cmd+S 保存；/ 聚焦搜索
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        if (view === "editor") { e.preventDefault(); saveEdit(); }
-        return;
-      }
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const ae = document.activeElement as HTMLElement | null;
-        const tag = ae?.tagName;
-        const editable = tag === "INPUT" || tag === "TEXTAREA" || (!!ae && ae.isContentEditable);
-        if (!editable) { e.preventDefault(); searchInputRef.current?.focus(); }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [view, saveEdit]);
 
   // 点击编辑区/外部任意处关闭浮动格式工具栏与段落工具栏（工具栏自身用 stopPropagation 拦截）
   useEffect(() => {
@@ -2693,6 +2689,23 @@ function apply(ctx: any): void {
       "wiki.versionsHint": "A version is created on each manual save, max 3 per file",
       "wiki.view": "View", "wiki.importFile": "Import files", "wiki.importFolder": "Import folder", "wiki.importWeb": "Import web page",
       "wiki.cancel": "Cancel", "wiki.confirm": "OK", "wiki.contentSaved": "Content saved",
+      "wiki.importSubmitting": "Submitted {n} files for import",
+      "wiki.confirmDeleteDoc": "Delete this document? This cannot be undone.",
+      "wiki.confirmDeleteFolder": "Delete this folder and all documents inside? This cannot be undone.",
+      "wiki.cannotMoveIntoSelf": "Cannot move into its own subfolder",
+      "wiki.autoSaveConflict": "External changes detected — use Save to resolve",
+      "wiki.autoSaveFailed": "Auto-save failed",
+      "wiki.dropImport": "Drop to import into the wiki",
+      "wiki.exitFullscreen": "Exit fullscreen", "wiki.fullscreen": "Fullscreen", "wiki.more": "More",
+      "wiki.favSection": "Favorites", "wiki.recentSection": "Recent", "wiki.create": "New / Import",
+      "wiki.rootAll": "All files", "wiki.emptyFolder": "Empty folder",
+      "wiki.unfav": "Remove from favorites", "wiki.fav": "Add to favorites",
+      "wiki.statusReady": "Indexed", "wiki.statusStale": "Stale", "wiki.statusError": "Error",
+      "wiki.charCount": "chars",
+      "wiki.emptyTitle": "Select a document from the left to get started",
+      "wiki.emptyHint": "Import or search documents from the left, then click to view and edit. Supports local files / web pages / notes / Excel / PPT.",
+      "wiki.newSubFolder": "New subfolder",
+      "wiki.webModeHint": "Web fetch mode", "wiki.webModeInSettings": "See settings",
     },
   }), "wiki: dictionaries");
 
