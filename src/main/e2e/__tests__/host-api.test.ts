@@ -365,3 +365,41 @@ describe('host-api 不存在 id 语义', () => {
     expect(r.body.status).toBe('purged');
   });
 });
+
+describe('host-api /export/zip 请求层端到端', () => {
+  it('正常导出返回 {path,fileName,size,count} 结构', async () => {
+    const deps = makeDeps({
+      exportZip: async () => ({ path: '/tmp/test.zip', fileName: 'test.zip', size: 1024, count: 3 }),
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(200);
+    expect(r.body.path).toBe('/tmp/test.zip');
+    expect(r.body.count).toBe(3);
+    expect(r.body.size).toBe(1024);
+  });
+
+  it('空库 exportZipOp 抛 httpStatus=400 → handler 返回 400', async () => {
+    const deps = makeDeps({
+      exportZip: async () => {
+        const e: any = new Error('知识库为空，无可导出内容');
+        e.httpStatus = 400;
+        throw e;
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(400);
+  });
+
+  it('导出异常 500 不泄露 stack', async () => {
+    const deps = makeDeps({
+      exportZip: async () => { throw new Error('disk full'); },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(500);
+    expect(r.body.error).toBe('disk full');
+    expect(JSON.stringify(r.body)).not.toMatch(/at\s+\w+/);
+  });
+});
