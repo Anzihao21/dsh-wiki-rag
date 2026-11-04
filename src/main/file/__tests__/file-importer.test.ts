@@ -436,3 +436,21 @@ describe('FileImporter.importUploadContent', () => {
     ).rejects.toThrow(/base64|4 的倍数/);
   });
 });
+
+describe('importUploadContent 50MB 上限', () => {
+  it('base64 预估解码后 > 50MB 时拒绝并报清晰错误', async () => {
+    // base64 每 4 字符 = 3 字节；50MB ≈ 66.7M base64 字符
+    const bigB64 = 'A'.repeat(50 * 1024 * 1024); // 50M base64 字符 ≈ 37.5MB，预估值仍 < 50MB
+    // 构造 70M base64 字符 ≈ 52.5MB，应在预检查被拒
+    const overB64 = 'A'.repeat(70 * 1024 * 1024);
+    await expect(
+      importer.importUploadContent('big.txt', overB64)
+    ).rejects.toThrow(/50MB/);
+  });
+
+  it('小内容正常通过（边界下限）', async () => {
+    const b64 = Buffer.from('hello', 'utf-8').toString('base64');
+    const r = await importer.importUploadContent('small.txt', b64);
+    expect(r.fileName).toContain('small.txt');
+  });
+});
