@@ -122,3 +122,32 @@ describe('FTS5 trigram 端到端召回', () => {
     expect(rows[0].file_id).toBe(f1);
   });
 });
+
+describe('FTS5 MATCH 大库分支（>200 chunks）', () => {
+  it('大库下 MATCH 路径命中目标文件且过滤软删', async () => {
+    // 灌入 250 chunk 触发大库分支
+    const fTarget = await insertKnowledgeFile({
+      file_name: 'target.md', source_path: '/t.md', md_path: '/t.md',
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    const fTrash = await insertKnowledgeFile({
+      file_name: 'trash.md', source_path: '/tr.md', md_path: '/tr.md',
+      zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+      folder_id: null,
+    });
+    // 200 filler chunks
+    for (let i = 0; i < 200; i++) {
+      await insertVectorChunk(fileId, `filler chunk number ${i} unrelated text`, Buffer.from(new Float32Array([0.001]).buffer));
+    }
+    // target 含关键词
+    await insertVectorChunk(fTarget, '回收站软删除 deleted_at 字段说明', Buffer.from(new Float32Array([0.5]).buffer));
+    // trash 含关键词但被软删
+    await insertVectorChunk(fTrash, '回收站软删除测试用例', Buffer.from(new Float32Array([0.6]).buffer));
+    await softDeleteFile(fTrash);
+    const rows = await getChunksForSearch(['回收站'], 50);
+    const fileIds = rows.map((r) => r.file_id);
+    expect(fileIds).toContain(fTarget);
+    expect(fileIds).not.toContain(fTrash);
+  }, 30000);
+});
