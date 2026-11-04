@@ -2545,7 +2545,7 @@ const textareaStyle: any = {
   flex: 1, width: "100%", boxSizing: "border-box", resize: "none", padding: 10,
   borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)",
   background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)",
-  fontFamily: "var(--dsw-font-family-mono, monospace)", fontSize: 12, lineHeight: 1.6,
+  fontFamily: "var(--ds-font-family-code, monospace)", fontSize: 12, lineHeight: 1.6,
 };
 const emptyHint: any = { padding: "24px 8px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)", fontSize: 12 };
 const menuItem: any = {
@@ -2588,7 +2588,7 @@ function DiffModalBox(props: {
         borderRadius: "var(--dsw-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 12,
       }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>{tt(t, "wiki.changeConfirm")}：{modal.title}</div>
-        <div style={{ flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--dsw-font-family-mono, monospace)", display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, overflow: "auto", fontSize: 12, fontFamily: "var(--ds-font-family-code, monospace)", display: "flex", flexDirection: "column" }}>
           {rows.map((r, i) => {
             if (r.type === "mod") {
               return (
