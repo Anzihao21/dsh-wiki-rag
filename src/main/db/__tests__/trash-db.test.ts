@@ -206,3 +206,24 @@ describe('restoreVersion 对软删/已 purge 文件语义', () => {
     expect(await getKnowledgeFileById(fid)).toBeUndefined();
   });
 });
+
+describe('purge 性能基准（宽松断言）', () => {
+  it('100 文件级联 purge（含 chunks/versions）< 5s', async () => {
+    const fileIds: number[] = [];
+    for (let i = 0; i < 100; i++) {
+      const fid = await insertKnowledgeFile({
+        file_name: `perf-${i}.md`, source_path: `/p${i}.md`, md_path: path.join(dir, `p${i}.md`),
+        zip_archive_path: '', file_type: 'md', create_time: Date.now(), last_sync_time: 0,
+        folder_id: null,
+      });
+      fileIds.push(fid);
+      await softDeleteFile(fid);
+    }
+    const t0 = Date.now();
+    for (const fid of fileIds) {
+      await purgeFileRow(fid);
+    }
+    const dt = Date.now() - t0;
+    expect(dt).toBeLessThan(5000);
+  }, 10000);
+});
