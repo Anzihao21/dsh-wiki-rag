@@ -592,6 +592,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [verPreview, setVerPreview] = useState<{ title: string; old: string; new: string } | null>(null);
   const [logs, setLogs] = useState<{ time: string; action: string; detail: string }[]>([]);
   const [trash, setTrash] = useState<{ files: any[]; folders: any[] }>({ files: [], folders: [] });
+  const [trashCount, setTrashCount] = useState(0);
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -715,7 +716,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     try {
       const r = await apiTrashList();
       setTrash({ files: r?.files || [], folders: r?.folders || [] });
-    } catch { setTrash({ files: [], folders: [] }); }
+      setTrashCount((r?.files?.length || 0) + (r?.folders?.length || 0));
+    } catch { setTrash({ files: [], folders: [] }); setTrashCount(0); }
   }, []);
 
   const doTrashRestore = useCallback(async (id: string, type: "file" | "folder") => {
@@ -1701,7 +1703,10 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 110, boxShadow: "var(--dsw-shadow-lv2)" }}>
                   <div onClick={() => { requestLeave(() => { setView("versions"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.versions")}</div>
                   <div onClick={() => { requestLeave(() => { setView("logs"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.logs")}</div>
-                  <div onClick={() => { requestLeave(() => { setView("trash"); loadTrash(); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.trash")}</div>
+                  <div onClick={() => { requestLeave(() => { setView("trash"); loadTrash(); }); setShowMore(false); }} style={menuItem}>
+                    {tt(t, "wiki.trash")}
+                    {trashCount > 0 && <span style={{ marginLeft: 8, fontSize: 10, padding: "0 5px", borderRadius: 8, background: "var(--dsw-alias-bg-module-platform)", color: "var(--dsw-alias-label-secondary)" }}>{trashCount}</span>}
+                  </div>
                   <div onClick={() => { requestLeave(() => { setView("settings"); }); setShowMore(false); }} style={menuItem}>{tt(t, "wiki.settings")}</div>
                 </div>
               </>
@@ -2283,7 +2288,11 @@ function WikiSidebar(props: WikiSidebarProps) {
             /* 回收站面板 */
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: 8, borderRadius: "var(--dsw-radius-md)", background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{tt(t, "wiki.trash")}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{tt(t, "wiki.trash")}
+                  <span style={{ fontSize: 11, fontWeight: 400, color: "var(--dsw-alias-label-caption)", marginLeft: 8 }}>
+                    {tt(t, "wiki.trashCount", { files: trash.files.length, folders: trash.folders.length })}
+                  </span>
+                </span>
                 <button onClick={() => setView("list")} style={iconBtn}>✕</button>
               </div>
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -3036,6 +3045,7 @@ function apply(ctx: any): void {
       "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
       "wiki.resultsCount": "相关文档 {n} 篇",
       "wiki.backlinks": "被引用", "wiki.backlinksEmpty": "暂无文档引用本文",
+      "wiki.trashCount": "文件 {files} / 文件夹 {folders}",
       "wiki.clear": "清空",
     },
     en: {
@@ -3108,6 +3118,7 @@ function apply(ctx: any): void {
       "wiki.slashCode": "Code block", "wiki.slashDivider": "Divider", "wiki.slashText": "Text",
       "wiki.resultsCount": "{n} related documents",
       "wiki.backlinks": "Backlinks", "wiki.backlinksEmpty": "No documents reference this",
+      "wiki.trashCount": "{files} files / {folders} folders",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
