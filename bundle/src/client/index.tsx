@@ -157,6 +157,13 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.batchMove": "移动到…",
   "wiki.batchMoveTo": "移动到文件夹",
   "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
+  // 以下键在宿主注册字典中提供，LOCAL_FALLBACK 补中文兜底
+  "wiki.versions": "历史版本", "wiki.importFile": "导入文件", "wiki.importFolder": "导入文件夹", "wiki.importWeb": "导入网页",
+  "wiki.embedModel": "嵌入模型", "wiki.embedFallback": "离线哈希（默认）", "wiki.embedLocal": "本地模型", "wiki.embedOpenAI": "OpenAI 兼容",
+  "wiki.modelPath": "本地模型路径", "wiki.openaiBaseURL": "Base URL", "wiki.openaiAPIKey": "API Key", "wiki.openaiModel": "模型名",
+  "wiki.rerankModel": "重排模型", "wiki.rerankNone": "关闭重排",
+  "wiki.selectFile": "选择文件", "wiki.selectFileFirst": "请先选择文件", "wiki.noVersions": "暂无历史版本",
+  "wiki.view": "查看", "wiki.versionsHint": "人工编辑保存时自动生成历史版本，每文件最多保留 3 个",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典；支持 {n} 插值 */
@@ -993,8 +1000,22 @@ function WikiSidebar(props: WikiSidebarProps) {
     const failures: string[] = [];
     setJob({ jobId: items.map((i) => i.jobId).join(","), phase: "import", done: 0, total: items.length, message: "", status: "running" });
     items.forEach(({ jobId, name }) => {
+      const startedAt = Date.now();
       const timer = setInterval(async () => {
         try {
+          // 60s 仍 running 视为超时失败，防无限轮询
+          if (Date.now() - startedAt > 60000) {
+            clearInterval(timer);
+            settled++; fail++; failures.push(`${name}：导入超时（>60s）`);
+            setJob((prev) => prev ? { ...prev, done: settled } : prev);
+            if (settled === items.length) {
+              setTimeout(() => setJob(null), 1500);
+              const skipMsg = skipCount ? `，跳过 ${skipCount}` : "";
+              notify("error", `导入完成：成功 ${ok}，失败 ${fail}${skipMsg}（${failures.slice(0, 3).join("；")}）`);
+              refreshList();
+            }
+            return;
+          }
           const j = await apiGetJobs(jobId);
           if (j.status === "done" || j.status === "error") {
             clearInterval(timer);
