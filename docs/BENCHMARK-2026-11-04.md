@@ -105,3 +105,9 @@ npx vitest run
 **预期全链路**：命中查询 30~100ms；零命中（LIKE 无匹配直接返回空集）< 20ms。
 
 瓶颈在 SQLite 未启用 FTS5——后续若要降到 < 20ms 量级，应迁移到 virtual table + MATCH 查询，而非继续优化 JS 侧。
+
+## Client 数据准备（2026-11-04 补）
+
+- 50 文件夹 × 100 文档 = 5050 节点，全部展开后 `flattenTree` 生成可见行 **1ms**（阈值断言 <100ms，见 `bundle/src/client/__tests__/logic.test.ts`）。
+- 虚拟滚动：`startIndex = floor(scrollTop/ROW_H)-2`，`endIndex = min(rows, ceil((scrollTop+viewportH)/ROW_H)+2)`，5050 行时 DOM 仅渲染视口 ±2 缓冲行（约 20-30 个节点），滚动用 rAF 合并。
+- 结论：树数据准备非瓶颈，首屏开销在 React 渲染视口行而非全量 flatten。
