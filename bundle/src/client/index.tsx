@@ -501,7 +501,7 @@ function FileIcon({ size = 14 }: { size?: number }) {
 // ============================================================================
 // Toast 容器
 // ============================================================================
-interface Toast { id: number; type: "error" | "success" | "info"; msg: string; }
+interface Toast { id: number; type: "error" | "success" | "info"; msg: string; leaving?: boolean; }
 function ToastStack({ toasts }: { toasts: Toast[] }) {
   // portal 至 body：DSH 宿主 webview 容器可能存在 transform/contain 祖先，
   // 直接 position:fixed 会被按祖先定位导致 toast 显示在页面内而非屏幕右下角。
@@ -511,17 +511,19 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
       display: "flex", flexDirection: "column", gap: 8, maxWidth: 320,
       pointerEvents: "none",
     }}>
-      <style>{`@keyframes dsw-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .dsw-toast { animation: dsw-toast-in .18s ease-out; }`}</style>
+      <style>{`@keyframes dsw-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .dsw-toast { animation: dsw-toast-in 160ms ease-out; }
+        @media (prefers-reduced-motion: reduce) { .dsw-toast { animation: none; } }`}</style>
       {toasts.map((t) => (
         <div key={t.id} className="dsw-toast" style={{
-          padding: "10px 14px", borderRadius: "var(--dsw-radius-md)",
-          background: "var(--dsw-alias-bg-layer-2)",
-          border: "1px solid var(--dsw-alias-border-l4)",
-          color: "var(--dsw-alias-label-primary)", fontSize: 12,
-          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          padding: "10px 14px", borderRadius: "var(--dsw-radius-lg)",
+          background: "var(--dsw-alias-toast-bg)",
+          color: "var(--dsw-alias-toast-label)", fontSize: 12, lineHeight: 1.5,
+          boxShadow: "var(--dsw-shadow-lv3)",
           display: "flex", gap: 8, alignItems: "flex-start",
           pointerEvents: "auto",
+          opacity: t.leaving ? 0 : 1,
+          transition: "opacity 300ms ease-out",
         }}>
           <span style={{
             flexShrink: 0, fontWeight: 700, fontSize: 12, lineHeight: "16px",
@@ -788,8 +790,11 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (lastToast.current && lastToast.current.key === key && now - lastToast.current.at < 1500) return;
     lastToast.current = { key, at: now };
     const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, type, msg }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3200);
+    // 堆叠上限 3 条：新 toast 挤掉最旧的（保留最近 2 条 + 新条 = 3）
+    setToasts((prev) => [...prev.slice(-2), { id, type, msg }]);
+    // 3.2s 后开始淡出，300ms 淡出过渡结束后再从 DOM 移除
+    setTimeout(() => setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t))), 3200);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   }, []);
 
   useEffect(() => { bindNotifiers(notify, setOffline); }, [notify]);
