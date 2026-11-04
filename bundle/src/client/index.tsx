@@ -625,6 +625,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [viewportH, setViewportH] = useState(400);
   const searchInflight = useRef(false);
   const searchTimer = useRef<number | null>(null);
+  const searchBlurTimer = useRef<number | null>(null);
   const importInflight = useRef(false);
   const toastId = useRef(0);
   const baselineRef = useRef<string>("");
@@ -747,6 +748,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     jobTimers.current.forEach((t) => clearInterval(t));
     toastTimers.current.forEach((t) => clearTimeout(t));
     if (searchTimer.current != null) clearTimeout(searchTimer.current);
+    if (searchBlurTimer.current != null) clearTimeout(searchBlurTimer.current);
     if (selToolbarTimer.current != null) clearTimeout(selToolbarTimer.current);
     if (flashTimer.current != null) clearTimeout(flashTimer.current);
     if (scrollRaf.current != null) cancelAnimationFrame(scrollRaf.current);
@@ -1074,6 +1076,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             baselineRef.current = finalMd;
             setMdContent(finalMd);
             setSavedContent(finalMd);
+            markEdited(activeId);
             notify("success", tt(t, "wiki.contentSaved"));
             refreshList();
           } catch (e2: any) { notify("error", e2?.message || "保存失败"); }
@@ -1621,7 +1624,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 role="searchbox"
                 value={q}
                 onFocus={() => setHistoryOpen(true)}
-                onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
+                onBlur={() => { searchBlurTimer.current = window.setTimeout(() => setHistoryOpen(false), 150); }}
                 onChange={(e) => {
                   const v = e.target.value;
                   setQ(v);
@@ -2685,6 +2688,30 @@ function apply(ctx: any): void {
       "wiki.versionsHint": "人工编辑保存时自动生成历史版本，每文件最多保留 3 个",
       "wiki.view": "查看", "wiki.importFile": "导入文件", "wiki.importFolder": "导入文件夹", "wiki.importWeb": "导入网页",
       "wiki.cancel": "取消", "wiki.confirm": "确定", "wiki.contentSaved": "内容已保存",
+      "wiki.importSubmitting": "已提交 {n} 个文件导入",
+      "wiki.confirmDeleteDoc": "确定删除该文档？此操作不可恢复。",
+      "wiki.confirmDeleteFolder": "确定删除该文件夹及其下所有文档？此操作不可恢复。",
+      "wiki.cannotMoveIntoSelf": "不能移动到自身的子文件夹下",
+      "wiki.autoSaveConflict": "检测到外部修改，请用“保存”按钮处理",
+      "wiki.autoSaveFailed": "自动保存失败",
+      "wiki.dropImport": "释放以导入到知识库",
+      "wiki.exitFullscreen": "退出全屏", "wiki.fullscreen": "全屏", "wiki.more": "更多",
+      "wiki.favSection": "收藏", "wiki.recentSection": "最近打开", "wiki.create": "新建 / 导入",
+      "wiki.rootAll": "全部文件", "wiki.emptyFolder": "空文件夹",
+      "wiki.unfav": "取消收藏", "wiki.fav": "收藏",
+      "wiki.statusReady": "已索引", "wiki.statusStale": "待同步", "wiki.statusError": "异常",
+      "wiki.charCount": "字符",
+      "wiki.emptyTitle": "从左侧选择文档开始",
+      "wiki.emptyHint": "在左侧导入或搜索文档，点击后即可在此查看与编辑。",
+      "wiki.newSubFolder": "新建子文件夹",
+      "wiki.webModeHint": "网页抓取模式", "wiki.webModeInSettings": "见设置",
+      "wiki.export": "导出 Markdown", "wiki.exported": "已导出 Markdown", "wiki.copiedContent": "已复制内容到剪贴板",
+      "wiki.leaveUnsaved": "有未保存的修改", "wiki.saveAndLeave": "保存并离开", "wiki.discard": "放弃修改",
+      "wiki.noFavHint": "暂无收藏，点文件行 ☆ 收藏", "wiki.noRecentHint": "暂无最近打开",
+      "wiki.searchHistory": "搜索历史",
+      "wiki.selectedCount": "已选 {n} 项", "wiki.batchMove": "移动到…", "wiki.batchMoveTo": "移动到文件夹",
+      "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
+      "wiki.clear": "清空",
     },
     en: {
       "wiki.title": "Wiki", "wiki.search": "Search docs…", "wiki.refresh": "Refresh",
