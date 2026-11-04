@@ -509,7 +509,12 @@ function WikiSidebar(props: WikiSidebarProps) {
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: false }),
       TableRow, TableHeader, TableCell,
-      Underline,
+      Underline.configure({
+        // StarterKit 默认带 Ctrl-B / Ctrl-I；U 需显式绑定，否则 webview 里不生效
+        addKeyboardShortcuts: () => ({
+          "Mod-u": () => this.editor?.chain().focus().toggleUnderline().run() ?? false,
+        }),
+      }),
       TaskList.configure({ nested: true }),
       // 兼容 marked GFM 输出的任务列表（li 直接含 checkbox，无 label 包装）
       TaskItem.configure({ nested: true }).extend({
