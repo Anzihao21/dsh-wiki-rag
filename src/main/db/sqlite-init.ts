@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS vector_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_vector_file_id ON vector_chunks(file_id);
 
+-- FTS5 trigram 全文索引（中文友好；external content 模式，触发器维护）
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    chunk_text,
+    content='vector_chunks',
+    content_rowid='id',
+    tokenize='trigram'
+);
+
 CREATE TABLE IF NOT EXISTS operation_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action TEXT NOT NULL,
@@ -104,7 +112,7 @@ export async function initDatabase(filePath?: string): Promise<void> {
 }
 
 /** 当前 schema 版本（user_version） */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * 迁移清单：索引 i 对应「把库从版本 i+1 升到 i+2」。
@@ -136,6 +144,25 @@ const MIGRATIONS: Array<() => void> = [
   () => {
     ensureColumn('knowledge_files', 'deleted_at', 'INTEGER');
     ensureColumn('folders', 'deleted_at', 'INTEGER');
+  },
+  // v5 → v6：FTS5 trigram 全文索引（中文友好）；external content 模式，需触发器维护
+  () => {
+    getDb().prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+      chunk_text, content='vector_chunks', content_rowid='id', tokenize='trigram'
+    )`).run();
+    // 全量回填（external content 表初始为空）
+    getDb().prepare(`INSERT INTO chunks_fts(rowid, chunk_text) SELECT id, chunk_text FROM vector_chunks`).run();
+    // 触发器：INSERT/DELETE/UPDATE 同步 FTS
+    getDb().prepare(`CREATE TRIGGER IF NOT EXISTS vector_chunks_ai AFTER INSERT ON vector_chunks BEGIN
+      INSERT INTO chunks_fts(rowid, chunk_text) VALUES (new.id, new.chunk_text);
+    END`).run();
+    getDb().prepare(`CREATE TRIGGER IF NOT EXISTS vector_chunks_ad AFTER DELETE ON vector_chunks BEGIN
+      INSERT INTO chunks_fts(chunks_fts, rowid, chunk_text) VALUES('delete', old.id, old.chunk_text);
+    END`).run();
+    getDb().prepare(`CREATE TRIGGER IF NOT EXISTS vector_chunks_au AFTER UPDATE ON vector_chunks BEGIN
+      INSERT INTO chunks_fts(chunks_fts, rowid, chunk_text) VALUES('delete', old.id, old.chunk_text);
+      INSERT INTO chunks_fts(rowid, chunk_text) VALUES (new.id, new.chunk_text);
+    END`).run();
   },
 ];
 

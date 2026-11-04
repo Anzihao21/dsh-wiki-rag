@@ -74,12 +74,31 @@ export async function getChunksForSearch(
   if (safeKw.length === 0) {
     return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
   }
-  const clauses = safeKw.map(() => 'chunk_text LIKE ?').join(' OR ');
-  const params = safeKw.map((k) => `%${k}%`);
-  const rows = await all<VectorChunk>(
-    `SELECT * FROM vector_chunks WHERE ${clauses} LIMIT ?`,
-    [...params, maxCandidates]
-  );
+  // FTS5 trigram 预过滤（≥3 字符走 MATCH，短词退回 LIKE 子串）
+  const longKw = safeKw.filter((k) => k.length >= 3);
+  const shortKw = safeKw.filter((k) => k.length < 3);
+  let rows: VectorChunk[] = [];
+  if (longKw.length > 0) {
+    const matchExpr = longKw.map((k) => `"${k.replace(/"/g, '""')}"`).join(' OR ');
+    try {
+      rows = await all<VectorChunk>(
+        `SELECT vc.* FROM vector_chunks vc
+         JOIN chunks_fts ON chunks_fts.rowid = vc.id
+         WHERE chunks_fts MATCH ? LIMIT ?`,
+        [matchExpr, maxCandidates]
+      );
+    } catch {
+      rows = [];
+    }
+  }
+  if (rows.length === 0 && shortKw.length > 0) {
+    const clauses = shortKw.map(() => 'chunk_text LIKE ?').join(' OR ');
+    const params = shortKw.map((k) => `%${k}%`);
+    rows = await all<VectorChunk>(
+      `SELECT * FROM vector_chunks WHERE ${clauses} LIMIT ?`,
+      [...params, maxCandidates]
+    );
+  }
   if (rows.length > 0) return rows;
   // 关键词零命中：纯语义查询，退化为最近 N 条
   return all<VectorChunk>('SELECT * FROM vector_chunks ORDER BY id DESC LIMIT ?', [maxCandidates]);
