@@ -107,16 +107,23 @@ async function rerankOpenAI(
   }
 
   const data = await resp.json() as {
-    results: Array<{ index: number; relevance_score: number }>;
+    results?: Array<{ index: number; relevance_score: number }>;
   };
 
-  // 按 rerank 结果重排
+  // 按 rerank 结果重排；响应异常（缺 results / 全越界）时降级为原结果
+  if (!Array.isArray(data?.results)) {
+    console.warn(`[rerank/openai] 响应缺少 results 字段，降级为原结果`);
+    return results.slice(0, s.rerankTopK);
+  }
   const reranked: RagSearchResult[] = [];
   for (const r of data.results) {
-    const original = results[r.index];
-    if (original) {
+    const original = results[r?.index];
+    if (original && typeof r?.relevance_score === 'number') {
       reranked.push({ ...original, score: r.relevance_score });
     }
+  }
+  if (reranked.length === 0) {
+    return results.slice(0, s.rerankTopK);
   }
   return reranked;
 }
