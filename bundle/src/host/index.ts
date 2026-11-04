@@ -187,27 +187,33 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     await writeLog('plugin-activate', `dsh-wiki-rag DB=${getDbPath()}`);
 
     // 接入文件监听：源文件变更入待确认队列；入队前预计算新旧文本与 diff，前端轮询即可直接渲染
+    // 外层 try/catch：watcher 回调是事件驱动的，任何异常都不能冒泡到 chokidar 导致整个 watcher 崩溃
     watcher.setCallback(async (change) => {
-      let oldText = '';
       try {
-        const rec = await getKnowledgeFileById(change.fileId);
-        if (rec) {
-          try { oldText = await fs.readFile(rec.md_path, 'utf-8'); } catch { oldText = ''; }
-        }
-      } catch { /* 条目读取失败时旧文本为空 */ }
-      let newText = '';
-      try { newText = await extractTextToMarkdown(change.sourcePath); } catch { newText = ''; }
-      // 新旧内容一致视为无改动，不入队（与 triggerSourceSync 判据一致）
-      if (oldText && sha256Text(oldText) === sha256Text(newText)) return;
-      const diff = buildDiffResult(change.fileId, change.fileName, oldText, newText).diff;
-      pendingChanges.push({
-        ...change,
-        oldText,
-        newText,
-        diff,
-        shelved: false,
-        time: Date.now(),
-      });
+        let oldText = '';
+        try {
+          const rec = await getKnowledgeFileById(change.fileId);
+          if (rec) {
+            try { oldText = await fs.readFile(rec.md_path, 'utf-8'); } catch { oldText = ''; }
+          }
+        } catch { /* 条目读取失败时旧文本为空 */ }
+        let newText = '';
+        try { newText = await extractTextToMarkdown(change.sourcePath); } catch { newText = ''; }
+        // 新旧内容一致视为无改动，不入队（与 triggerSourceSync 判据一致）
+        if (oldText && sha256Text(oldText) === sha256Text(newText)) return;
+        const diff = buildDiffResult(change.fileId, change.fileName, oldText, newText).diff;
+        pendingChanges.push({
+          ...change,
+          oldText,
+          newText,
+          diff,
+          shelved: false,
+          time: Date.now(),
+        });
+      } catch (e) {
+        // 单条监听失败不影响其它条目；仅记日志
+        await writeLog('watcher-callback-error', `fileId=${change.fileId}: ${(e as Error).message}`).catch(() => {});
+      }
     });
     // 启动时对所有已有本地源文件条目挂监听
     const existing = await listKnowledgeFiles();
@@ -689,13 +695,14 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               job.status = 'done';
               job.message = '导入完成';
               logger.info('async import done', { jobId, source });
-              await writeLog('import-async', `job=${jobId} done`);
+              // writeLog 失败不翻转 job 状态（fire-and-forget）
+              writeLog('import-async', `job=${jobId} done`).catch(() => {});
             } catch (e: any) {
               job.status = 'error';
               job.error = e.message;
               job.message = '导入失败';
               logger.error('async import failed', { jobId, source, error: e.message });
-              await writeLog('import-async-error', `${jobId}: ${e.message}`);
+              writeLog('import-async-error', `${jobId}: ${e.message}`).catch(() => {});
             } finally {
               release(opKey);
               pruneJobs();
@@ -1096,7 +1103,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           }
           if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
           await applySettingsPatch(parsed);
-          await writeLog('settings-update', '设置已保存');
+          // writeLog 失败不影响已保存的设置（fire-and-forget）
+          writeLog('settings-update', '设置已保存').catch(() => {});
           return json(200, { status: 'saved', settings: publicSettings() });
         }
 
