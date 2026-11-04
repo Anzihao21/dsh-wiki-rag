@@ -49,7 +49,8 @@ import { archiveSourceFile } from '../../../src/main/file/zip-archive';
 import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '../../../src/main/snapshot/snapshot-backup';
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 import { createLogger } from '../../../src/main/utils/logger';
-import { sendHttpError } from '../../../src/main/utils/errors';
+import { sendHttpError, AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
+import { validateSettingsPatch } from '../../../src/main/settings-validation';
 
 const logger = createLogger('dsh-wiki-rag');
 
@@ -454,6 +455,27 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   // 应用设置修改：移动已有文件到新目录并更新 DB，重建 importer
   // 迁移过程中任意一步失败 → 反向回滚已移动的文件 + 还原 DB 路径，保持旧目录可用
   async function applySettingsPatch(patch: Record<string, any>): Promise<void> {
+    // 0. 前置校验：把 patch 合并到当前 settings 后整体校验，
+    //    防止"切换 provider 但缺配套参数"的组合在运行时才 401/404
+    const merged = {
+      chunkSize: settings.chunkSize,
+      chunkOverlap: settings.chunkOverlap,
+      chunkMode: settings.chunkMode,
+      embeddingProvider: settings.embeddingProvider,
+      embeddingModelPath: settings.embeddingModelPath,
+      embeddingOpenAIBaseURL: settings.embeddingOpenAIBaseURL,
+      embeddingOpenAIAPIKey: settings.embeddingOpenAIAPIKey,
+      embeddingOpenAIModel: settings.embeddingOpenAIModel,
+      rerankProvider: settings.rerankProvider,
+      rerankModelPath: settings.rerankModelPath,
+      rerankOpenAIBaseURL: settings.rerankOpenAIBaseURL,
+      rerankOpenAIAPIKey: settings.rerankOpenAIAPIKey,
+      rerankOpenAIModel: settings.rerankOpenAIModel,
+      ...patch,
+    };
+    const check = validateSettingsPatch(merged);
+    if (!check.ok) throw new AppError(BAD_REQUEST, check.error, 400);
+
     // 1. 先解析目标值（不立即改 settings），便于失败时回滚
     const oldMd = settings.mdStoragePath;
     const oldZip = settings.zipStoragePath;
