@@ -17,6 +17,10 @@ import DOMPurify from "dompurify";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import Underline from "@tiptap/extension-underline";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import TextAlign from "@tiptap/extension-text-align";
 import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
@@ -387,6 +391,14 @@ function htmlToMd(html: string): string {
       filter: ["del", "s", "strike"],
       replacement: (content: string) => "~~" + content + "~~",
     });
+    // 任务列表：li 含 checkbox → "- [x] / - [ ] "（默认会降级为普通列表，丢勾选态）
+    _td.addRule("taskListItem", {
+      filter: (node: any) => node.nodeName === "LI" && !!node.querySelector("input[type=checkbox]"),
+      replacement: (content: string, node: any) => {
+        const checked = !!node.querySelector("input[type=checkbox]")?.checked;
+        return (checked ? "- [x] " : "- [ ] ") + content.trim() + "\n";
+      },
+    });
     // 表格：保留 HTML（富文本往返不丢结构，避免降级成纯文本）
     _td.keep(["table", "thead", "tbody", "tfoot", "tr", "th", "td"]);
   }
@@ -400,6 +412,18 @@ function ToolBtn({ label, title, onClick, active }: { label: string; title: stri
       padding: "2px 9px", fontSize: 12, lineHeight: "20px", border: "1px solid var(--dsw-alias-border-l2)",
       borderRadius: "var(--dsw-radius-sm)", background: active ? "var(--dsw-alias-bg-layer-2)" : "transparent",
       color: active ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-primary)", cursor: "pointer",
+    }}>{label}</button>
+  );
+}
+
+// 竖向完整工具栏的文字按钮（段落左侧"更多"展开后使用）
+function VertBtn({ label, title, onClick, active }: { label: string; title: string; onClick: () => void; active?: boolean }) {
+  return (
+    <button title={title} onClick={onClick} style={{
+      display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", border: "none", cursor: "pointer",
+      borderRadius: "var(--dsw-radius-sm)", fontSize: 12, textAlign: "left", whiteSpace: "nowrap",
+      background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+      color: active ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-primary)",
     }}>{label}</button>
   );
 }
@@ -638,6 +662,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [mdContent, setMdContent] = useState<string>("");
   const [savedContent, setSavedContent] = useState<string>("");
   const [selToolbar, setSelToolbar] = useState<{ x: number; y: number } | null>(null);
+  // 段落左侧样式标签（悬停段落时显示）+ 点击"更多"展开的竖向完整工具栏
+  const [paraBar, setParaBar] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [vertBar, setVertBar] = useState<{ x: number; y: number } | null>(null);
   // Tiptap 富文本内核：StarterKit + Link + Table；onUpdate 同步回 MD、选区驱动浮动工具栏
   const editor = useEditor({
     extensions: [
@@ -645,9 +672,23 @@ function WikiSidebar(props: WikiSidebarProps) {
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: false }),
       TableRow, TableHeader, TableCell,
+      Underline,
+      TaskList.configure({ nested: true }),
+      // 兼容 marked GFM 输出的任务列表（li 直接含 checkbox，无 label 包装）
+      TaskItem.configure({ nested: true }).extend({
+        parseHTML() {
+          return [
+            { tag: 'li[data-type="taskItem"]', priority: 60 },
+            { tag: 'li > label > input[type="checkbox"]', priority: 50 },
+            { tag: 'li > input[type="checkbox"]', priority: 40, getAttrs: (el: any) => ({ checked: !!el.querySelector("input[type=checkbox]")?.checked }) },
+          ];
+        },
+      }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     content: "",
     onUpdate: ({ editor }) => setMdContent(htmlToMd(editor.getHTML())),
+    // 选中文字松开后，在选区上方显示横向格式工具栏（无选中自动隐藏）
     onSelectionUpdate: ({ editor }) => {
       const { from, to, empty } = editor.state.selection;
       if (!empty && from !== to) {
@@ -656,7 +697,7 @@ function WikiSidebar(props: WikiSidebarProps) {
         setSelToolbar({ x: (a.left + b.left) / 2, y: a.top });
       } else setSelToolbar(null);
     },
-    editorProps: { attributes: { class: "dsh-wiki-editor" } },
+    editorProps: { attributes: { class: "dsh-wiki-editor", style: "outline: none;" } },
   });
   const [showImport, setShowImport] = useState(false);
   const [importPath, setImportPath] = useState("");
@@ -664,8 +705,6 @@ function WikiSidebar(props: WikiSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
-  const [showNewMd, setShowNewMd] = useState(false);
-  const [newMdTitle, setNewMdTitle] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "doc" | "folder"; id: string | number } | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -705,9 +744,6 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [job, setJob] = useState<JobState | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [offline, setOffline] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderParentId, setNewFolderParentId] = useState<number | null>(null);
   // 新增：待确认变更 / 重绑定源路径（文件级 + 文件夹级）
   const [pendingChanges, setPendingChanges] = useState<any[]>([]);
   const [rebindState, setRebindState] = useState<{ fileId: string; value: string } | null>(null);
@@ -929,19 +965,18 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // ---------- 文件夹操作 ----------
-  const doCreateFolder = async () => {
-    if (!newFolderName.trim()) return;
-    const parentId = newFolderParentId;
+  // 新建文件夹：直接创建默认名并进入名称编辑态（不再先弹窗输入确认）
+  const doCreateFolder = async (parentId: number | null = null) => {
     try {
-      const r = await apiCreateFolder(newFolderName.trim(), parentId);
-      notify("success", tt(t, "wiki.folderCreated"));
-      // 创建后展开父级（子文件夹场景）并定位到新文件夹
+      const r = await apiCreateFolder("新文件夹", parentId);
       if (r?.id) {
         if (parentId != null) setExpandedFolders((prev) => { const n = new Set(prev); n.add(parentId); return n; });
         setScrollToFolderId(r.id);
+        setRenamingId(r.id); setRenameText(""); // 自动进入名称编辑
+        notify("success", tt(t, "wiki.folderCreated"));
       }
     } catch (e: any) { notify("error", e?.message || "创建失败"); }
-    setNewFolderName(""); setShowNewFolder(false); setNewFolderParentId(null); refreshList();
+    refreshList();
   };
   const doRenameFolder = async (id: number) => {
     if (!renameText.trim()) return;
@@ -1069,15 +1104,16 @@ function WikiSidebar(props: WikiSidebarProps) {
   }, [editor]);
 
   // ---------- 新建文档（空白 MD，人工创作链路） ----------
+  // 新建文档：直接创建空白文档并进入名称编辑态（不再先弹窗输入标题）
   const doNewDoc = async () => {
-    if (!newMdTitle.trim()) return;
     try {
-      // folderId：当前展开路径中无法简单推断，传 null（根目录）
-      const r = await apiNewFile(newMdTitle.trim(), null);
-      setShowNewMd(false); setNewMdTitle("");
+      const r = await apiNewFile("新文档", null);
       refreshList();
       notify("success", tt(t, "wiki.created"));
-      if (r && r.fileId) openDoc(String(r.fileId));
+      if (r && r.fileId) {
+        openDoc(String(r.fileId));
+        setRenamingId(String(r.fileId)); setRenameText(""); // 自动进入名称编辑
+      }
     } catch (e: any) { notify("error", e?.message || "创建失败"); }
   };
 
@@ -1248,6 +1284,49 @@ function WikiSidebar(props: WikiSidebarProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [view, saveEdit]);
 
+  // 点击编辑区/外部任意处关闭浮动格式工具栏与段落工具栏（工具栏自身用 stopPropagation 拦截）
+  useEffect(() => {
+    const close = () => { setSelToolbar(null); setParaBar(null); setVertBar(null); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  // 段落左侧样式标签：悬停段落时显示"当前样式 + 更多"；鼠标移出延迟隐藏（留出点到"更多"的时间）
+  const hoverRaf = useRef<number | null>(null);
+  const paraHideTimer = useRef<number | null>(null);
+  const clearParaTimer = () => { if (paraHideTimer.current != null) { clearTimeout(paraHideTimer.current); paraHideTimer.current = null; } };
+  const paraLeave = () => {
+    clearParaTimer();
+    paraHideTimer.current = window.setTimeout(() => { setParaBar(null); setVertBar(null); }, 220);
+  };
+  const blockLabel = (node: any): string => {
+    if (node.type.name === "heading") return `标题 ${node.attrs.level}`;
+    if (node.type.name === "bulletList") return "无序列表";
+    if (node.type.name === "orderedList") return "有序列表";
+    if (node.type.name === "taskList") return "任务列表";
+    if (node.type.name === "blockquote") return "引用";
+    if (node.type.name === "codeBlock") return "代码块";
+    return "正文";
+  };
+  const onEditorHover = (e: React.MouseEvent) => {
+    if (!editor) { setParaBar(null); return; }
+    if (hoverRaf.current != null) return;
+    hoverRaf.current = requestAnimationFrame(() => {
+      hoverRaf.current = null;
+      const pos = editor!.view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (pos == null) { setParaBar(null); return; }
+      const $p = editor!.state.doc.resolve(pos.pos);
+      const depth = Math.max(0, $p.depth);
+      if (depth === 0) { setParaBar(null); return; }
+      const blockStart = $p.before(depth);
+      const node = $p.node(depth);
+      if (!node || node.type.name === "doc") { setParaBar(null); return; }
+      const coords = editor!.view.coordsAtPos(blockStart);
+      setParaBar({ x: coords.left, y: coords.top + coords.height / 2, label: blockLabel(node) });
+      clearParaTimer();
+    });
+  };
+
   const searchingMode = searchResults !== null;
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
@@ -1314,7 +1393,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             </button>
           )}
           {/* 新建文档 */}
-          <button title={tt(t, "wiki.newDoc")} onClick={() => setShowNewMd(!showNewMd)} style={headerBtn}>
+          <button title={tt(t, "wiki.newDoc")} onClick={doNewDoc} style={headerBtn}>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" /><path d="M12 18v-6M9 15h6" />
@@ -1326,7 +1405,7 @@ function WikiSidebar(props: WikiSidebarProps) {
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
             </svg>
           </button>
-          <button title={tt(t, "wiki.newFolder")} onClick={() => { setNewFolderParentId(null); setShowNewFolder(!showNewFolder); }} style={headerBtn}>
+          <button title={tt(t, "wiki.newFolder")} onClick={() => doCreateFolder(null)} style={headerBtn}>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "0 auto" }}>
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
@@ -1377,18 +1456,6 @@ function WikiSidebar(props: WikiSidebarProps) {
         </div>
       </div>
 
-      {/* 新建文档对话框 */}
-      {showNewMd && (
-        <div style={{ display: "flex", gap: 4 }}>
-          <input value={newMdTitle} onChange={(e) => setNewMdTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") doNewDoc(); }}
-            placeholder={tt(t, "wiki.newDocTitle")} autoFocus
-            style={smallInput} />
-          <button onClick={doNewDoc} style={primaryBtn}>{tt(t, "wiki.confirm")}</button>
-          <button onClick={() => { setShowNewMd(false); setNewMdTitle(""); }} style={ghostBtn}>{tt(t, "wiki.cancel")}</button>
-        </div>
-      )}
-
       {/* 左右分栏主区域 */}
       <div style={mainLayoutStyle}>
         {/* 左侧：文件树（全屏时加宽，缓解左右失衡） */}
@@ -1436,22 +1503,6 @@ function WikiSidebar(props: WikiSidebarProps) {
               <button title={tt(t, "wiki.cancel")} onClick={() => { setQ(""); setSearchResults(null); }} style={iconBtn}>✕</button>
             )}
           </div>
-
-          {/* 新建文件夹 */}
-          {showNewFolder && (
-            <>
-            <div style={{ display: "flex", gap: 4 }}>
-              <input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") doCreateFolder(); }}
-                placeholder={newFolderParentId != null ? tt(t, "wiki.newSubFolder") : tt(t, "wiki.folderName")} autoFocus
-                style={smallInput} />
-              <button onClick={doCreateFolder} style={primaryBtn}>{tt(t, "wiki.new")}</button>
-            </div>
-            {newFolderParentId != null && (
-              <div style={{ fontSize: 10, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.underFolder")}：{treeFindName(tree, newFolderParentId)}</div>
-            )}
-            </>
-          )}
 
           {/* 导入面板 */}
           {showImport && (
@@ -1790,31 +1841,41 @@ function WikiSidebar(props: WikiSidebarProps) {
                 </button>
               </div>
               {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得 */}
-              <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+              <div style={{ flex: 1, overflowY: "auto", padding: 12 }}
+                onMouseMove={onEditorHover}
+                onMouseLeave={paraLeave}>
                 <EditorContent editor={editor} />
               </div>
               {/* 字数统计 */}
               <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", padding: "4px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", display: "flex", gap: 12 }}>
                 <span>{mdContent.length.toLocaleString()} {tt(t, "wiki.charCount")}</span>
               </div>
-              {/* 浮动格式工具栏：选中文本时在选区上方弹出，无选中自动隐藏 */}
+              {/* 浮动格式工具栏：选中文本松开后在选区上方弹出，无选中自动隐藏 */}
               {selToolbar && (
                 <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10002, display: "flex", gap: 2, padding: 4,
                   transform: `translate(${Math.max(10, Math.min(selToolbar.x, window.innerWidth - 10))}px, ${Math.max(4, selToolbar.y - 38)}px) translateX(-50%)`,
                   background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
                   borderRadius: "var(--dsw-radius-md)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
                   <ToolBtn label="B" title="粗体" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
                   <ToolBtn label="I" title="斜体" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+                  <ToolBtn label="U" title="下划线" active={editor?.isActive("underline")} onClick={() => editor?.chain().focus().toggleUnderline().run()} />
                   <ToolBtn label="S" title="删除线" active={editor?.isActive("strike")} onClick={() => editor?.chain().focus().toggleStrike().run()} />
                   <ToolBtn label="H1" title="一级标题" active={editor?.isActive("heading", { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} />
                   <ToolBtn label="H2" title="二级标题" active={editor?.isActive("heading", { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} />
                   <ToolBtn label="H3" title="三级标题" active={editor?.isActive("heading", { level: 3 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
                   <ToolBtn label="•" title="无序列表" active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()} />
                   <ToolBtn label="1." title="有序列表" active={editor?.isActive("orderedList")} onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
+                  <ToolBtn label="☑" title="任务列表" active={editor?.isActive("taskList")} onClick={() => editor?.chain().focus().toggleTaskList().run()} />
                   <ToolBtn label="❝" title="引用" active={editor?.isActive("blockquote")} onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
                   <ToolBtn label="</>" title="代码块" active={editor?.isActive("codeBlock")} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
+                  <ToolBtn label="⇔" title="对齐（左/中/右 循环）" onClick={() => {
+                    if (!editor) return;
+                    if (editor.isActive({ textAlign: "center" })) editor.chain().focus().setTextAlign("right").run();
+                    else if (editor.isActive({ textAlign: "right" })) editor.chain().focus().setTextAlign("left").run();
+                    else editor.chain().focus().setTextAlign("center").run();
+                  }} />
                   <ToolBtn label="—" title="分隔线" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
                   <ToolBtn label="链接" title="链接" active={editor?.isActive("link")} onClick={() => {
                     if (!editor) return;
@@ -1822,6 +1883,71 @@ function WikiSidebar(props: WikiSidebarProps) {
                     if (url) editor.chain().focus().setLink({ href: url }).run();
                     else editor.chain().focus().unsetLink().run();
                   }} />
+                </div>
+              )}
+              {/* 段落左侧：悬停段落时显示当前样式 + 更多（点击"更多"展开竖向完整工具栏） */}
+              {paraBar && (
+                <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10001, display: "flex", alignItems: "center", gap: 2, padding: "2px 4px",
+                  transform: `translate(${Math.max(0, paraBar.x - 4)}px, ${paraBar.y}px) translate(-100%, -50%)`,
+                  background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
+                  borderRadius: "var(--dsw-radius-sm)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", fontSize: 11 }}
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onMouseEnter={clearParaTimer} onMouseLeave={paraLeave}>
+                  <span style={{ color: "var(--dsw-alias-label-secondary)", whiteSpace: "nowrap" }}>{paraBar.label}</span>
+                  <button title="更多格式" onClick={() => setVertBar({ x: paraBar.x, y: paraBar.y })} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--dsw-alias-label-primary)", padding: "0 3px", fontSize: 13, lineHeight: 1 }}>⋯</button>
+                </div>
+              )}
+              {/* 竖向完整格式工具栏：点击段落左侧"更多"展开 */}
+              {vertBar && (
+                <div style={{ position: "fixed", left: 0, top: 0, zIndex: 10003, display: "flex", flexDirection: "column", gap: 1, padding: 4,
+                  transform: `translate(${Math.max(0, vertBar.x - 4)}px, ${vertBar.y}px) translate(-100%, 0)`,
+                  background: "var(--dsw-alias-bg-layer-2)", border: "1px solid var(--dsw-alias-border-l2)",
+                  borderRadius: "var(--dsw-radius-md)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onMouseEnter={clearParaTimer} onMouseLeave={paraLeave}>
+                  <VertBtn label="正文" title="正文" active={editor?.isActive("paragraph")} onClick={() => editor?.chain().focus().setParagraph().run()} />
+                  {[1, 2, 3, 4, 5, 6].map((l) => (
+                    <VertBtn key={l} label={`标题 ${l}`} title={`标题 ${l}`} active={editor?.isActive("heading", { level: l })} onClick={() => editor?.chain().focus().toggleHeading({ level: l }).run()} />
+                  ))}
+                  <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
+                  <VertBtn label="无序列表" active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()} />
+                  <VertBtn label="有序列表" active={editor?.isActive("orderedList")} onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
+                  <VertBtn label="任务列表" active={editor?.isActive("taskList")} onClick={() => editor?.chain().focus().toggleTaskList().run()} />
+                  <VertBtn label="引用" active={editor?.isActive("blockquote")} onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
+                  <VertBtn label="代码块" active={editor?.isActive("codeBlock")} onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
+                  <VertBtn label="分隔线" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
+                  <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
+                  <VertBtn label="粗体" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()} />
+                  <VertBtn label="斜体" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+                  <VertBtn label="下划线" active={editor?.isActive("underline")} onClick={() => editor?.chain().focus().toggleUnderline().run()} />
+                  <VertBtn label="删除线" active={editor?.isActive("strike")} onClick={() => editor?.chain().focus().toggleStrike().run()} />
+                  <VertBtn label="链接" active={editor?.isActive("link")} onClick={() => {
+                    if (!editor) return;
+                    const url = prompt("链接地址 URL：");
+                    if (url) editor.chain().focus().setLink({ href: url }).run();
+                    else editor.chain().focus().unsetLink().run();
+                  }} />
+                  <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
+                  <VertBtn label="左对齐" active={editor?.isActive({ textAlign: "left" })} onClick={() => editor?.chain().focus().setTextAlign("left").run()} />
+                  <VertBtn label="居中" active={editor?.isActive({ textAlign: "center" })} onClick={() => editor?.chain().focus().setTextAlign("center").run()} />
+                  <VertBtn label="右对齐" active={editor?.isActive({ textAlign: "right" })} onClick={() => editor?.chain().focus().setTextAlign("right").run()} />
+                  <div style={{ height: 1, background: "var(--dsw-alias-border-l2)", margin: "3px 0" }} />
+                  <VertBtn label="撤销" onClick={() => editor?.chain().focus().undo().run()} />
+                  <VertBtn label="重做" onClick={() => editor?.chain().focus().redo().run()} />
+                  <VertBtn label="复制" onClick={async () => {
+                    if (!editor) return;
+                    const sel = editor.state.selection;
+                    const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
+                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text).catch(() => {});
+                  }} />
+                  <VertBtn label="剪切" onClick={async () => {
+                    if (!editor) return;
+                    const sel = editor.state.selection;
+                    const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
+                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text).catch(() => {});
+                    editor.chain().focus().deleteSelection().run();
+                  }} />
+                  <VertBtn label="删除" onClick={() => editor?.chain().focus().deleteSelection().run()} />
                 </div>
               )}
             </>
@@ -1864,9 +1990,7 @@ function WikiSidebar(props: WikiSidebarProps) {
             }} style={menuItem}>{tt(t, "wiki.rename")}</div>
             {contextMenu.kind === "folder" && (
               <div onClick={() => {
-                setNewFolderParentId(Number(contextMenu.id));
-                setNewFolderName("");
-                setShowNewFolder(true);
+                doCreateFolder(Number(contextMenu.id));
                 setContextMenu(null);
               }} style={menuItem}>{tt(t, "wiki.newSubFolder")}</div>
             )}
