@@ -29,7 +29,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
-  loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName,
+  loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -573,6 +573,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [trash, setTrash] = useState<{ files: any[]; folders: any[] }>({ files: [], folders: [] });
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdQ, setCmdQ] = useState("");
+  const [cmdSel, setCmdSel] = useState(0);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -761,7 +764,10 @@ function WikiSidebar(props: WikiSidebarProps) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (view === "editor") saveEdit();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "f" || e.key.toLowerCase() === "p")) {
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setCmdQ(""); setCmdSel(0); setCmdOpen(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         searchInputRef.current?.focus();
       } else if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -770,8 +776,9 @@ function WikiSidebar(props: WikiSidebarProps) {
         const editable = tag === "INPUT" || tag === "TEXTAREA" || (!!ae && ae.isContentEditable);
         if (!editable) { e.preventDefault(); searchInputRef.current?.focus(); }
       } else if (e.key === "Escape") {
-        // 分层关闭：弹窗 → 菜单 → 搜索面板；重命名/URL 输入框自身已有 Esc
-        if (leaveGuard) setLeaveGuard(null);
+        // 分层关闭：命令面板 → 弹窗 → 菜单 → 搜索面板；重命名/URL 输入框自身已有 Esc
+        if (cmdOpen) setCmdOpen(false);
+        else if (leaveGuard) setLeaveGuard(null);
         else if (diffModal) setDiffModal(null);
         else if (verPreview) setVerPreview(null);
         else if (confirmState) setConfirmState(null);
@@ -2454,6 +2461,44 @@ function WikiSidebar(props: WikiSidebarProps) {
         setDiffModal(null);
       }} onShelve={(ft) => doShelve(ft)} />}
 
+      {/* 命令面板 Ctrl+P */}
+      {cmdOpen && createPortal((() => {
+        const cmds = [
+          { key: "new", title: tt(t, "wiki.newDoc"), run: () => { setCmdOpen(false); requestLeave(() => { setUrlDialog(true); }); } },
+          { key: "search", title: tt(t, "wiki.search"), run: () => { setCmdOpen(false); searchInputRef.current?.focus(); } },
+          { key: "trash", title: tt(t, "wiki.trash"), run: () => { setCmdOpen(false); requestLeave(() => { setView("trash"); loadTrash(); }); } },
+          { key: "settings", title: tt(t, "wiki.settings"), run: () => { setCmdOpen(false); requestLeave(() => setView("settings")); } },
+        ];
+        const docItems = docs.slice(0, 50).map((d) => ({ key: "doc:" + d.id, title: d.title, run: () => { setCmdOpen(false); openDoc(d.id); } }));
+        const all = [...cmds, ...docItems];
+        const filtered = filterCommands(cmdQ, all);
+        const sel = Math.min(cmdSel, Math.max(0, filtered.length - 1));
+        const pick = (i: number) => { filtered[i]?.run(); };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", zIndex: 10003, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
+            onMouseDown={() => setCmdOpen(false)}>
+            <div onMouseDown={(e) => e.stopPropagation()} style={{ width: "min(90%, 480px)", background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-lg)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", overflow: "hidden" }}>
+              <input autoFocus value={cmdQ} onChange={(e) => { setCmdQ(e.target.value); setCmdSel(0); }} placeholder={tt(t, "wiki.cmdPlaceholder")}
+                style={{ width: "100%", boxSizing: "border-box", padding: "12px 14", background: "transparent", border: "none", outline: "none", color: "var(--dsw-alias-label-primary)", fontSize: 14 }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setCmdSel((s) => Math.min(s + 1, filtered.length - 1)); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); setCmdSel((s) => Math.max(s - 1, 0)); }
+                  else if (e.key === "Enter") { e.preventDefault(); pick(sel); }
+                }} />
+              <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                {filtered.length === 0 && <div style={{ padding: 16, color: "var(--dsw-alias-label-tertiary)", fontSize: 13 }}>{tt(t, "wiki.noResult")}</div>}
+                {filtered.map((it, i) => (
+                  <div key={it.key} onMouseEnter={() => setCmdSel(i)} onClick={() => pick(i)}
+                    style={{ padding: "8px 14", cursor: "pointer", fontSize: 13, background: i === sel ? "var(--dsw-alias-interactive-bg-hover)" : "transparent", color: "var(--dsw-alias-label-primary)" }}>
+                    {it.title}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })(), document.body)}
+
       {/* 删除确认弹窗（DSH 风格） */}
       {confirmState && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dsw-alias-bg-mask-3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
@@ -2799,6 +2844,7 @@ function apply(ctx: any): void {
       "wiki.trash": "回收站", "wiki.trashEmpty": "回收站为空", "wiki.trashEmptyAll": "清空回收站",
       "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
       "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
+      "wiki.cmdPlaceholder": "输入命令或搜索文档…",
       "wiki.clear": "清空",
     },
     en: {
@@ -2864,6 +2910,7 @@ function apply(ctx: any): void {
       "wiki.trash": "Trash", "wiki.trashEmpty": "Trash is empty", "wiki.trashEmptyAll": "Empty trash",
       "wiki.trashRestored": "Restored", "wiki.trashPurged": "Permanently deleted",
       "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
+      "wiki.cmdPlaceholder": "Type a command or search documents…",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");

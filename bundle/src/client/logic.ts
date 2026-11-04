@@ -72,6 +72,7 @@ export const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.trash": "回收站", "wiki.trashEmpty": "回收站为空", "wiki.trashEmptyAll": "清空回收站",
   "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
   "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
+  "wiki.cmdPlaceholder": "输入命令或搜索文档…",
   "wiki.folderName": "文件夹名称…",
   "wiki.export": "导出 Markdown",
   "wiki.exported": "已导出 Markdown",
@@ -246,4 +247,11 @@ export function buildDownloadName(fileName: string | undefined, title: string | 
     .replace(/[\\/:*?"<>|]+/g, "_")
     .trim() || fallback;
   return base + ".md";
+}
+
+/** 命令面板过滤：大小写不敏感包含匹配，保留顺序；q 为空返回全部 */
+export function filterCommands<T extends { title: string }>(q: string, items: T[]): T[] {
+  const s = q.trim().toLowerCase();
+  if (!s) return items;
+  return items.filter((it) => it.title.toLowerCase().includes(s));
 }
