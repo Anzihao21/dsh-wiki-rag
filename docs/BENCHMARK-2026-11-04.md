@@ -171,3 +171,9 @@ npx vitest run
 - **trigram tokenizer 对中文召回正确**：3-gram 滑窗，中英文混合均命中。
 - **trigram 代价**：索引体积比 unicode61 大 ~3x，查询仍比 LIKE 快（0.93ms vs 6.9ms）。
 - **决策**：FTS5 trigram 召回达标（8/8 查询正确），**可落地 SCHEMA v6**。但 trigram 要求查询长度 ≥3 字符（短查询如 "RAG" 3 字符刚好），单字查询不命中——这与 LIKE 行为一致（LIKE '%单字%' 会命中但噪音大），可接受。
+
+## Client 复测（2026-11-04 第六批）
+
+- 5050 节点 flatten 复测：**1ms**（与上批一致，无回归）。
+- 语义面板：doSearch/loadBacklinks 均带 seq 守卫，骨架（searching/backlinks===null）→结果无闪烁；错误分支独立状态。
+- 虚拟滚动边界：startIndex/endIndex 在 5050 行正确夹紧（Math.max/Math.min）。
