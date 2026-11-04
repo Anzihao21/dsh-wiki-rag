@@ -101,6 +101,13 @@ normalizeSearchInput（空串→null；topK clamp [1,50]）
 - **冲突检测**：`saveEdit` 携带 baseline，host 返回 `409` 时弹出确认（强制覆盖或放弃）。
 - 新建文档入口命名为「新建文档」（`manual://` 链路，不归档）。
 
+### 6.1 client 纯逻辑层与测试布局
+
+- **`bundle/src/client/logic.ts`**：与 React/Tiptap 解耦的纯函数层（28 项导出），含 i18n 工厂、树扁平化、diff、守卫、存储、命令/链接/反链过滤、搜索归一、字节格式化。无 react/tiptap import，可在 node 环境直测。
+- **测试布局**：`__tests__/logic.test.ts`（node，纯函数）、`storage.dom.test.ts`（jsdom，localStorage）、`interactions.dom.test.ts`（jsdom，fetch 桩/命令矩阵/端点序列）。
+- **竞态守卫**：`searchSeq`/`backlinksSeq` 双序号丢弃过期响应；卸载 effect 集中清理定时器/rAF。
+- **无障碍**：文件树 `role=tree/treeitem` + aria-expanded/selected/setsize/posinset/level；弹窗 `role=dialog` + `aria-modal` + `useFocusTrap`（Tab 循环/焦点还原）。
+
 ## 7. 可观测性
 
 - 结构化日志：`log-db.writeLog(action, detail, { level, meta })`，`listLogs` 支持数字/对象 limit、按 action/level 过滤；`pruneLogs` 防表无限增长。
