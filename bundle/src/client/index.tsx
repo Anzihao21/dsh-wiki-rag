@@ -141,6 +141,9 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.filesSelected": "已选 {n} 个文件",
   "wiki.clear": "清空",
   "wiki.importSubmitting": "已提交 {n} 个文件导入",
+  "wiki.emptyFolder": "空文件夹",
+  "wiki.rootAll": "全部文件",
+  "wiki.create": "新建 / 导入",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -610,9 +613,9 @@ class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string; re
 // 树扁平化 → 可虚拟滚动的行
 // ============================================================================
 interface FlatRow {
-  rowType: "folder" | "doc";
+  rowType: "folder" | "doc" | "placeholder";
   depth: number;
-  id: number;        // folder.id 或 doc.fileId
+  id: number;        // folder.id 或 doc.fileId（placeholder 为 -folderId）
   title: string;
   kind?: string;
   status?: string;
@@ -655,7 +658,7 @@ function findDocFolderPath(nodes: TreeNode[] | undefined, fileId: number, trail:
   return null;
 }
 
-const ROW_H = 38;
+const ROW_H = 32;
 
 interface WikiSidebarProps {
   wide?: boolean;
@@ -747,6 +750,13 @@ function WikiSidebar(props: WikiSidebarProps) {
   // 拖拽导入悬停遮罩
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
+  // 文件树行交互：hover 行（显操作按钮/缩进引导线高亮）、拖拽落点、定位 flash
+  const [hoveredRowKey, setHoveredRowKey] = useState<string | null>(null);
+  const [hoverRowDepth, setHoverRowDepth] = useState<number | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<number | string | null>(null);
+  const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
+  const flashTimer = useRef<number | null>(null);
+  const draggedFolderId = useRef<number | null>(null);
   // 最近打开 + 收藏（localStorage 持久化）
   const [favs, setFavs] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem("dsh-wiki-rag:favs") || "[]")); } catch { return new Set(); } });
   const [recent, setRecent] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("dsh-wiki-rag:recent") || "[]"); } catch { return []; } });
@@ -1307,10 +1317,17 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   const activeDoc = docs.find((d) => d.id === activeId);
 
-  // ---------- 树扁平化为虚拟滚动行 ----------
+  // ---------- 树扁平化为虚拟滚动行（展开的空文件夹追加占位行） ----------
   const rows: FlatRow[] = useMemo(() => {
+    const base: FlatRow[] = [];
+    flattenTree(tree, 0, expandedFolders, base);
     const out: FlatRow[] = [];
-    flattenTree(tree, 0, expandedFolders, out);
+    for (const r of base) {
+      out.push(r);
+      if (r.rowType === "folder" && expandedFolders.has(r.id) && (!r.raw.children || r.raw.children.length === 0)) {
+        out.push({ rowType: "placeholder", depth: r.depth + 1, id: -r.id, title: "", raw: r.raw });
+      }
+    }
     return out;
   }, [tree, expandedFolders]);
 
@@ -1325,6 +1342,7 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (idx >= 0 && listScrollRef.current) {
       listScrollRef.current.scrollTop = Math.max(0, idx * ROW_H - viewportH / 2);
       setScrollToFolderId(null);
+      triggerFlash("f" + rows[idx].id);
     }
   }, [rows, scrollToFolderId, viewportH]);
 
@@ -1335,8 +1353,16 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (idx >= 0 && listScrollRef.current) {
       listScrollRef.current.scrollTop = Math.max(0, idx * ROW_H - viewportH / 2);
       setScrollToFileId(null);
+      triggerFlash("d" + rows[idx].id);
     }
   }, [rows, scrollToFileId, viewportH]);
+
+  // 定位 flash：600ms 后清除高亮
+  const triggerFlash = (key: string) => {
+    setFlashRowKey(key);
+    if (flashTimer.current != null) clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashRowKey(null), 650);
+  };
 
   // 树全展开 / 全折叠
   const toggleTreeExpand = useCallback(() => {
@@ -1427,7 +1453,10 @@ function WikiSidebar(props: WikiSidebarProps) {
       }}>
       {/* 拖拽悬停提示遮罩 */}
       {dragOver && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 20000, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--dsw-alias-bg-layer-1)", border: "2px dashed var(--dsw-alias-state-business-primary)", borderRadius: "var(--dsw-radius-lg)", color: "var(--dsw-alias-state-business-primary)", fontSize: 14, fontWeight: 600, pointerEvents: "none" }}>{tt(t, "wiki.dropImport")}</div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 20000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "var(--dsw-alias-bg-mask-2)", border: "2px dashed var(--dsw-alias-state-business-primary)", borderRadius: "var(--dsw-radius-lg)", color: "var(--dsw-alias-state-business-primary)", fontSize: 14, fontWeight: 600, pointerEvents: "none", transition: "opacity 150ms ease" }}>
+          <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></svg>
+          {tt(t, "wiki.dropImport")}
+        </div>
       )}
       {/* Toast */}
       <ToastStack toasts={toasts} />
@@ -1521,7 +1550,15 @@ function WikiSidebar(props: WikiSidebarProps) {
                   {showFavs && [...favs].map((fid) => {
                     const d = docs.find((x) => x.id === fid);
                     return d ? (
-                      <div key={fid} onClick={() => openDoc(fid)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "2px 6px 2px 18px", fontSize: 12, color: "var(--dsw-alias-label-primary)", borderRadius: "var(--dsw-radius-sm)" }}>{d.fileName}</div>
+                      <div key={fid} onClick={() => openDoc(fid)} title={d.fileName || d.title}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                          height: 28, paddingLeft: 12, fontSize: 12, borderRadius: "var(--dsw-radius-sm)",
+                          color: "var(--dsw-alias-label-primary)",
+                          background: d.id === activeId ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                        }}>
+                        <FileIcon size={12} /><span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.fileName || d.title}</span>
+                      </div>
                     ) : null;
                   })}
                 </>
@@ -1534,7 +1571,15 @@ function WikiSidebar(props: WikiSidebarProps) {
                   {showRecent && recent.map((fid) => {
                     const d = docs.find((x) => x.id === fid);
                     return d ? (
-                      <div key={fid} onClick={() => openDoc(fid)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "2px 6px 2px 18px", fontSize: 12, color: "var(--dsw-alias-label-primary)", borderRadius: "var(--dsw-radius-sm)" }}>{d.fileName}</div>
+                      <div key={fid} onClick={() => openDoc(fid)} title={d.fileName || d.title}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                          height: 28, paddingLeft: 12, fontSize: 12, borderRadius: "var(--dsw-radius-sm)",
+                          color: "var(--dsw-alias-label-primary)",
+                          background: d.id === activeId ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                        }}>
+                        <FileIcon size={12} /><span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.fileName || d.title}</span>
+                      </div>
                     ) : null;
                   })}
                 </>
@@ -1599,11 +1644,11 @@ function WikiSidebar(props: WikiSidebarProps) {
               }} />
           </div>
 
-          {/* 状态筛选 */}
-          <div style={{ display: "flex", gap: 2 }}>
+          {/* 状态筛选（pill 风格，窄栏自动换行防挤压） */}
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {([["all", "全部"], ["ready", "已索引"], ["stale", "待同步"], ["error", "异常"]] as const).map(([key, label]) => (
               <button key={key} onClick={() => setStatusFilter(key)} style={{
-                flex: 1, padding: "3px 0", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
+                padding: "3px 10px", border: "none", cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", fontSize: 11,
                 background: statusFilter === key ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
                 color: statusFilter === key ? "var(--dsw-alias-state-business-primary)" : "var(--dsw-alias-label-secondary)",
                 fontWeight: statusFilter === key ? 600 : 400,
@@ -1655,21 +1700,69 @@ function WikiSidebar(props: WikiSidebarProps) {
             ) : rows.length === 0 ? (
               <div style={emptyHint}>{tt(t, "wiki.empty")}</div>
             ) : (
+              <>
+              {/* 根目录落点：拖文档/文件夹到此移回根目录 */}
+              <div
+                onDragEnter={(e) => { e.preventDefault(); setDropTargetId("__root__"); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={() => setDropTargetId((p) => (p === "__root__" ? null : p))}
+                onDrop={(e) => {
+                  e.preventDefault(); setDropTargetId(null);
+                  const fid = e.dataTransfer.getData("text/doc-id");
+                  const fld = e.dataTransfer.getData("text/folder-id");
+                  if (fid) doMoveDoc(fid, null);
+                  else if (fld) doMoveFolder(Number(fld), null);
+                }}
+                style={{
+                  height: 28, display: "flex", alignItems: "center", gap: 6, paddingLeft: 12, fontSize: 12, fontWeight: 600,
+                  borderRadius: "var(--dsw-radius-sm)", cursor: "pointer",
+                  color: "var(--dsw-alias-label-secondary)",
+                  background: dropTargetId === "__root__" ? "var(--dsw-specific-sidebar-nav-item-active-accent)" : "transparent",
+                }}>
+                <FolderIcon size={13} />{tt(t, "wiki.rootAll")}
+              </div>
               <div style={{ height: rows.length * ROW_H, position: "relative" }}>
                 {visibleRows.map((row, vi) => {
                   const top = (startIndex + vi) * ROW_H;
+                  const rowKey = row.rowType === "folder" ? "f" + row.id : row.rowType === "doc" ? "d" + row.id : "ph" + row.id;
+                  const rowHovered = hoveredRowKey === rowKey;
+                  // 缩进引导线：每个祖先深度一条 1px 竖线，hover 行时祖先链提亮
+                  const guides: any[] = [];
+                  if (row.rowType !== "placeholder") {
+                    for (let k = 0; k <= row.depth; k++) {
+                      guides.push(
+                        <span key={"g" + k} style={{
+                          position: "absolute", left: 4 + k * 16, top: 0, bottom: 0, width: 1,
+                          background: hoverRowDepth != null && k <= hoverRowDepth ? "var(--dsw-alias-border-l3)" : "var(--dsw-alias-border-l1)",
+                        }} />
+                      );
+                    }
+                  }
+                  if (row.rowType === "placeholder") {
+                    return (
+                      <div key={rowKey} style={{
+                        position: "absolute", top, left: 0, right: 0, height: ROW_H,
+                        paddingLeft: 12 + row.depth * 16, display: "flex", alignItems: "center",
+                        fontSize: 11, fontStyle: "italic", color: "var(--dsw-alias-label-caption)",
+                      }}>{tt(t, "wiki.emptyFolder")}</div>
+                    );
+                  }
                   if (row.rowType === "folder") {
                     const open = expandedFolders.has(row.id);
+                    const isDropTarget = dropTargetId === row.id;
+                    const dangerDrop = draggedFolderId.current != null && subtreeFolderIds(tree, draggedFolderId.current, new Set()).has(row.id);
                     return (
-                      <div key={"f" + row.id}
+                      <div key={rowKey}
                         draggable
-                        onDragStart={(e) => e.dataTransfer.setData("text/folder-id", String(row.id))}
+                        onDragStart={(e) => { draggedFolderId.current = row.id; e.dataTransfer.setData("text/folder-id", String(row.id)); }}
+                        onDragEnd={() => { draggedFolderId.current = null; setDropTargetId(null); }}
+                        onDragEnter={(e) => { e.preventDefault(); setDropTargetId(row.id); }}
                         onDragOver={(e) => e.preventDefault()}
+                        onDragLeave={() => setDropTargetId((p) => (p === row.id ? null : p))}
                         onDrop={(e) => {
-                          e.preventDefault();
+                          e.preventDefault(); setDropTargetId(null);
                           const files = Array.from(e.dataTransfer?.files || []);
                           if (files.length) {
-                            // 系统文件拖到文件夹 → 导入到该文件夹
                             const paths = files.map((f) => (f as any).path || f.name).filter(Boolean);
                             if (paths.length) importSystemFiles(paths, row.id);
                             return;
@@ -1681,63 +1774,84 @@ function WikiSidebar(props: WikiSidebarProps) {
                         }}
                         onClick={() => setExpandedFolders((prev) => { const n = new Set(prev); if (n.has(row.id)) n.delete(row.id); else n.add(row.id); return n; })}
                         onDoubleClick={() => { setRenamingId(row.id); setRenameText(row.title); }}
+                        onMouseEnter={() => { setHoveredRowKey(rowKey); setHoverRowDepth(row.depth); }}
+                        onMouseLeave={() => { setHoveredRowKey(null); setHoverRowDepth(null); }}
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "folder", id: row.id }); }}
                         style={{
                           position: "absolute", top, left: 0, right: 0, height: ROW_H,
-                          paddingLeft: 8 + row.depth * 14, display: "flex", alignItems: "center", gap: 4, cursor: "pointer",
-                          color: "var(--dsw-alias-label-primary)", fontSize: 13, fontWeight: 600,
+                          paddingLeft: 12 + row.depth * 16, display: "flex", alignItems: "center", gap: 4, cursor: "pointer",
+                          borderRadius: "var(--dsw-radius-sm)",
+                          background: dangerDrop && isDropTarget ? "var(--dsw-alias-interactive-bg-hover-danger)"
+                            : isDropTarget ? "var(--dsw-specific-sidebar-nav-item-active-accent)"
+                            : rowHovered ? "var(--dsw-alias-interactive-bg-hover)" : "transparent",
+                          transition: "background 120ms ease-out",
                         }}>
-                        <span style={{ fontSize: 10, color: "var(--dsw-alias-label-secondary)" }}>{open ? "▼" : "▶"}</span>
+                        {guides}
+                        <span style={{
+                          display: "inline-flex", width: 16, height: 16, alignItems: "center", justifyContent: "center", flexShrink: 0,
+                          transition: "transform 120ms ease-out", transform: open ? "rotate(90deg)" : "rotate(0deg)",
+                          color: "var(--dsw-alias-label-tertiary)",
+                        }}>
+                          <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M3 2.5L6.5 5L3 7.5" /></svg>
+                        </span>
                         <FolderIcon size={14} />
                         {renamingId === row.id ? (
                           <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") doRenameFolder(row.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
                             onBlur={() => doRenameFolder(row.id)}
-                            style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                            style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", fontSize: 13 }} />
                         ) : (
-                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</span>
+                          <span title={row.title} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" }}>{row.title}</span>
                         )}
                         <button title={tt(t, "wiki.more")}
                           onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setContextMenu({ x: Math.max(4, r.left), y: r.bottom + 2, kind: "folder", id: row.id }); }}
-                          style={{ ...iconBtn, flexShrink: 0, fontSize: 14, width: 20, height: 20 }}>⋯</button>
+                          style={{ ...iconBtn, flexShrink: 0, fontSize: 14, width: 20, height: 20, opacity: rowHovered ? 0.9 : 0, transition: "opacity 120ms ease-out" }}>⋯</button>
                       </div>
                     );
                   }
                   const d: WikiDoc = { id: String(row.id), title: row.title, type: row.kind || "MD", status: (row.status as any) || "ready", summary: "" };
                   const st = statusStyle(d.status);
                   const active = d.id === activeId;
+                  const flashing = flashRowKey === rowKey;
                   return (
-                    <div key={"d" + row.id}
+                    <div key={rowKey}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/doc-id", d.id)}
                       onClick={() => { openDoc(d.id); }}
                       onDoubleClick={() => { setRenamingId(d.id); setRenameText(row.title); }}
+                      onMouseEnter={() => { setHoveredRowKey(rowKey); setHoverRowDepth(row.depth); }}
+                      onMouseLeave={() => { setHoveredRowKey(null); setHoverRowDepth(null); }}
                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, kind: "doc", id: d.id }); }}
                       style={{
                         position: "absolute", top, left: 0, right: 0, height: ROW_H,
-                        paddingLeft: 22 + row.depth * 14, display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                        borderRadius: "var(--dsw-radius-md)",
-                        background: active ? "var(--dsw-specific-sidebar-nav-item-active)" : "transparent",
+                        paddingLeft: 12 + row.depth * 16 + 16, display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                        borderRadius: "var(--dsw-radius-sm)",
+                        background: flashing ? "var(--dsw-alias-interactive-bg-hover-accent)"
+                          : active ? "var(--dsw-specific-sidebar-nav-item-active)"
+                          : rowHovered ? "var(--dsw-alias-interactive-bg-hover)" : "transparent",
                         borderLeft: active ? "2px solid var(--dsw-alias-state-business-primary)" : "2px solid transparent",
+                        transition: "background 120ms ease-out",
                       }}>
+                      {guides}
                       <FileIcon size={13} />
                       {renamingId === d.id ? (
                         <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") doRenameDoc(d.id); if (e.key === "Escape") { setRenamingId(null); setRenameText(""); } }}
                           onBlur={() => doRenameDoc(d.id)}
-                          style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", outline: "none", fontSize: 13 }} />
+                          style={{ flex: 1, height: 20, padding: "0 4px", boxSizing: "border-box", borderRadius: 4, border: "1px solid var(--dsw-alias-state-business-primary)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", fontSize: 13 }} />
                       ) : (
-                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }}>{row.title}</span>
+                        <span title={row.title} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 450, color: "var(--dsw-alias-label-primary)" }}>{row.title}</span>
                       )}
                       <button title={favs.has(d.id) ? tt(t, "wiki.unfav") : tt(t, "wiki.fav")}
                         onClick={(e) => { e.stopPropagation(); toggleFav(d.id); }}
-                        style={{ ...iconBtn, flexShrink: 0, fontSize: 13, width: 18, height: 18, color: favs.has(d.id) ? "var(--dsw-alias-state-warn-primary)" : "var(--dsw-alias-label-tertiary)" }}>{favs.has(d.id) ? "★" : "☆"}</button>
+                        style={{ ...iconBtn, flexShrink: 0, fontSize: 13, width: 18, height: 18, opacity: rowHovered ? 0.9 : 0, color: favs.has(d.id) ? "var(--dsw-alias-state-warn-primary)" : "var(--dsw-alias-label-tertiary)", transition: "opacity 120ms ease-out" }}>{favs.has(d.id) ? "★" : "☆"}</button>
                       {/* 状态点：正常(ready)不显示，仅异常/待同步显示 */}
                       {d.status !== "ready" && <span style={{ fontSize: 10, color: st.color }}>●</span>}
                     </div>
                   );
                 })}
               </div>
+              </>
             )}
           </div>
 
