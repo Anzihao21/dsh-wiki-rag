@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { filterLinks, filterCommands, dedupeRefs, countRefs, filterActiveRefs, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
+import { filterLinks, filterCommands, dedupeRefs, countRefs, filterActiveRefs, formatBytes, saveSearchHistory, loadSearchHistory, buildDownloadName } from "../logic";
 
 // 模拟客户端交互流：不渲染整个 Tiptap 组件，只验证其依赖的纯函数与 fetch 桩。
 beforeEach(() => { try { localStorage.clear(); } catch {} });
@@ -127,5 +127,13 @@ describe("清扫错误分支", () => {
   });
   it("全部软删时计数为 0（面板空态）", () => {
     expect(countRefs(filterActiveRefs([{ fileId: 1, deletedAt: "2026" }]), "9")).toBe(0);
+  });
+});
+
+describe("清扫错误分支", () => {
+  it("formatBytes 容量加载失败回退 0 B", () => expect(formatBytes(0)).toBe("0 B"));
+  it("命令面板空查询过滤后所有命令可见", () => {
+    const cmds = [{ key: "a", title: "A" }, { key: "b", title: "B" }];
+    expect(filterCommands("", cmds).length).toBe(2);
   });
 });
