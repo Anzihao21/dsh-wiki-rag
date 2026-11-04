@@ -137,3 +137,16 @@ describe("清扫错误分支", () => {
     expect(filterCommands("", cmds).length).toBe(2);
   });
 });
+
+describe("回收站容量计算", () => {
+  it("含 size 字段的 trash 响应 reduce 求和后 formatBytes 非 0B", () => {
+    const files = [{ name: "a.md", size: 1024 }, { name: "b.md", size: 2048 }];
+    const total = files.reduce((s, f) => s + (f.size || 0), 0);
+    expect(formatBytes(total)).toBe("3.0 KB");
+  });
+  it("无 size 字段回退 0 B", () => {
+    const files = [{ name: "a.md" }];
+    const total = files.reduce((s, f) => s + (f.size || 0), 0);
+    expect(formatBytes(total)).toBe("0 B");
+  });
+});
