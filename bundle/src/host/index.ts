@@ -1131,6 +1131,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           if (Number.isNaN(fileId) || Number.isNaN(ver)) return json(400, { error: '非法参数' });
           const rec = await getKnowledgeFileById(fileId);
           if (!rec) return json(404, { error: '条目不存在' });
+          if (rec.deleted_at != null) return json(404, { error: '条目已在回收站，请先恢复' });
           const row = get('SELECT content FROM file_versions WHERE file_id = ? AND version = ?', [fileId, ver]);
           if (!row) return json(404, { error: '版本不存在' });
           await fs.writeFile(rec.md_path, row.content, 'utf-8');
