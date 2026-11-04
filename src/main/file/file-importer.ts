@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { insertKnowledgeFile, listFileNamesByPath, findKnowledgeFileBySourcePath } from '../db/knowledge-db';
@@ -140,6 +141,57 @@ export class FileImporter {
       await writeLog('note-archive-degraded', `笔记原文归档失败（降级为仅 MD 入库）: ${(e as Error).message}`);
     }
     return this.commitImport(`note://${title}`, fileName, mdText, 'note', noteZip);
+  }
+
+  /**
+   * 浏览器/植入面板无法拿到 File.path 时的上传通道：
+   * 前端把文件内容以 base64 编码随请求上送，本方法落临时盘后复用 importLocalFile 流程。
+   * - 文件名安全化：剔除目录分隔符与非法字符，防止路径穿越
+   * - 大小拦截：解码后 > 50MB 直接拒绝，避免超大请求拖垮宿主
+   * - 临时目录：os.tmpdir()/dsh-wiki-rag-uploads，finally 清理
+   */
+  async importUploadContent(
+    fileName: string,
+    contentB64: string,
+    folderId: number | null = null
+  ): Promise<ImportResult> {
+    const rawName = (fileName || '').trim();
+    if (!rawName) throw new Error('缺少文件名');
+    if (typeof contentB64 !== 'string' || !contentB64) throw new Error('上传内容为空');
+
+    // base64 合法性校验：只允许 base64 字符与空白，避免 Buffer.from 静默吞掉脏数据
+    const cleanedB64 = contentB64.replace(/\s+/g, '');
+    if (!/^[A-Za-z0-9+/=]+$/.test(cleanedB64)) {
+      throw new Error('上传内容不是合法的 base64 编码');
+    }
+    if (cleanedB64.length % 4 !== 0) {
+      throw new Error('上传内容 base64 长度非法（需为 4 的倍数）');
+    }
+
+    // 大小拦截：base64 约 4/3 膨胀，解码后 ≈ cleanedB64.length * 3 / 4
+    const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
+    const estimatedBytes = Math.floor((cleanedB64.length * 3) / 4);
+    if (estimatedBytes > MAX_UPLOAD_BYTES) {
+      throw new Error(`上传内容过大（≈${(estimatedBytes / 1024 / 1024).toFixed(1)}MB），上限 50MB`);
+    }
+
+    const safeName = sanitizeFileName(path.basename(rawName)) || 'upload.bin';
+    const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
+    await fs.mkdir(tmpDir, { recursive: true });
+    const tmpPath = path.join(
+      tmpDir,
+      `${Date.now()}-${randomUUID().slice(0, 8)}-${safeName}`
+    );
+    try {
+      const buf = Buffer.from(cleanedB64, 'base64');
+      if (buf.length > MAX_UPLOAD_BYTES) {
+        throw new Error(`上传内容过大（${(buf.length / 1024 / 1024).toFixed(1)}MB），上限 50MB`);
+      }
+      await fs.writeFile(tmpPath, buf);
+      return await this.importLocalFile(tmpPath, folderId);
+    } finally {
+      await fs.rm(tmpPath, { force: true }).catch(() => {});
+    }
   }
 
   /** 核心入库流程 */

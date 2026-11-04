@@ -265,19 +265,10 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         return { summary: importer.summarize(await importer.importFolder(source, body.folderId ?? null)) };
       case 'upload': {
         // 前端文件内容上传（浏览器/植入式面板拿不到 File.path 时走此通道）
-        const fileName = (body.fileName || '').trim();
+        // 落临时盘与清理逻辑收口到 FileImporter.importUploadContent，可单测
+        const fileName = typeof body.fileName === 'string' ? body.fileName : '';
         const content = typeof body.content === 'string' ? body.content : '';
-        if (!fileName) throw new Error('缺少文件名');
-        const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
-        await fs.mkdir(tmpDir, { recursive: true });
-        const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
-        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`);
-        await fs.writeFile(tmpPath, Buffer.from(content, 'base64'));
-        try {
-          return importer.importLocalFile(tmpPath, body.folderId ?? null);
-        } finally {
-          fs.rm(tmpPath, { force: true }).catch(() => {});
-        }
+        return importer.importUploadContent(fileName, content, body.folderId ?? null);
       }
       case 'url':
         await guardUrlImport(source);
@@ -344,22 +335,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
     // 内容上传（kind=upload）：临时落盘后走 importLocalFile，与同步通道行为一致
     if (kind === 'upload') {
-      const fileName = (body.fileName || '').trim();
+      const fileName = typeof body.fileName === 'string' ? body.fileName : '';
       const content = typeof body.content === 'string' ? body.content : '';
-      if (!fileName) throw new Error('缺少文件名');
+      if (!fileName.trim()) throw new Error('缺少文件名');
       job.total = 1; job.done = 0; job.message = `导入 ${fileName}`;
-      const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
-      await fs.mkdir(tmpDir, { recursive: true });
-      const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
-      const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`);
-      await fs.writeFile(tmpPath, Buffer.from(content, 'base64'));
-      try {
-        const r = await importer.importLocalFile(tmpPath, body.folderId ?? null);
-        job.done = 1;
-        return r;
-      } finally {
-        fs.rm(tmpPath, { force: true }).catch(() => {});
-      }
+      const r = await importer.importUploadContent(fileName, content, body.folderId ?? null);
+      job.done = 1;
+      return r;
     }
 
     // 文件夹批量：逐文件更新进度

@@ -380,3 +380,59 @@ describe('FileImporter 并发与日志', () => {
     expect(c.md).toBe(1);
   });
 });
+
+describe('FileImporter.importUploadContent', () => {
+  it('正常上传 txt 内容成功入库', async () => {
+    const text = '上传通道正文内容';
+    const b64 = Buffer.from(text, 'utf-8').toString('base64');
+    const r = await importer.importUploadContent('上传笔记.txt', b64);
+    expect(r.skipped).toBe(false);
+    expect(r.fileId).toBeGreaterThan(0);
+    expect(r.mdPath.startsWith(mdDir)).toBe(true);
+    const md = await fs.readFile(r.mdPath, 'utf-8');
+    expect(md).toContain('上传通道正文内容');
+  });
+
+  it('非法 base64 字符抛清晰错误', async () => {
+    await expect(
+      importer.importUploadContent('x.txt', '!!!not-base64!!!')
+    ).rejects.toThrow(/base64/);
+  });
+
+  it('空文件名抛错', async () => {
+    const b64 = Buffer.from('x').toString('base64');
+    await expect(importer.importUploadContent('   ', b64)).rejects.toThrow(/文件名/);
+  });
+
+  it('空内容抛错', async () => {
+    await expect(importer.importUploadContent('a.txt', '')).rejects.toThrow();
+  });
+
+  it('文件名注入字符（../、目录分隔）被安全化，不写到 mdDir 之外', async () => {
+    const b64 = Buffer.from('injected').toString('base64');
+    const r = await importer.importUploadContent('../../etc/passwd.txt', b64);
+    expect(r.skipped).toBe(false);
+    expect(r.mdPath.startsWith(mdDir)).toBe(true);
+    // 临时文件已清理：tmpDir 下不应有残留
+    const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
+    try {
+      const names = await fs.readdir(tmpDir);
+      expect(names.every((n) => !n.includes('passwd'))).toBe(true);
+    } catch { /* tmpDir 不存在也算通过 */ }
+  });
+
+  it('超大内容（>50MB）被拦截', async () => {
+    // 构造一个 base64 长度 > 50MB * 4/3 的串，不真写盘
+    const huge = 'A'.repeat(50 * 1024 * 1024 * 2); // ~100MB base64
+    await expect(
+      importer.importUploadContent('huge.bin', huge)
+    ).rejects.toThrow(/50MB|过大/);
+  });
+
+  it('base64 长度非 4 的倍数时拒绝', async () => {
+    // 合法字符但长度 3n+1
+    await expect(
+      importer.importUploadContent('x.txt', 'QUJDRE') // "ABCDE" 不完整
+    ).rejects.toThrow(/base64|4 的倍数/);
+  });
+});
