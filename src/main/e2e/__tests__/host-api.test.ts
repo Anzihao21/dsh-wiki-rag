@@ -202,3 +202,85 @@ describe('host-api 404 与 500', () => {
     expect(r.body.error).toMatch(/JSON/);
   });
 });
+
+describe('host-api /search 分支', () => {
+  it('正常命中返回结构化结果', async () => {
+    const deps = makeDeps({
+      ragSearch: async () => [
+        { file_id: 1, file_name: 'a.md', chunk_text: 'hello', score: 0.9, md_path: '/a.md', chunk_index: 0, source_path: '/a.md' },
+      ],
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/search', EMPTY_QUERY, JSON.stringify({ query: 'hello', topK: 3 }));
+    expect(r.status).toBe(200);
+    expect(r.body.length).toBe(1);
+    expect(r.body[0].file_name).toBe('a.md');
+    expect(r.body[0].score).toBe(0.9);
+  });
+
+  it('空 query → 400', async () => {
+    const handler = createApiHandler(makeDeps());
+    const r = await handler('POST', '/api/wiki/search', EMPTY_QUERY, JSON.stringify({ query: '  ' }));
+    expect(r.status).toBe(400);
+  });
+});
+
+describe('host-api /trash 分支（请求层语义）', () => {
+  it('GET /trash 返回空列表（无 trash deps 时 501）', async () => {
+    const handler = createApiHandler(makeDeps());
+    const r = await handler('GET', '/api/wiki/trash', EMPTY_QUERY, '');
+    expect(r.status).toBe(501);
+  });
+
+  it('POST /trash/restore 非法参数 → 400', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/trash/restore', EMPTY_QUERY, JSON.stringify({ id: 'abc', type: 'file' }));
+    expect(r.status).toBe(400);
+    const r2 = await handler('POST', '/api/wiki/trash/restore', EMPTY_QUERY, JSON.stringify({ id: 1, type: 'bogus' }));
+    expect(r2.status).toBe(400);
+  });
+
+  it('DELETE /trash/bogus/1 → 400', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('DELETE', '/api/wiki/trash/bogus/1', EMPTY_QUERY, '');
+    expect(r.status).toBe(400);
+  });
+});
+
+describe('host-api /export/zip 分支', () => {
+  it('未配置 export → 501', async () => {
+    const handler = createApiHandler(makeDeps());
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(501);
+  });
+
+  it('空库时 exportZipOp 抛 httpStatus=400 → handler 返回 400', async () => {
+    const deps = makeDeps({
+      exportZip: async () => {
+        const e: any = new Error('知识库为空，无可导出内容');
+        e.httpStatus = 400;
+        throw e;
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/空/);
+  });
+});
