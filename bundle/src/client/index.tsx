@@ -611,6 +611,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [renameText, setRenameText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
+  // 声明必须紧跟 searchResults state：组件中段 useEffect 依赖数组（Escape 关闭搜索/结果键盘导航）会引用它，
+  // 若声明后置则渲染时先访问未初始化的 const → TDZ（0.0.15 桌面端报 "Cannot access 'Gi' before initialization"）。
+  const searchingMode = searchResults !== null;
   const [searching, setSearching] = useState(false);
   const [activeResultIdx, setActiveResultIdx] = useState(0);
   // 搜索历史（localStorage 最近 10 条）
@@ -1130,6 +1133,30 @@ function WikiSidebar(props: WikiSidebarProps) {
   }, [q, notify, t]);
 
   // 打开搜索结果：展开父级链 + 滚动定位 + flash，延迟 800ms 再清面板
+  const openDoc = useCallback(async (id: string) => {
+    setRecent((prev) => {
+      const n = [id, ...prev.filter((x) => x !== id)].slice(0, 10);
+      try { localStorage.setItem("dsh-wiki-rag:recent", JSON.stringify(n)); } catch {}
+      return n;
+    });
+    setActiveId(id);
+    setView("editor");
+    setMdContent("");
+    setSavedContent("");
+    try {
+      const r = await apiGetContent(id);
+      const c = r?.content || "";
+      baselineRef.current = c;
+      setMdContent(c);
+      setSavedContent(c);
+      if (editor) editor.commands.setContent(mdToHtml(c));
+    } catch (e: any) {
+      const c = e?.offline ? (SAMPLE_MD[id] || "# 离线\n\n无法加载内容") : "# 加载失败\n\n" + (e?.message || "");
+      baselineRef.current = c;
+      setMdContent(c); setSavedContent(c);
+      if (editor) editor.commands.setContent(mdToHtml(c));
+    }
+  }, [editor]);
   const openSearchResult = useCallback((r: WikiDoc) => {
     const fId = r.fileId;
     if (fId != null) {
@@ -1326,33 +1353,8 @@ function WikiSidebar(props: WikiSidebarProps) {
     return () => window.clearTimeout(t);
   }, [pendingHighlight, view, editor, mdContent]);
 
-  // ---------- 加载文档真实内容 ----------
-  const openDoc = useCallback(async (id: string) => {
-    setRecent((prev) => {
-      const n = [id, ...prev.filter((x) => x !== id)].slice(0, 10);
-      try { localStorage.setItem("dsh-wiki-rag:recent", JSON.stringify(n)); } catch {}
-      return n;
-    });
-    setActiveId(id);
-    setView("editor");
-    setMdContent("");
-    setSavedContent("");
-    try {
-      const r = await apiGetContent(id);
-      const c = r?.content || "";
-      baselineRef.current = c;
-      setMdContent(c);
-      setSavedContent(c);
-      if (editor) editor.commands.setContent(mdToHtml(c));
-    } catch (e: any) {
-      const c = e?.offline ? (SAMPLE_MD[id] || "# 离线\n\n无法加载内容") : "# 加载失败\n\n" + (e?.message || "");
-      baselineRef.current = c;
-      setMdContent(c); setSavedContent(c);
-      if (editor) editor.commands.setContent(mdToHtml(c));
-    }
-  }, [editor]);
-
   // 反向链接：用当前文档标题搜 /search，列出引用它的其他文档
+  const activeDoc = docs.find((d) => d.id === activeId);
   const backlinksSeq = useRef(0);
   const loadBacklinks = useCallback(async () => {
     const seq = ++backlinksSeq.current;
@@ -1543,8 +1545,6 @@ function WikiSidebar(props: WikiSidebarProps) {
     );
   }
 
-  const activeDoc = docs.find((d) => d.id === activeId);
-
   // 每个文件夹的直接子文档数（角标用）
   const folderDocCounts: Record<number, number> = useMemo(() => {
     const out: Record<number, number> = {};
@@ -1685,7 +1685,6 @@ function WikiSidebar(props: WikiSidebarProps) {
     });
   };
 
-  const searchingMode = searchResults !== null;
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
