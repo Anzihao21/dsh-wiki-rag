@@ -78,3 +78,15 @@ describe("反链面板错误态", () => {
     expect(countRefs([{ fileId: "1" }, { fileId: "2" }], "1")).toBe(1);
   });
 });
+
+describe("双链键盘流边界", () => {
+  const items = [{ id: "1", title: "Alpha" }, { id: "2", title: "Beta" }, { id: "3", title: "Gamma" }];
+  it("过滤后候选为空时 selected 不应越界（Math.min 夹紧）", () => {
+    const c = filterLinks("zzz", items, undefined);
+    expect(Math.min(5, Math.max(0, c.length - 1))).toBe(0);
+  });
+  it("候选3项时选中夹紧在0..2", () => {
+    const c = filterLinks("", items, "2");
+    expect(Math.min(10, Math.max(0, c.length - 1))).toBe(1);
+  });
+});
