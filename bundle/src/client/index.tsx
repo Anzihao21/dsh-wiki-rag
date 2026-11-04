@@ -30,7 +30,7 @@ import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
   loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -2402,7 +2402,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                     <>
                       <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowBack(false)} />
                       <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 240, maxHeight: 320, overflowY: "auto", boxShadow: "var(--dsw-shadow-lv2)" }}>
-                        <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>{tt(t, "wiki.backlinks")}</div>
+                        <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>{tt(t, "wiki.backlinks")}
+                          {backlinks && backlinks.length > 0 && <span style={{ marginLeft: 6 }}>{countRefs(backlinks, activeId)}</span>}
+                        </div>
                         {backlinks === null ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>…</div>
                           : backlinks.length === 0 ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.backlinksEmpty")}</div>
                           : backlinks.map((b, i) => (

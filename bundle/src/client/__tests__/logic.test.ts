@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs,
   type TreeNode,
 } from "../logic";
 
@@ -246,4 +246,11 @@ describe("dedupeRefs", () => {
     const r = dedupeRefs([{ fileId: 1 }, { fileId: 2 }, { fileId: 1 }, { fileId: 3 }], 2);
     expect(r.map((x) => x.fileId)).toEqual([1, 3]);
   });
+});
+
+describe("countRefs", () => {
+  it("统计去重排除自身后的引用数", () => {
+    expect(countRefs([{ fileId: 1 }, { fileId: 2 }, { fileId: 1 }, { fileId: 3 }], 2)).toBe(2);
+  });
+  it("空结果为 0", () => expect(countRefs([], 1)).toBe(0));
 });

@@ -310,3 +310,8 @@ export function dedupeRefs<T extends { fileId?: number | string }>(results: T[],
   }
   return out;
 }
+
+/** 统计去重后引用当前文档的文档数（与 dedupeRefs 同口径） */
+export function countRefs<T extends { fileId?: number | string }>(results: T[], excludeId?: string | number): number {
+  return dedupeRefs(results, excludeId).length;
+}
