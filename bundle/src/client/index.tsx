@@ -637,6 +637,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [linkSel, setLinkSel] = useState(0);
   const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
   const [backlinks, setBacklinks] = useState<any[] | null>(null);
+  const [backlinksErr, setBacklinksErr] = useState(false);
   const [showBack, setShowBack] = useState(false);
   const confirmRef = useFocusTrap<HTMLDivElement>(!!confirmState);
   const cmdRef = useFocusTrap<HTMLDivElement>(cmdOpen);
@@ -1342,12 +1343,12 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   // 反向链接：用当前文档标题搜 /search，列出引用它的其他文档
   const loadBacklinks = useCallback(async () => {
-    if (!activeDoc?.title) { setBacklinks([]); return; }
-    setBacklinks(null);
+    if (!activeDoc?.title) { setBacklinks([]); setBacklinksErr(false); return; }
+    setBacklinks(null); setBacklinksErr(false);
     try {
       const hits = await apiSearch(activeDoc.title);
       setBacklinks(dedupeRefs(hits || [], activeDoc.id));
-    } catch { setBacklinks([]); }
+    } catch { setBacklinks([]); setBacklinksErr(true); }
   }, [activeDoc]);
 
   // 未保存离开守卫：编辑态有改动时先弹确认（保存并离开 / 放弃 / 取消）
@@ -2443,6 +2444,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                           {backlinks && backlinks.length > 0 && <span style={{ marginLeft: 6 }}>{countRefs(backlinks, activeId)}</span>}
                         </div>
                         {backlinks === null ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>…</div>
+                          : backlinksErr ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-state-warn-primary)" }}>{tt(t, "wiki.backlinksError")}</div>
                           : backlinks.length === 0 ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.backlinksEmpty")}</div>
                           : backlinks.map((b, i) => (
                             <div key={i} onClick={() => { setShowBack(false); if (b.fileId != null) { setPendingHighlight(b.content || null); openDoc(String(b.fileId)); } }}
@@ -3125,7 +3127,7 @@ function apply(ctx: any): void {
       "wiki.slashBullet": "无序列表", "wiki.slashTask": "任务列表", "wiki.slashQuote": "引用",
       "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
       "wiki.resultsCount": "相关文档 {n} 篇",
-      "wiki.backlinks": "被引用", "wiki.backlinksEmpty": "暂无文档引用本文",
+      "wiki.backlinks": "被引用", "wiki.backlinksEmpty": "暂无文档引用本文", "wiki.backlinksError": "加载引用失败",
       "wiki.trashCount": "文件 {files} / 文件夹 {folders}",
       "wiki.clear": "清空",
     },
@@ -3198,7 +3200,7 @@ function apply(ctx: any): void {
       "wiki.slashBullet": "Bullet list", "wiki.slashTask": "Task list", "wiki.slashQuote": "Quote",
       "wiki.slashCode": "Code block", "wiki.slashDivider": "Divider", "wiki.slashText": "Text",
       "wiki.resultsCount": "{n} related documents",
-      "wiki.backlinks": "Backlinks", "wiki.backlinksEmpty": "No documents reference this",
+      "wiki.backlinks": "Backlinks", "wiki.backlinksEmpty": "No documents reference this", "wiki.backlinksError": "Failed to load references",
       "wiki.trashCount": "{files} files / {folders} folders",
       "wiki.clear": "Clear",
     },
