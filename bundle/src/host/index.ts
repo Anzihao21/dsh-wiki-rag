@@ -49,7 +49,7 @@ import { archiveSourceFile } from '../../../src/main/file/zip-archive';
 import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '../../../src/main/snapshot/snapshot-backup';
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 import { createLogger } from '../../../src/main/utils/logger';
-import { sendHttpError, AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
+import { AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
 import { validateSettingsPatch } from '../../../src/main/settings-validation';
 
 const logger = createLogger('dsh-wiki-rag');
@@ -1311,8 +1311,12 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logger.error('http request failed', { path: pathname, method: req.method, error: errMsg });
-        await writeLog('http-error', `${pathname}: ${errMsg}`, { level: 'error' }).catch(() => {});
-        sendHttpError(res, e);
+        writeLog('http-error', `${pathname}: ${errMsg}`, { level: 'error' }).catch(() => {});
+        // 统一错误响应：{ error: string }；AppError 携带 httpStatus 时按其状态码，其余兜底 500
+        // 不泄露 stack（仅日志侧保留）
+        const status = (e as any)?.httpStatus || 500;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: errMsg }));
       }
     });
     server.listen(3081, () => {
