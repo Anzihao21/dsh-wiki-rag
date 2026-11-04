@@ -26,159 +26,18 @@ import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
+import {
+  tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
+  toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
+  loadEditTimes, markEdited as saveEditTimesMark,
+  type TreeNode, type FlatRow, type DiffRow,
+} from "./logic";
 
 /** cordis 插件依赖的服务名（运行时由客户端 runtime 注入到 ctx）。 */
 export const inject = ["slots", "locale"];
 
 const NS = "wiki";
 const API_BASE = "http://localhost:3081/api/wiki";
-
-// 本地兜底 i18n 字典：当宿主 t() 缺失或返回 key 本身时使用，避免 UI 直接暴露 wiki.xxx
-const LOCAL_FALLBACK: Record<string, string> = {
-  "wiki.title": "知识库",
-  "wiki.save": "保存",
-  "wiki.edit": "编辑",
-  "wiki.preview": "预览",
-  "wiki.settings": "设置",
-  "wiki.storage": "数据存储目录",
-  "wiki.chunkSize": "分块大小",
-  "wiki.chunkOverlap": "分块重叠",
-  "wiki.rerankTopK": "Rerank TopK",
-  "wiki.restartHint": "修改存储路径后将自动迁移已有文件",
-  "wiki.autoIndexHint": "编辑后自动刷新向量索引",
-  "wiki.back": "返回",
-  "wiki.snapshots": "快照管理",
-  "wiki.new": "新建",
-  "wiki.noSnapshots": "暂无快照",
-  "wiki.restore": "恢复",
-  "wiki.logs": "审计日志",
-  "wiki.noLogs": "暂无日志",
-  "wiki.offline": "离线 / 宿主未连接",
-  "wiki.importing": "导入中…",
-  "wiki.importDone": "导入完成",
-  "wiki.deleted": "已删除",
-  "wiki.renamed": "已重命名",
-  "wiki.folderCreated": "文件夹已创建",
-  "wiki.folderDeleted": "文件夹已删除",
-  "wiki.saved": "已保存",
-  "wiki.restored": "快照已恢复",
-  "wiki.snapshotCreated": "已创建快照",
-  "wiki.searchPlaceholder": "搜索知识库…",
-  "wiki.empty": "知识库为空",
-  "wiki.newDoc": "新建文档",
-  "wiki.newDocTitle": "新文档标题",
-  "wiki.rebindSource": "重新绑定源路径",
-  "wiki.rebindSourcePrompt": "输入新的源路径…",
-  "wiki.folderSync": "从源文件夹批量同步",
-  "wiki.folderRebindSource": "重新选择源文件夹",
-  "wiki.folderRebindSourcePrompt": "输入新的源文件夹路径…",
-  "wiki.folderRebound": "已重新选择源文件夹",
-  "wiki.shelve": "暂存",
-  "wiki.shelved": "已暂存",
-  "wiki.moved": "已移动",
-  "wiki.created": "已创建",
-  "wiki.dismissed": "已忽略更新",
-  "wiki.zipStorage": "压缩包存储目录",
-  "wiki.snapshotStorage": "快照存储目录",
-  "wiki.snapshotKeep": "快照保留份数",
-  "wiki.webMode": "Web 模式",
-  "webModeIntranet": "内网模式",
-  "webModeExtranet": "外网模式",
-  "wiki.autoSnapshot": "自动快照",
-  "wiki.chunkMode": "切片模式",
-  "chunkModeFixed": "固定切片",
-  "chunkModeHeading": "标题分层切片",
-  "wiki.pendingChanges": "待确认变更",
-  "wiki.cancel": "取消",
-  "wiki.confirm": "确定",
-  "wiki.contentSaved": "内容已保存",
-  "wiki.search": "搜索",
-  "wiki.import": "导入",
-  "wiki.delete": "删除",
-  "wiki.rename": "重命名",
-  "wiki.accept": "接受",
-  "wiki.reject": "拒绝",
-  "wiki.accepted": "已接受",
-  "wiki.update": "更新",
-  "wiki.newFolder": "新建文件夹",
-  "wiki.folderName": "文件夹名称",
-  "wiki.noChanges": "暂无变更",
-  "wiki.noResult": "无搜索结果",
-  "wiki.confirmRestore": "确认恢复",
-  "wiki.restorePreview": "恢复预览",
-  "wiki.restoreWarning": "恢复将覆盖当前内容",
-  "wiki.changeConfirm": "确认变更",
-  "wiki.willAdd": "将新增",
-  "wiki.willOverwrite": "将覆盖",
-  "wiki.willRemove": "将移除",
-  "wiki.fullscreen": "全屏",
-  "wiki.exitFullscreen": "退出全屏",
-  "wiki.more": "更多",
-  "wiki.browseFile": "浏览文件",
-  "wiki.refresh": "刷新",
-  "wiki.emptyTitle": "从左侧选择文档开始",
-  "wiki.emptyHint": "在左侧导入或搜索文档，点击后即可在此查看与编辑。支持本地文件 / 网页 / 笔记 / Excel / PPT 等。",
-  "wiki.statusReady": "已索引",
-  "wiki.statusStale": "待同步",
-  "wiki.statusError": "异常",
-  "wiki.confirmDeleteDoc": "确定删除该文档？删除后不可恢复。",
-  "wiki.confirmDeleteFolder": "确定删除该文件夹及其下所有文档？删除后不可恢复。",
-  "wiki.autoSaveConflict": "检测到外部修改，请用“保存”按钮处理",
-  "wiki.autoSaveFailed": "自动保存失败",
-  "wiki.webModeHint": "网页抓取模式",
-  "wiki.webModeInSettings": "见设置",
-  "wiki.newSubFolder": "新建子文件夹",
-  "wiki.underFolder": "位于",
-  "wiki.expandAll": "全部展开",
-  "wiki.collapseAll": "全部折叠",
-  "wiki.charCount": "字符",
-  "wiki.cannotMoveIntoSelf": "不能移动到自身的子文件夹下",
-  "wiki.favSection": "收藏",
-  "wiki.recentSection": "最近打开",
-  "wiki.fav": "收藏",
-  "wiki.unfav": "取消收藏",
-  "wiki.dropImport": "释放以导入到知识库",
-  "wiki.filesSelected": "已选 {n} 个文件",
-  "wiki.clear": "清空",
-  "wiki.importSubmitting": "已提交 {n} 个文件导入",
-  "wiki.emptyFolder": "空文件夹",
-  "wiki.rootAll": "全部文件",
-  "wiki.create": "新建 / 导入",
-  "wiki.export": "导出 Markdown",
-  "wiki.exported": "已导出 Markdown",
-  "wiki.copiedContent": "已复制内容到剪贴板",
-  "wiki.leaveUnsaved": "有未保存的修改",
-  "wiki.saveAndLeave": "保存并离开",
-  "wiki.discard": "放弃修改",
-  "wiki.noFavHint": "暂无收藏，点文件行 ☆ 收藏",
-  "wiki.noRecentHint": "暂无最近打开",
-  "wiki.searchHistory": "搜索历史",
-  "wiki.selectedCount": "已选 {n} 项",
-  "wiki.batchMove": "移动到…",
-  "wiki.batchMoveTo": "移动到文件夹",
-  "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
-  // 以下键在宿主注册字典中提供，LOCAL_FALLBACK 补中文兜底
-  "wiki.versions": "历史版本", "wiki.importFile": "导入文件", "wiki.importFolder": "导入文件夹", "wiki.importWeb": "导入网页",
-  "wiki.embedModel": "嵌入模型", "wiki.embedFallback": "离线哈希（默认）", "wiki.embedLocal": "本地模型", "wiki.embedOpenAI": "OpenAI 兼容",
-  "wiki.modelPath": "本地模型路径", "wiki.openaiBaseURL": "Base URL", "wiki.openaiAPIKey": "API Key", "wiki.openaiModel": "模型名",
-  "wiki.rerankModel": "重排模型", "wiki.rerankNone": "关闭重排",
-  "wiki.selectFile": "选择文件", "wiki.selectFileFirst": "请先选择文件", "wiki.noVersions": "暂无历史版本",
-  "wiki.view": "查看", "wiki.versionsHint": "人工编辑保存时自动生成历史版本，每文件最多保留 3 个",
-};
-
-/** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典；支持 {n} 插值 */
-function tt(t: ((key: string) => string) | undefined, key: string, params?: Record<string, string | number>): string {
-  let s: string;
-  if (t) {
-    try {
-      const v = t(key);
-      if (v && v !== key) s = v;
-      else s = LOCAL_FALLBACK[key] || key;
-    } catch { s = LOCAL_FALLBACK[key] || key; }
-  } else s = LOCAL_FALLBACK[key] || key;
-  if (params) for (const k of Object.keys(params)) s = s.replace(new RegExp(`\\{${k}\\}`, "g"), String(params[k]));
-  return s;
-}
 
 // ============================================================================
 // 类型（全部 any 最小化，运行时由宿主喂数据）
@@ -193,18 +52,6 @@ interface WikiDoc {
   fileName?: string;
   score?: number;
   chunkIndex?: number;
-}
-
-interface TreeNode {
-  type: "folder" | "doc";
-  id?: number;
-  fileId?: number;
-  name?: string;
-  title?: string;
-  kind?: string;
-  status?: "ready" | "stale" | "error";
-  folderId?: number | null;
-  children?: TreeNode[];
 }
 
 interface JobState {
@@ -467,29 +314,6 @@ function VertBtn({ label, title, onClick, active }: { label: string; title: stri
 // ============================================================================
 // 极简行级 Diff：增(绿)/删(红)/改(黄)
 // ============================================================================
-interface DiffRow { type: "add" | "del" | "mod" | "ctx"; oldText?: string; newText?: string; }
-function computeDiff(oldText: string, newText: string): DiffRow[] {
-  const a = String(oldText || "").split("\n");
-  const b = String(newText || "").split("\n");
-  const setB = new Set(b);
-  const setA = new Set(a);
-  const out: DiffRow[] = [];
-  let i = 0, j = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) { out.push({ type: "ctx", oldText: a[i] }); i++; j++; }
-    else {
-      const aDel = !setB.has(a[i]);
-      const bAdd = !setA.has(b[j]);
-      if (aDel && bAdd) { out.push({ type: "mod", oldText: a[i], newText: b[j] }); i++; j++; }
-      else if (aDel) { out.push({ type: "del", oldText: a[i] }); i++; }
-      else { out.push({ type: "add", newText: b[j] }); j++; }
-    }
-  }
-  while (i < a.length) out.push({ type: "del", oldText: a[i++] });
-  while (j < b.length) out.push({ type: "add", newText: b[j++] });
-  return out;
-}
-
 // ============================================================================
 // 内联 SVG 图标（不使用 emoji / 不使用 "W" 文字）
 // ============================================================================
@@ -635,52 +459,6 @@ class ErrorBoundary extends Component<any, { hasError: boolean; msg?: string; re
 // ============================================================================
 // 树扁平化 → 可虚拟滚动的行
 // ============================================================================
-interface FlatRow {
-  rowType: "folder" | "doc" | "placeholder";
-  depth: number;
-  id: number;        // folder.id 或 doc.fileId（placeholder 为 -folderId）
-  title: string;
-  kind?: string;
-  status?: string;
-  raw: TreeNode;
-}
-function flattenTree(nodes: TreeNode[] | undefined, depth: number, expanded: Set<number>, out: FlatRow[]) {
-  (nodes || []).forEach((n) => {
-    if (n.type === "folder") {
-      out.push({ rowType: "folder", depth, id: n.id!, title: n.name || "", raw: n });
-      if (expanded.has(n.id!)) flattenTree(n.children, depth + 1, expanded, out);
-    } else {
-      out.push({ rowType: "doc", depth, id: n.fileId!, title: n.title || "", kind: n.kind, status: n.status, raw: n });
-    }
-  });
-}
-function collectFolderIds(nodes: TreeNode[] | undefined, out: Set<number>): Set<number> {
-  (nodes || []).forEach((n) => { if (n.type === "folder") { out.add(n.id!); collectFolderIds(n.children, out); } });
-  return out;
-}
-// 收集某文件夹的全部子孙文件夹 id（用于拖拽防循环校验）
-function subtreeFolderIds(nodes: TreeNode[] | undefined, id: number, out: Set<number>): Set<number> {
-  for (const n of (nodes || [])) {
-    if (n.type === "folder") {
-      if (n.id === id) { collectFolderIds(n.children, out); return out; }
-      subtreeFolderIds(n.children, id, out);
-    }
-  }
-  return out;
-}
-// 查找某文件所在的文件夹链（返回祖先 folder id 数组，根为 []）
-function findDocFolderPath(nodes: TreeNode[] | undefined, fileId: number, trail: number[]): number[] | null {
-  for (const n of (nodes || [])) {
-    if (n.type === "folder") {
-      const sub = findDocFolderPath(n.children, fileId, [...trail, n.id!]);
-      if (sub) return sub;
-    } else if (n.fileId === fileId) {
-      return trail;
-    }
-  }
-  return null;
-}
-
 const ROW_H = 32;
 
 interface WikiSidebarProps {
@@ -1005,7 +783,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       const timer = setInterval(async () => {
         try {
           // 60s 仍 running 视为超时失败，防无限轮询
-          if (Date.now() - startedAt > 60000) {
+          if (isJobTimedOut(startedAt, Date.now())) {
             clearInterval(timer);
             settled++; fail++; failures.push(`${name}：导入超时（>60s）`);
             setJob((prev) => prev ? { ...prev, done: settled } : prev);
@@ -1091,12 +869,6 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // ---------- 按内容上传导入（植入式面板拿不到 File.path 时走此通道，浏览器安全允许读所选文件内容） ----------
-  const toBase64 = (buf: Uint8Array): string => {
-    let s = "";
-    const CH = 0x8000;
-    for (let i = 0; i < buf.length; i += CH) s += String.fromCharCode(...buf.subarray(i, i + CH));
-    return btoa(s);
-  };
   const importFilesContent = async (files: File[], folderId: number | null = null): Promise<void> => {
     const list = Array.from(files || []);
     if (!list.length) return;
@@ -1379,7 +1151,7 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   // 未保存离开守卫：编辑态有改动时先弹确认（保存并离开 / 放弃 / 取消）
   const requestLeave = useCallback((action: () => void) => {
-    if (view === "editor" && activeId && mdContent !== savedContent) setLeaveGuard({ action });
+    if (shouldLeaveGuard(view, activeId, mdContent, savedContent)) setLeaveGuard({ action });
     else action();
   }, [view, activeId, mdContent, savedContent]);
 
