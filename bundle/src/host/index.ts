@@ -254,7 +254,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     source?: string; kind?: string; noteText?: string; intranet?: boolean; folderId?: number | null;
   }) {
     const source = (body.source || '').trim();
-    if (!source) throw new Error('缺少导入来源 source');
+    if (!source && body.kind !== 'upload') throw new Error('缺少导入来源 source');
     let kind = body.kind || '';
     if (!kind) {
       if (/^https?:\/\//i.test(source)) kind = 'url';
@@ -336,10 +336,30 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     source?: string; kind?: string; noteText?: string; intranet?: boolean; folderId?: number | null;
   }, job: Job): Promise<any> {
     const source = (body.source || '').trim();
-    if (!source) throw new Error('缺少导入来源 source');
+    if (!source && body.kind !== 'upload') throw new Error('缺少导入来源 source');
     let kind = body.kind || '';
     if (!kind) {
       kind = /^https?:\/\//i.test(source) ? 'url' : 'file';
+    }
+
+    // 内容上传（kind=upload）：临时落盘后走 importLocalFile，与同步通道行为一致
+    if (kind === 'upload') {
+      const fileName = (body.fileName || '').trim();
+      const content = typeof body.content === 'string' ? body.content : '';
+      if (!fileName) throw new Error('缺少文件名');
+      job.total = 1; job.done = 0; job.message = `导入 ${fileName}`;
+      const tmpDir = path.join(os.tmpdir(), 'dsh-wiki-rag-uploads');
+      await fs.mkdir(tmpDir, { recursive: true });
+      const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
+      const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`);
+      await fs.writeFile(tmpPath, Buffer.from(content, 'base64'));
+      try {
+        const r = await importer.importLocalFile(tmpPath, body.folderId ?? null);
+        job.done = 1;
+        return r;
+      } finally {
+        fs.rm(tmpPath, { force: true }).catch(() => {});
+      }
     }
 
     // 文件夹批量：逐文件更新进度
@@ -436,7 +456,15 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       autoSnapshot: settings.autoSnapshot,
       snapshotKeep: settings.snapshotKeep,
       embeddingProvider: settings.embeddingProvider,
+      embeddingModelPath: settings.embeddingModelPath,
+      embeddingOpenAIBaseURL: settings.embeddingOpenAIBaseURL,
+      embeddingOpenAIAPIKey: settings.embeddingOpenAIAPIKey,
+      embeddingOpenAIModel: settings.embeddingOpenAIModel,
       rerankProvider: settings.rerankProvider,
+      rerankModelPath: settings.rerankModelPath,
+      rerankOpenAIBaseURL: settings.rerankOpenAIBaseURL,
+      rerankOpenAIAPIKey: settings.rerankOpenAIAPIKey,
+      rerankOpenAIModel: settings.rerankOpenAIModel,
       rerankTopK: settings.rerankTopK,
     };
   }
@@ -618,7 +646,10 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           }
           if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
           const source = typeof parsed.source === 'string' ? parsed.source.trim() : '';
-          if (!source) return json(400, { error: '缺少导入来源 source' });
+          const parsedKind = typeof parsed.kind === 'string' ? parsed.kind : '';
+          // 内容上传通道（kind=upload）以 fileName+content 为来源，无需 source
+          const isUpload = parsedKind === 'upload';
+          if (!source && !isUpload) return json(400, { error: '缺少导入来源 source' });
           let folderId: number | null = null;
           if (parsed.folderId !== undefined && parsed.folderId !== null) {
             if (typeof parsed.folderId !== 'number') return json(400, { error: 'folderId 必须是数字或 null' });
@@ -627,8 +658,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           parsed.folderId = folderId;
           logger.info('import requested', { source, async: !!parsed.async, folderId });
 
-          // 并发去重：同一路径导入进行中 → 409
-          const opKey = `import:${source}`;
+          // 并发去重：同一路径导入进行中 → 409；内容上传按请求唯一键（多个并发上传互不阻塞）
+          const opKey = isUpload ? `upload:${randomUUID()}` : `import:${source}`;
           if (!acquire(opKey)) return json(409, { error: 'operation-in-progress' });
 
           // 同步模式（保持原行为）

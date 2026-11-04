@@ -11,6 +11,7 @@
  * esbuild 不做类型检查；React / jsx-runtime 由宿主外部化提供。
  */
 import { useState, useEffect, useRef, useCallback, useMemo, Component, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { marked } from "marked";
 import TurndownService from "turndown";
 import DOMPurify from "dompurify";
@@ -502,7 +503,9 @@ function FileIcon({ size = 14 }: { size?: number }) {
 // ============================================================================
 interface Toast { id: number; type: "error" | "success" | "info"; msg: string; }
 function ToastStack({ toasts }: { toasts: Toast[] }) {
-  return (
+  // portal 至 body：DSH 宿主 webview 容器可能存在 transform/contain 祖先，
+  // 直接 position:fixed 会被按祖先定位导致 toast 显示在页面内而非屏幕右下角。
+  return createPortal(
     <div style={{
       position: "fixed", bottom: 16, right: 16, zIndex: 10002,
       display: "flex", flexDirection: "column", gap: 8, maxWidth: 320,
@@ -529,7 +532,8 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
           <span style={{ flex: 1 }}>{t.msg}</span>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -775,7 +779,14 @@ function WikiSidebar(props: WikiSidebarProps) {
   const baselineRef = useRef<string>("");
 
   // ---------- Toast ----------
+  // 相同 (type, msg) 在 1500ms 内去重：request 5xx 自动 notify 与业务 catch 里的
+  // notify 会重复弹出同一条错误，收敛为一条。
+  const lastToast = useRef<{ key: string; at: number } | null>(null);
   const notify = useCallback((type: Toast["type"], msg: string) => {
+    const key = type + "\u0001" + msg;
+    const now = Date.now();
+    if (lastToast.current && lastToast.current.key === key && now - lastToast.current.at < 1500) return;
+    lastToast.current = { key, at: now };
     const id = ++toastId.current;
     setToasts((prev) => [...prev, { id, type, msg }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3200);
