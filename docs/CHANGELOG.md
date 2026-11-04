@@ -22,3 +22,17 @@
 - 文件树 role=tree/treeitem + aria-expanded/selected/setsize/posinset/level
 - 弹窗 role=dialog + aria-modal + useFocusTrap（Tab 循环/焦点还原）
 - 命令面板 role=listbox
+
+### 关键提交（client 侧）
+- 双链 [[ 联想：`0be4947`；反链面板：`110e35e`；块上移/下移：`2fcdacc`；Ctrl+U：`e919f23`
+- 回收站计数：`210b538`；a11y tree/dialog：`2b77f54`；性能基准：`dd72620`
+- 焦点陷阱：`35ce831`；角标刷新：`f7783ec`；aria-setsize：`7ba2711`
+- 软删联动：`ae945d0`；反链 score 排序：`ab6e13a`；IME 门控：`057b08b`
+- 命令描述：`4aa55fd`；回收站容量：`089ec7c`；定时器泄漏修复：`83cd292`
+- 搜索历史竞态修复：`0b56933`；UX-SPEC 对账：`06cbbb8`
+
+### 测试基建
+- logic.test.ts 46 例（纯函数 node 环境）
+- storage.dom.test.ts 7 例（localStorage jsdom）
+- interactions.dom.test.ts 15 例（fetch 桩/命令矩阵/端点序列 jsdom）
+- 全量回归 497 例 Errors=0
