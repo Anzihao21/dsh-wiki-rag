@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits,
   type TreeNode,
 } from "../logic";
 
@@ -253,4 +253,14 @@ describe("countRefs", () => {
     expect(countRefs([{ fileId: 1 }, { fileId: 2 }, { fileId: 1 }, { fileId: 3 }], 2)).toBe(2);
   });
   it("空结果为 0", () => expect(countRefs([], 1)).toBe(0));
+});
+
+describe("normalizeSearchHits", () => {
+  it("空数组返回空", () => expect(normalizeSearchHits([])).toEqual([]));
+  it("标题缺失回退文件名/序号，content 截断 160", () => {
+    const r = normalizeSearchHits([{ fileId: 5, content: "x".repeat(200) }]);
+    expect(r[0].id).toBe("5");
+    expect(r[0].title).toBe("结果 1");
+    expect(r[0].summary.length).toBe(160);
+  });
 });

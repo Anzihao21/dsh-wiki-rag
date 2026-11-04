@@ -315,3 +315,14 @@ export function dedupeRefs<T extends { fileId?: number | string }>(results: T[],
 export function countRefs<T extends { fileId?: number | string }>(results: T[], excludeId?: string | number): number {
   return dedupeRefs(results, excludeId).length;
 }
+
+/** 归一化搜索命中为行模型（与渲染解耦，便于测试） */
+export function normalizeSearchHits(hits: any[]): { id: string; title: string; summary: string; score?: number; fileId?: number }[] {
+  return (hits || []).map((r, i) => ({
+    id: String(r.fileId ?? i),
+    fileId: r.fileId as number | undefined,
+    title: r.title || r.fileName || `结果 ${i + 1}`,
+    summary: r.content?.slice(0, 160) || "",
+    score: r.score,
+  }));
+}
