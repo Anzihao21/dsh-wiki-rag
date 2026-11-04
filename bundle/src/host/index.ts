@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 
-import { initDatabase, getDbPath, closeDatabase, walCheckpoint } from '../../../src/main/db/sqlite-init';
+import { initDatabase, getDbPath, closeDatabase, walCheckpoint, run, get, all } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
 import { detectEditConflict } from '../../../src/main/file/edit-conflict';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
@@ -282,9 +282,27 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
   }
 
+  // 每文件最多保留的历史版本数
+  const KEEP_FILE_VERSIONS = 3;
+  // 人工编辑保存时，把旧内容滚动写入 file_versions（最多保留 3 个版本）
+  async function pushFileVersion(fileId: number, content: string): Promise<void> {
+    if (!content) return;
+    const now = Date.now();
+    run(
+      'INSERT INTO file_versions (file_id, version, content, create_time) VALUES (?, ?, ?, ?)',
+      [fileId, now, content, now]
+    );
+    // 删除超出上限的最旧版本（同文件）
+    run(
+      `DELETE FROM file_versions WHERE file_id = ? AND version NOT IN (
+        SELECT version FROM file_versions WHERE file_id = ? ORDER BY create_time DESC LIMIT ?
+      )`,
+      [fileId, fileId, KEEP_FILE_VERSIONS]
+    );
+  }
+
   // 递归扫描可解析文档（与 FileImporter 内部一致，用于批量导入进度统计）
-  async function walkParseableFiles(dir: string): Promise<string[]> {
-    const out: string[] = [];
+  async function walkParseableFiles(dir: string): Promise<string[]> {    const out: string[] = [];
     const walk = async (d: string): Promise<void> => {
       const entries = await fs.readdir(d, { withFileTypes: true });
       for (const e of entries) {
@@ -863,6 +881,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             return json(409, { error: 'conflict', diskContent: conflict.diskContent });
           }
           await fs.mkdir(path.dirname(rec.md_path), { recursive: true });
+          // 人工编辑保存前，把旧内容写入历史版本（每文件最多保留 3 个）
+          if (oldContent && oldContent !== content) await pushFileVersion(fileId, oldContent);
           await fs.writeFile(rec.md_path, content, 'utf-8');
           // 重建向量库
           await importer.reindex(fileId, content);
@@ -871,6 +891,41 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             `人工编辑 fileId=${fileId} old=${sha256Text(oldContent)} new=${sha256Text(content)}`
           );
           return json(200, { status: 'saved' });
+        }
+
+        // ---- 历史版本列表：GET /files/:id/versions ----
+        if (req.method === 'GET' && seg.length === 5 && seg[2] === 'files' && seg[4] === 'versions') {
+          const fileId = parseInt(seg[3] || '');
+          if (Number.isNaN(fileId)) return json(400, { error: '非法 fileId' });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: '条目不存在' });
+          const rows = all('SELECT version, create_time FROM file_versions WHERE file_id = ? ORDER BY create_time DESC', [fileId]);
+          return json(200, { versions: rows.map((r) => ({ version: r.version, create_time: r.create_time })) });
+        }
+
+        // ---- 历史版本内容：GET /files/:id/versions/:version ----
+        if (req.method === 'GET' && seg.length === 6 && seg[2] === 'files' && seg[4] === 'versions') {
+          const fileId = parseInt(seg[3] || '');
+          const ver = parseInt(seg[5] || '');
+          if (Number.isNaN(fileId) || Number.isNaN(ver)) return json(400, { error: '非法参数' });
+          const row = get('SELECT content FROM file_versions WHERE file_id = ? AND version = ?', [fileId, ver]);
+          if (!row) return json(404, { error: '版本不存在' });
+          return json(200, { content: row.content });
+        }
+
+        // ---- 恢复历史版本：POST /files/:id/versions/:version/restore ----
+        if (req.method === 'POST' && seg.length === 7 && seg[2] === 'files' && seg[4] === 'versions' && seg[6] === 'restore') {
+          const fileId = parseInt(seg[3] || '');
+          const ver = parseInt(seg[5] || '');
+          if (Number.isNaN(fileId) || Number.isNaN(ver)) return json(400, { error: '非法参数' });
+          const rec = await getKnowledgeFileById(fileId);
+          if (!rec) return json(404, { error: '条目不存在' });
+          const row = get('SELECT content FROM file_versions WHERE file_id = ? AND version = ?', [fileId, ver]);
+          if (!row) return json(404, { error: '版本不存在' });
+          await fs.writeFile(rec.md_path, row.content, 'utf-8');
+          await importer.reindex(fileId, row.content);
+          await writeLog('version_restore', `恢复历史版本 fileId=${fileId} version=${ver}`);
+          return json(200, { status: 'restored' });
         }
 
         // ---- 文件夹重选源：POST /folders/:id/rebind-source ----

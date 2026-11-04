@@ -45,6 +45,16 @@ CREATE TABLE IF NOT EXISTS operation_log (
     level TEXT NOT NULL DEFAULT 'info',
     meta TEXT
 );
+
+CREATE TABLE IF NOT EXISTS file_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    create_time INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_file ON file_versions(file_id, version);
 `;
 
 export function getDbPath(): string {
@@ -68,7 +78,7 @@ export async function initDatabase(filePath?: string): Promise<void> {
 }
 
 /** 当前 schema 版本（user_version） */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * 迁移清单：索引 i 对应「把库从版本 i+1 升到 i+2」。
@@ -84,6 +94,17 @@ const MIGRATIONS: Array<() => void> = [
   () => {
     ensureColumn('operation_log', 'level', "TEXT NOT NULL DEFAULT 'info'");
     ensureColumn('operation_log', 'meta', 'TEXT');
+  },
+  // v3 → v4：file_versions 历史版本表（每文件最多保留 3 个历史版本，人工编辑保存时滚动写入）
+  () => {
+    getDb().prepare(`CREATE TABLE IF NOT EXISTS file_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id INTEGER NOT NULL,
+      version INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      create_time INTEGER NOT NULL
+    )`).run();
+    getDb().prepare(`CREATE INDEX IF NOT EXISTS idx_fv_file ON file_versions(file_id, version)`).run();
   },
 ];
 
