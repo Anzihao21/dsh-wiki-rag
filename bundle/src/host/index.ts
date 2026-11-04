@@ -640,7 +640,19 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   // 可测 API handler（核心路由子集）：直调 dispatchImport/runImportJob/applySettingsPatch 等闭包函数
   // 回收站操作实现（DB + 物理文件清理）
   const trashOps: NonNullable<Parameters<typeof createApiHandler>[0]['trash']> = {
-    list: async () => listTrash(),
+    list: async () => {
+      const t = await listTrash();
+      // 为每个文件补 size（md 文件字节，缺失容错 0）
+      const filesWithSize = await Promise.all(t.files.map(async (f) => {
+        try {
+          const s = await fs.stat(f.md_path);
+          return { ...f, size: s.size };
+        } catch {
+          return { ...f, size: 0 };
+        }
+      }));
+      return { files: filesWithSize, folders: t.folders };
+    },
     restore: async (id, type) => {
       if (type === 'file') await restoreFile(id);
       else await restoreFolderCascade(id);
