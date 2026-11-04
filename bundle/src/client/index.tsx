@@ -589,6 +589,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [tocOpen, setTocOpen] = useState(false);
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number } | null>(null);
   const [slashSel, setSlashSel] = useState(0);
+  const [pendingHighlight, setPendingHighlight] = useState<string | null>(null);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -1054,6 +1055,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       const path = findDocFolderPath(tree, fId, []);
       if (path) setExpandedFolders((prev) => { const n = new Set(prev); path.forEach((p) => n.add(p)); return n; });
       setScrollToFileId(fId);
+      setPendingHighlight(r.summary || null);
       openDoc(String(fId));
     } else {
       setActiveId(r.id); setMdContent(r.summary);
@@ -1209,6 +1211,25 @@ function WikiSidebar(props: WikiSidebarProps) {
     const raf = requestAnimationFrame(() => { if (editorScrollRef.current) editorScrollRef.current.scrollTop = target; });
     return () => cancelAnimationFrame(raf);
   }, [view, activeId, editor, mdContent]);
+
+  // 命中段落深链高亮：内容就绪后在编辑器 DOM 找含片段的块，滚动并闪一下背景
+  useEffect(() => {
+    if (!pendingHighlight || view !== "editor" || !editor || !editorScrollRef.current) return;
+    const line = findLineIndex(mdContent, pendingHighlight);
+    const snippet = pendingHighlight.trim().slice(0, 12);
+    const t = window.setTimeout(() => {
+      const blocks = Array.from(editorScrollRef.current?.querySelectorAll("p, h1, h2, h3, li, blockquote, pre") || []);
+      const hit = blocks.find((b) => snippet && (b.textContent || "").includes(snippet)) || blocks[Math.min(line, blocks.length - 1)];
+      if (hit) {
+        (hit as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+        (hit as HTMLElement).style.transition = "background 2s";
+        (hit as HTMLElement).style.background = "var(--dsw-alias-bg-document-selection)";
+        window.setTimeout(() => { (hit as HTMLElement).style.background = "transparent"; }, 2000);
+      }
+      setPendingHighlight(null);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [pendingHighlight, view, editor, mdContent]);
 
   // ---------- 加载文档真实内容 ----------
   const openDoc = useCallback(async (id: string) => {
