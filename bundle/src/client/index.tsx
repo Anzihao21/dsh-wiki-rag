@@ -737,6 +737,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "stale" | "error">("all");
   const [searchResults, setSearchResults] = useState<WikiDoc[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [activeResultIdx, setActiveResultIdx] = useState(0);
   const [stats, setStats] = useState<{ total: number; ready: number; stale: number; byType: Record<string, number> }>({ total: 0, ready: 0, stale: 0, byType: {} });
   // 历史版本：当前查看文件 + 版本列表 + 版本内容预览（每文件最多保留 3 个版本）
   const [verFileId, setVerFileId] = useState<string | null>(null);
@@ -786,6 +787,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(400);
   const searchInflight = useRef(false);
+  const searchTimer = useRef<number | null>(null);
   const importInflight = useRef(false);
   const toastId = useRef(0);
   const baselineRef = useRef<string>("");
@@ -1019,31 +1021,63 @@ function WikiSidebar(props: WikiSidebarProps) {
     });
   };
 
-  // ---------- 搜索（in-flight 去重） ----------
-  const doSearch = async () => {
-    if (!q.trim() || searchInflight.current) return;
-    searchInflight.current = true;
+  // ---------- 搜索（序号丢弃过期响应，防抖自动触发） ----------
+  const searchSeq = useRef(0);
+  const doSearch = useCallback(async (query?: string) => {
+    const qq = (query ?? q).trim();
+    if (!qq) { setSearchResults(null); setActiveResultIdx(0); return; }
+    const seq = ++searchSeq.current;
     setSearching(true);
     try {
-      const hits = await apiSearch(q.trim());
+      const hits = await apiSearch(qq);
+      if (seq !== searchSeq.current) return; // 已有更新的查询，丢弃过期响应
       setSearchResults(hits.map((r: any, i: number) => ({
         id: String(r.fileId ?? i),
         fileId: r.fileId as number | undefined,
         title: r.title || r.fileName || `结果 ${i + 1}`,
         type: "MD" as const,
         status: "ready" as const,
-        summary: r.content?.slice(0, 120) || "",
+        summary: r.content?.slice(0, 160) || "",
         sourcePath: r.sourcePath || "",
         fileName: r.fileName || "",
         score: r.score,
         chunkIndex: r.chunkIndex,
       })));
+      setActiveResultIdx(0);
     } catch (e: any) {
+      if (seq !== searchSeq.current) return;
       if (e?.offline) notify("error", tt(t, "wiki.offline"));
       else notify("error", e?.message || "搜索失败");
       setSearchResults([]);
-    } finally { searchInflight.current = false; setSearching(false); }
-  };
+    } finally { if (seq === searchSeq.current) setSearching(false); }
+  }, [q, notify, t]);
+
+  // 打开搜索结果：展开父级链 + 滚动定位 + flash，延迟 800ms 再清面板
+  const openSearchResult = useCallback((r: WikiDoc) => {
+    const fId = r.fileId;
+    if (fId != null) {
+      const path = findDocFolderPath(tree, fId, []);
+      if (path) setExpandedFolders((prev) => { const n = new Set(prev); path.forEach((p) => n.add(p)); return n; });
+      setScrollToFileId(fId);
+      openDoc(String(fId));
+    } else {
+      setActiveId(r.id); setMdContent(r.summary);
+    }
+    window.setTimeout(() => { setSearchResults(null); setQ(""); }, 800);
+  }, [tree, openDoc]);
+
+  // 搜索结果键盘导航：↑↓ 移动、Enter 打开、Esc 清空退出
+  useEffect(() => {
+    if (!searchingMode || !searchResults || !searchResults.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); setActiveResultIdx((i) => Math.min(searchResults.length - 1, i + 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setActiveResultIdx((i) => Math.max(0, i - 1)); }
+      else if (e.key === "Enter") { e.preventDefault(); const r = searchResults[activeResultIdx]; if (r) openSearchResult(r); }
+      else if (e.key === "Escape") { e.preventDefault(); setQ(""); setSearchResults(null); searchInputRef.current?.blur(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchingMode, searchResults, activeResultIdx, openSearchResult]);
 
   // ---------- 重命名文档 ----------
   const doRenameDoc = async (id: string) => {
@@ -1588,18 +1622,27 @@ function WikiSidebar(props: WikiSidebarProps) {
           )}
           {/* 搜索框 + 加号主操作菜单 */}
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <input ref={searchInputRef}
-              value={q}
-              onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setSearchResults(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
-              placeholder={tt(t, "wiki.search")}
-              style={{ ...searchInputStyle, flex: 1 }} />
+            <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--dsw-alias-label-tertiary)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 8, pointerEvents: "none" }}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+              <input ref={searchInputRef}
+                value={q}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setQ(v);
+                  if (searchTimer.current) clearTimeout(searchTimer.current);
+                  if (!v.trim()) { setSearchResults(null); setActiveResultIdx(0); return; }
+                  searchTimer.current = window.setTimeout(() => doSearch(v), 280);
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter") { if (searchTimer.current) clearTimeout(searchTimer.current); doSearch(q); } }}
+                placeholder={tt(t, "wiki.search")}
+                style={{ ...searchInputStyle, flex: 1, paddingLeft: 28 }} />
+            </div>
             {searchingMode && (
-              <button title={tt(t, "wiki.cancel")} onClick={() => { setQ(""); setSearchResults(null); }} style={iconBtn}>✕</button>
+              <button title={tt(t, "wiki.cancel")} onClick={() => { setQ(""); setSearchResults(null); setActiveResultIdx(0); }} style={iconBtn}>✕</button>
             )}
             {/* + 主操作菜单：新建文档 / 新建文件夹 / 导入文件 / 导入文件夹 / 导入网页 */}
             <div style={{ position: "relative" }}>
-              <button title={tt(t, "wiki.more")} onClick={() => setShowPlus(!showPlus)} style={headerBtn}>＋</button>
+              <button title={tt(t, "wiki.create")} onClick={() => setShowPlus(!showPlus)} style={headerBtn}>＋</button>
               {showPlus && (
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setShowPlus(false)} />
@@ -1664,24 +1707,30 @@ function WikiSidebar(props: WikiSidebarProps) {
               <SkeletonRows count={8} />
             ) : searchingMode ? (
               searching ? <SkeletonRows count={5} /> :
-                searchResults!.length === 0 ? <div style={emptyHint}>{tt(t, "wiki.noResult")}</div> :
-                  searchResults!.map((r, i) => (
-                    <div key={i} onClick={() => {
-                      const fId = r.fileId;
-                      if (fId != null) {
-                        // 打开全文 + 回树 + 展开路径定位（文档在树中自然高亮）
-                        const path = findDocFolderPath(tree, fId, []);
-                        if (path) setExpandedFolders((prev) => { const n = new Set(prev); path.forEach((p) => n.add(p)); return n; });
-                        setScrollToFileId(fId);
-                        openDoc(String(fId));
-                      } else {
-                        setActiveId(r.id); setMdContent(r.summary);
-                      }
-                      setSearchResults(null); setQ("");
-                    }}
+                searchResults!.length === 0 ? (
+                  <div style={{ padding: "24px 10px", textAlign: "center", color: "var(--dsw-alias-label-tertiary)" }}>
+                    <div style={{ fontSize: 22, marginBottom: 6 }}>🔍</div>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>未找到「{q}」</div>
+                    <div style={{ fontSize: 11 }}>试试更短的关键词，或检查拼写</div>
+                  </div>
+                ) :
+                  searchResults!.map((r, i) => {
+                    const fId = r.fileId;
+                    const trail = fId != null ? findDocFolderPath(tree, fId, []) : null;
+                    const crumb = trail && trail.length ? trail.map((fid) => treeFindName(tree, fid)).filter(Boolean).join(" / ") : "";
+                    const hl = (text: string) => {
+                      if (!q.trim()) return text;
+                      const idx = text.toLowerCase().indexOf(q.trim().toLowerCase());
+                      if (idx < 0) return text;
+                      return (<>{text.slice(0, idx)}<mark style={{ background: "var(--dsw-specific-bubble-highlight)", color: "inherit", padding: "0 2px", borderRadius: 2 }}>{text.slice(idx, idx + q.trim().length)}</mark>{text.slice(idx + q.trim().length)}</>);
+                    };
+                    return (
+                    <div key={i} onClick={() => openSearchResult(r)}
+                      onMouseEnter={() => setActiveResultIdx(i)}
                       style={{
-                        padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", cursor: "pointer", marginBottom: 4,
-                        background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)",
+                        padding: "8px 10px", borderRadius: "var(--dsw-radius-sm)", cursor: "pointer", marginBottom: 4,
+                        background: i === activeResultIdx ? "var(--dsw-specific-sidebar-nav-item-active)" : "var(--dsw-alias-bg-layer-1)",
+                        border: "1px solid var(--dsw-alias-border-l4)",
                       }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
@@ -1690,13 +1739,11 @@ function WikiSidebar(props: WikiSidebarProps) {
                           background: "var(--dsw-alias-bg-module-platform)", color: "var(--dsw-alias-label-secondary)",
                         }}>{r.fileName || "MD"}</span>
                       </div>
-                      <div style={{ marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{r.summary}</div>
-                      <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8, alignItems: "center" }}>
-                        {r.sourcePath && <span>{r.sourcePath}</span>}
-                        {typeof r.score === "number" && <span>score {r.score.toFixed(3)}</span>}
-                      </div>
+                      <div style={{ marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{hl(r.summary)}</div>
+                      {crumb && <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-caption)" }}>📁 {crumb}</div>}
                     </div>
-                  ))
+                  );
+                  })
             ) : rows.length === 0 ? (
               <div style={emptyHint}>{tt(t, "wiki.empty")}</div>
             ) : (
