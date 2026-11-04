@@ -524,7 +524,16 @@ function WikiSidebar(props: WikiSidebarProps) {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     content: "",
-    onUpdate: ({ editor }) => setMdContent(htmlToMd(editor.getHTML())),
+    onUpdate: ({ editor }) => {
+      setMdContent(htmlToMd(editor.getHTML()));
+      // 斜杠命令：光标所在空段落文本恰为 "/" 时弹出块菜单
+      const { $from, empty } = editor.state.selection;
+      const text = $from.parent.textContent;
+      if (empty && /^\s*\/\s*$/.test(text)) {
+        const c = editor.view.coordsAtPos($from.pos);
+        setSlashMenu({ x: c.left, y: c.bottom }); setSlashSel(0);
+      } else setSlashMenu(null);
+    },
     // 选中文字松开后，在选区上方显示横向格式工具栏（无选中自动隐藏）；
     // 拖动选字过程中防抖 120ms，避免工具栏跟着光标闪烁
     onSelectionUpdate: ({ editor }) => {
@@ -578,6 +587,8 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [cmdQ, setCmdQ] = useState("");
   const [cmdSel, setCmdSel] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
+  const [slashMenu, setSlashMenu] = useState<{ x: number; y: number } | null>(null);
+  const [slashSel, setSlashSel] = useState(0);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -724,6 +735,19 @@ function WikiSidebar(props: WikiSidebarProps) {
       },
     });
   }, [loadTrash, refreshList, t]);
+
+  // 斜杠命令块菜单：删除 "/" 后插入对应块
+  const SLASH_ITEMS: { label: string; run: (ed: NonNullable<typeof editor>) => void }[] = [
+    { label: tt(t, "wiki.slashH1"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).setHeading({ level: 1 }).run() },
+    { label: tt(t, "wiki.slashH2"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).setHeading({ level: 2 }).run() },
+    { label: tt(t, "wiki.slashH3"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).setHeading({ level: 3 }).run() },
+    { label: tt(t, "wiki.slashBullet"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).toggleBulletList().run() },
+    { label: tt(t, "wiki.slashTask"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).toggleTaskList().run() },
+    { label: tt(t, "wiki.slashQuote"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).toggleBlockquote().run() },
+    { label: tt(t, "wiki.slashCode"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).toggleCodeBlock().run() },
+    { label: tt(t, "wiki.slashDivider"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).setHorizontalRule().run() },
+    { label: tt(t, "wiki.slashText"), run: (ed) => ed.chain().focus().deleteRange({ from: ed.state.selection.from - 1, to: ed.state.selection.from }).setParagraph().run() },
+  ];
 
   // ---------- 加载设置 ----------
   useEffect(() => {
@@ -2272,6 +2296,22 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <div style={{ maxWidth: 720, margin: "0 auto" }}>
                   <EditorContent editor={editor} />
                 </div>
+                {slashMenu && editor && (
+                  <div style={{ position: "fixed", left: slashMenu.x, top: slashMenu.y + 4, zIndex: 10002, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", boxShadow: "var(--dsw-shadow-lv2)", padding: 4, minWidth: 160 }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") { e.preventDefault(); setSlashSel((s) => Math.min(s + 1, SLASH_ITEMS.length - 1)); }
+                      else if (e.key === "ArrowUp") { e.preventDefault(); setSlashSel((s) => Math.max(s - 1, 0)); }
+                      else if (e.key === "Enter") { e.preventDefault(); SLASH_ITEMS[slashSel].run(editor); setSlashMenu(null); }
+                      else if (e.key === "Escape") { e.preventDefault(); setSlashMenu(null); }
+                    }}>
+                    {SLASH_ITEMS.map((it, i) => (
+                      <div key={i} onMouseEnter={() => setSlashSel(i)} onMouseDown={(e) => { e.preventDefault(); it.run(editor); setSlashMenu(null); }}
+                        style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderRadius: "var(--dsw-radius-sm)", background: i === slashSel ? "var(--dsw-alias-interactive-bg-hover)" : "transparent", color: "var(--dsw-alias-label-primary)" }}>
+                        {it.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {/* 字数统计 */}
               <div style={{ fontSize: 11, color: "var(--dsw-alias-label-tertiary)", padding: "4px 2px 0", borderTop: "1px solid var(--dsw-alias-border-l1)", display: "flex", gap: 12 }}>
@@ -2871,6 +2911,9 @@ function apply(ctx: any): void {
       "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
       "wiki.cmdPlaceholder": "输入命令或搜索文档…",
       "wiki.toc": "大纲", "wiki.tocEmpty": "文档无标题",
+      "wiki.slashH1": "标题 1", "wiki.slashH2": "标题 2", "wiki.slashH3": "标题 3",
+      "wiki.slashBullet": "无序列表", "wiki.slashTask": "任务列表", "wiki.slashQuote": "引用",
+      "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
       "wiki.clear": "清空",
     },
     en: {
@@ -2938,6 +2981,9 @@ function apply(ctx: any): void {
       "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
       "wiki.cmdPlaceholder": "Type a command or search documents…",
       "wiki.toc": "Outline", "wiki.tocEmpty": "No headings",
+      "wiki.slashH1": "Heading 1", "wiki.slashH2": "Heading 2", "wiki.slashH3": "Heading 3",
+      "wiki.slashBullet": "Bullet list", "wiki.slashTask": "Task list", "wiki.slashQuote": "Quote",
+      "wiki.slashCode": "Code block", "wiki.slashDivider": "Divider", "wiki.slashText": "Text",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
