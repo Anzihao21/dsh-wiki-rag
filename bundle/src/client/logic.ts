@@ -77,6 +77,7 @@ export const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.slashH1": "标题 1", "wiki.slashH2": "标题 2", "wiki.slashH3": "标题 3",
   "wiki.slashBullet": "无序列表", "wiki.slashTask": "任务列表", "wiki.slashQuote": "引用",
   "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
+  "wiki.resultsCount": "相关文档 {n} 篇",
   "wiki.folderName": "文件夹名称…",
   "wiki.export": "导出 Markdown",
   "wiki.exported": "已导出 Markdown",

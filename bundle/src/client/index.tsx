@@ -1853,7 +1853,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                     <div style={{ fontSize: 11 }}>试试更短的关键词，或检查拼写</div>
                   </div>
                 ) :
-                  searchResults!.map((r, i) => {
+                  <>
+                  <div style={{ padding: "4px 2px", fontSize: 11, color: "var(--dsw-alias-label-caption)" }}>{tt(t, "wiki.resultsCount", { n: searchResults!.length })}</div>
+                  {searchResults!.map((r, i) => {
                     const fId = r.fileId;
                     const trail = fId != null ? findDocFolderPath(tree, fId, []) : null;
                     const crumb = trail && trail.length ? trail.map((fid) => treeFindName(tree, fid)).filter(Boolean).join(" / ") : "";
@@ -1882,7 +1884,8 @@ function WikiSidebar(props: WikiSidebarProps) {
                       {crumb && <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-caption)" }}>📁 {crumb}</div>}
                     </div>
                   );
-                  })
+                  })}
+                  </>
             ) : rows.length === 0 ? (
               <div style={emptyHint}>{tt(t, "wiki.empty")}</div>
             ) : (
@@ -2935,6 +2938,7 @@ function apply(ctx: any): void {
       "wiki.slashH1": "标题 1", "wiki.slashH2": "标题 2", "wiki.slashH3": "标题 3",
       "wiki.slashBullet": "无序列表", "wiki.slashTask": "任务列表", "wiki.slashQuote": "引用",
       "wiki.slashCode": "代码块", "wiki.slashDivider": "分隔线", "wiki.slashText": "正文",
+      "wiki.resultsCount": "相关文档 {n} 篇",
       "wiki.clear": "清空",
     },
     en: {
@@ -3005,6 +3009,7 @@ function apply(ctx: any): void {
       "wiki.slashH1": "Heading 1", "wiki.slashH2": "Heading 2", "wiki.slashH3": "Heading 3",
       "wiki.slashBullet": "Bullet list", "wiki.slashTask": "Task list", "wiki.slashQuote": "Quote",
       "wiki.slashCode": "Code block", "wiki.slashDivider": "Divider", "wiki.slashText": "Text",
+      "wiki.resultsCount": "{n} related documents",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
