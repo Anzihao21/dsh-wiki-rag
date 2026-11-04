@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { initDatabase, closeDatabase } from '../sqlite-init';
-import { writeLog, listLogs, lastLog, pruneLogs } from '../log-db';
+import { writeLog, listLogs, lastLog, pruneLogs, __resetLogCounterForTests } from '../log-db';
 
 let tmpDir = '';
 
@@ -62,5 +62,29 @@ describe('log-db 操作日志', () => {
     const removed = await pruneLogs(2);
     expect(removed).toBe(3);
     expect((await listLogs({ action: 'repeat' })).length).toBe(2);
+  });
+
+  it('pruneLogs 跨 action 独立计数，互不影响', async () => {
+    for (let i = 0; i < 10; i++) await writeLog('aaa', String(i));
+    for (let i = 0; i < 3; i++) await writeLog('bbb', String(i));
+    await pruneLogs(4);
+    expect((await listLogs({ action: 'aaa', limit: 100 })).length).toBe(4);
+    expect((await listLogs({ action: 'bbb', limit: 100 })).length).toBe(3);
+  });
+
+  it('writeLog 写入后默认 level 为 info', async () => {
+    await writeLog('plain', 'no level');
+    const row = await lastLog();
+    expect(row?.level).toBe('info');
+  });
+
+  it('writeLog 写够 PRUNE_EVERY 次后后台触发自动修剪（不抛错）', async () => {
+    __resetLogCounterForTests();
+    // 写 201 条同 action：跨过 200 阈值触发一次 auto-prune(500)，由于 201 < 500 实际不删
+    for (let i = 0; i < 201; i++) await writeLog('auto', String(i));
+    // 等后台 prune 跑完（microtask + 一次 tick）
+    await new Promise((r) => setTimeout(r, 20));
+    // 201 条都应在（因为 keep=500 未触发删除）
+    expect((await listLogs({ action: 'auto', limit: 500 })).length).toBe(201);
   });
 });

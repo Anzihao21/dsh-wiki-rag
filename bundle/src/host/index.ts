@@ -22,7 +22,7 @@ import { FileWatcher } from '../../../src/main/file/file-watcher';
 import { ragSearch, normalizeSearchInput } from '../../../src/main/rag/rag-search';
 import { initEmbedding } from '../../../src/main/rag/embedding';
 import { initRerank } from '../../../src/main/rag/rerank';
-import { writeLog, listLogs } from '../../../src/main/db/log-db';
+import { writeLog, listLogs, pruneLogs } from '../../../src/main/db/log-db';
 import {
   listKnowledgeFiles,
   getKnowledgeFileById,
@@ -185,6 +185,8 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     await initDatabase(path.join(dataDir, 'dsh-wiki-rag.db'));
     logger.info('plugin activated', { dbPath: getDbPath() });
     await writeLog('plugin-activate', `dsh-wiki-rag DB=${getDbPath()}`);
+    // 启动时修剪一次历史日志（每 action 保留 500 条），防止 operation_log 无限增长
+    pruneLogs(500).catch(() => {});
 
     // 接入文件监听：源文件变更入待确认队列；入队前预计算新旧文本与 diff，前端轮询即可直接渲染
     // 外层 try/catch：watcher 回调是事件驱动的，任何异常都不能冒泡到 chokidar 导致整个 watcher 崩溃
@@ -212,7 +214,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         });
       } catch (e) {
         // 单条监听失败不影响其它条目；仅记日志
-        await writeLog('watcher-callback-error', `fileId=${change.fileId}: ${(e as Error).message}`).catch(() => {});
+        await writeLog('watcher-callback-error', `fileId=${change.fileId}: ${(e as Error).message}`, { level: 'error' }).catch(() => {});
       }
     });
     // 启动时对所有已有本地源文件条目挂监听
@@ -553,7 +555,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       for (const m of movedSoFar.reverse()) {
         try { await fs.rename(m.to, m.from); } catch { /* ignore */ }
       }
-      await writeLog('settings-migrate-rollback', (e as Error).message);
+      await writeLog('settings-migrate-rollback', (e as Error).message, { level: 'error' });
       throw e;
     }
 
@@ -702,7 +704,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               job.error = e.message;
               job.message = '导入失败';
               logger.error('async import failed', { jobId, source, error: e.message });
-              writeLog('import-async-error', `${jobId}: ${e.message}`).catch(() => {});
+              writeLog('import-async-error', `${jobId}: ${e.message}`, { level: 'error' }).catch(() => {});
             } finally {
               release(opKey);
               pruneJobs();
@@ -1056,7 +1058,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               const newZip = await archiveSourceFile(to, settings.zipStoragePath, `${f.file_name.replace(/\.md$/i, '')}-src`);
               try { if (f.zip_archive_path) await fs.unlink(f.zip_archive_path); } catch { /* ignore */ }
               await updateZipPath(f.id, newZip);
-            } catch (e) { await writeLog('folder-rebind-archive-error', `fileId=${f.id}: ${(e as Error).message}`); }
+            } catch (e) { await writeLog('folder-rebind-archive-error', `fileId=${f.id}: ${(e as Error).message}`, { level: 'warn' }); }
             rebound.push({ fileId: f.id, from: oldSource, to });
             count++;
           }
@@ -1211,7 +1213,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
               try {
                 await createSnapshot(settings.mdStoragePath, settings.zipStoragePath, snapshotStoragePath);
                 await pruneSnapshots(settings.snapshotKeep);
-              } catch (e) { await writeLog('auto-snapshot-error', (e as Error).message); }
+              } catch (e) { await writeLog('auto-snapshot-error', (e as Error).message, { level: 'warn' }); }
             }
             await applySourceUpdate(id, newText, record.md_path, (fid, t) => importer.reindex(fid, t));
             const idx = pendingChanges.findIndex((p) => p.fileId === id);
@@ -1274,7 +1276,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
                 try { if (record.zip_archive_path) await fs.unlink(record.zip_archive_path); } catch { /* ignore */ }
                 await updateZipPath(id, newZipPath);
               } catch (e) {
-                await writeLog('rebind-archive-error', `fileId=${id}: ${(e as Error).message}`);
+                await writeLog('rebind-archive-error', `fileId=${id}: ${(e as Error).message}`, { level: 'warn' });
               }
               // 5. 重新挂新路径监听
               try { watcher.watchSource(id); } catch { /* ignore */ }
@@ -1300,7 +1302,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logger.error('http request failed', { path: pathname, method: req.method, error: errMsg });
-        await writeLog('http-error', `${pathname}: ${errMsg}`).catch(() => {});
+        await writeLog('http-error', `${pathname}: ${errMsg}`, { level: 'error' }).catch(() => {});
         sendHttpError(res, e);
       }
     });

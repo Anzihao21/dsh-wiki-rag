@@ -8,6 +8,27 @@ export interface LogOptions {
   meta?: Record<string, unknown>;
 }
 
+// ---- 自动修剪计数器 ----
+// 每次 writeLog 自增；超过 PRUNE_EVERY 次就在后台触发一次 pruneLogs(500)，
+// 避免 operation_log 表无限增长。修剪失败静默吞掉，不影响主流程。
+let writeCount = 0;
+let pruning = false;
+const PRUNE_EVERY = 200;
+const KEEP_PER_ACTION = 500;
+
+function maybeAutoPrune(): void {
+  writeCount++;
+  if (writeCount < PRUNE_EVERY) return;
+  writeCount = 0;
+  if (pruning) return;
+  pruning = true;
+  // fire-and-forget：修剪是后台维护，不阻塞 writeLog 调用方
+  Promise.resolve()
+    .then(() => pruneLogs(KEEP_PER_ACTION))
+    .catch(() => {})
+    .finally(() => { pruning = false; });
+}
+
 /** 写入操作日志（结构化：level + 可选 meta JSON） */
 export async function writeLog(action: string, detail: string, options?: LogOptions): Promise<void> {
   const level = options?.level ?? 'info';
@@ -19,6 +40,7 @@ export async function writeLog(action: string, detail: string, options?: LogOpti
     level,
     meta,
   ]);
+  maybeAutoPrune();
 }
 
 export interface ListLogsOptions {
@@ -65,4 +87,10 @@ export async function pruneLogs(keepPerAction = 500): Promise<number> {
     }
   }
   return removed;
+}
+
+/** 供测试或宿主启动时重置计数器（不影响 DB） */
+export function __resetLogCounterForTests(): void {
+  writeCount = 0;
+  pruning = false;
 }
