@@ -143,7 +143,7 @@ normalizeSearchInput（空串→null；topK clamp [1,50]）
 
 ## 9. 工程保障
 
-- **测试四层布局**（39 文件 / 498 例 / Errors=0）：
+- **测试四层布局**（39 文件 / 503 例 / Errors=0，v0.0.14 补做后）：
   1. node 单测：logic.ts 纯函数（56 例）+ DB 迁移/回收站/向量/日志等；
   2. 请求级集成：host-api.test.ts 直调 createApiHandler（import/search/trash/export/settings 分支，400/404/409/500/501 语义）；
   3. jsdom 交互：storage.dom + interactions.dom（fetch 桩契约测试，27 例）；
