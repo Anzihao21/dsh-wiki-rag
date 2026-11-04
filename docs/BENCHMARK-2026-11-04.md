@@ -111,3 +111,25 @@ npx vitest run
 - 50 文件夹 × 100 文档 = 5050 节点，全部展开后 `flattenTree` 生成可见行 **1ms**（阈值断言 <100ms，见 `bundle/src/client/__tests__/logic.test.ts`）。
 - 虚拟滚动：`startIndex = floor(scrollTop/ROW_H)-2`，`endIndex = min(rows, ceil((scrollTop+viewportH)/ROW_H)+2)`，5050 行时 DOM 仅渲染视口 ±2 缓冲行（约 20-30 个节点），滚动用 rAF 合并。
 - 结论：树数据准备非瓶颈，首屏开销在 React 渲染视口行而非全量 flatten。
+
+## FTS5 可行性评估（2026-11-04 第四批轮1）
+
+### 编译支持
+`PRAGMA compile_options` 含 `ENABLE_FTS5`（better-sqlite3 预编译二进制自带），可直接 `CREATE VIRTUAL TABLE ... USING fts5(...)`。
+
+### 微基准（100k chunks，内存库）
+| 操作 | 耗时 |
+|---|---|
+| 插入 100k chunk | 166ms |
+| LIKE 预过滤（`chunk_text LIKE '%keyword 42%' LIMIT 1000`） | **6.9ms** |
+| FTS5 建表 | 2.3ms |
+| FTS5 全量重建（`INSERT INTO chunks_fts SELECT ...`） | **91ms** |
+| FTS5 MATCH 查询（`WHERE chunks_fts MATCH 'keyword' LIMIT 1000`） | **0.93ms** |
+
+**结论**：FTS5 查询比 LIKE 快 ~7x（6.9ms → 0.93ms），100k chunk 全量重建仅 91ms。
+
+### 迁移方案建议（未落地，待组织者决策）
+- SCHEMA v6 迁移：`CREATE VIRTUAL TABLE chunks_fts USING fts5(chunk_text, content='vector_chunks', content_rowid='id')`（external content 模式），然后全量 `INSERT INTO chunks_fts(rowid, chunk_text) SELECT id, chunk_text FROM vector_chunks`。
+- 同步策略：vector_chunks 写入路径已有 `vectorChunksReplace` 单事务——在同事务内追加 `INSERT INTO chunks_fts ...` 或用触发器（AFTER INSERT/DELETE）。触发器方案对业务代码侵入最小。
+- 风险：MATCH 是词法匹配（空格分词），LIKE 是子串匹配——CJK 文本需要 `tokenize='unicode61'` 或 trigram tokenizer 才合理。当前 chunk_text 含中文，MATCH 默认 unicode61 对中文按单字切分，召回质量需实测。
+- 建议：若要切换，先在测试库验证中文 query 的召回率（MATCH '知识库' vs LIKE '%知识库%'），再决定是否上。
