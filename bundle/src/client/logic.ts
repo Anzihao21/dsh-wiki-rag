@@ -235,3 +235,12 @@ export function markEdited(times: Record<string, number>, id: string, now: numbe
   saveEditTimes(next);
   return next;
 }
+
+/** 构造安全的导出下载文件名：去扩展名、清洗非法字符、兜底 */
+export function buildDownloadName(fileName: string | undefined, title: string | undefined, fallback = "document"): string {
+  const base = (fileName || title || fallback)
+    .replace(/\.(md|txt)$/i, "")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .trim() || fallback;
+  return base + ".md";
+}

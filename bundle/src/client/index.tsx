@@ -29,7 +29,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
-  loadEditTimes, markEdited as saveEditTimesMark,
+  loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -1188,12 +1188,12 @@ function WikiSidebar(props: WikiSidebarProps) {
     if (!content) {
       try { const r = await apiGetContent(id); content = r?.content || ""; } catch { content = ""; }
     }
-    const base = (doc?.fileName || doc?.title || "document").replace(/\.(md|txt)$/i, "");
+    const downloadName = buildDownloadName(doc?.fileName, doc?.title);
     try {
       const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = base + ".md";
+      a.href = url; a.download = downloadName;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       notify("success", tt(t, "wiki.exported"));

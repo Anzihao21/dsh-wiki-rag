@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
-  saveSearchHistory, loadEditTimes, markEdited,
+  saveSearchHistory, loadEditTimes, markEdited, buildDownloadName,
   type TreeNode,
 } from "../logic";
 
@@ -190,5 +190,20 @@ describe("flattenTree 规模", () => {
     const ms = Date.now() - t0;
     expect(out.length).toBe(50 * 101); // 50 folder 头 + 5000 doc
     expect(ms).toBeLessThan(100);
+  });
+});
+
+// ---------------- buildDownloadName（轮5 真问题：文件名非法字符） ----------------
+describe("buildDownloadName", () => {
+  it("去除 .md/.txt 扩展名再加 .md", () => {
+    expect(buildDownloadName("note.md", undefined)).toBe("note.md");
+    expect(buildDownloadName(undefined, "note.txt")).toBe("note.md");
+  });
+  it("清洗 Windows 非法字符与路径分隔符", () => {
+    expect(buildDownloadName("a/b\\c:d*e", undefined)).toBe("a_b_c_d_e.md");
+  });
+  it("空值兜底 document.md", () => {
+    expect(buildDownloadName(undefined, undefined)).toBe("document.md");
+    expect(buildDownloadName("   ", "  ")).toBe("document.md");
   });
 });
