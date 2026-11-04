@@ -326,6 +326,15 @@ export function sortRefsByScore<T extends { score?: number }>(results: T[]): T[]
   return [...(results || [])].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
 }
 
+/** 字节数格式化为可读字符串（B/KB/MB/GB，1位小数） */
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0; let v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
+
 /** 归一化搜索命中为行模型（与渲染解耦，便于测试） */
 export function normalizeSearchHits(hits: any[]): { id: string; title: string; summary: string; score?: number; fileId?: number }[] {
   return (hits || []).map((r, i) => ({

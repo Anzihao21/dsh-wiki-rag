@@ -30,7 +30,7 @@ import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
   loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, filterActiveRefs, sortRefsByScore,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, filterActiveRefs, sortRefsByScore, formatBytes,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -2374,6 +2374,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{tt(t, "wiki.trash")}
                   <span style={{ fontSize: 11, fontWeight: 400, color: "var(--dsw-alias-label-caption)", marginLeft: 8 }}>
                     {tt(t, "wiki.trashCount", { files: trash.files.length, folders: trash.folders.length })}
+                    {trash.files.some((f: any) => f.size != null) && <> · {tt(t, "wiki.trashSize")} {formatBytes(trash.files.reduce((s: number, f: any) => s + (f.size || 0), 0))}</>}
                   </span>
                 </span>
                 <button onClick={() => setView("list")} style={iconBtn}>✕</button>
@@ -3128,7 +3129,7 @@ function apply(ctx: any): void {
       "wiki.selectedCount": "已选 {n} 项", "wiki.batchMove": "移动到…", "wiki.batchMoveTo": "移动到文件夹",
       "wiki.batchDeleteConfirm": "删除选中的 {n} 个文档？此操作不可恢复。",
       "wiki.trash": "回收站", "wiki.trashEmpty": "回收站为空", "wiki.trashEmptyAll": "清空回收站", "wiki.confirmEmptyTrash": "确定清空回收站？此操作不可恢复", "wiki.trashEmptied": "已清空回收站",
-      "wiki.cmdNewDesc": "在根目录创建新 Markdown", "wiki.cmdImportDesc": "从磁盘导入文件", "wiki.cmdSearchDesc": "聚焦搜索框", "wiki.cmdTrashDesc": "打开回收站视图", "wiki.cmdEmptyTrashDesc": "清空回收站所有内容", "wiki.cmdExportDesc": "导出当前文档为 Markdown", "wiki.cmdSettingsDesc": "打开设置视图",
+      "wiki.cmdNewDesc": "在根目录创建新 Markdown", "wiki.cmdImportDesc": "从磁盘导入文件", "wiki.cmdSearchDesc": "聚焦搜索框", "wiki.cmdTrashDesc": "打开回收站视图", "wiki.cmdEmptyTrashDesc": "清空回收站所有内容", "wiki.cmdExportDesc": "导出当前文档为 Markdown", "wiki.cmdSettingsDesc": "打开设置视图", "wiki.trashSize": "大小",
       "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
       "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
       "wiki.cmdPlaceholder": "输入命令或搜索文档…",
@@ -3202,7 +3203,7 @@ function apply(ctx: any): void {
       "wiki.selectedCount": "{n} selected", "wiki.batchMove": "Move to…", "wiki.batchMoveTo": "Move to folder",
       "wiki.batchDeleteConfirm": "Delete {n} selected documents? This cannot be undone.",
       "wiki.trash": "Trash", "wiki.trashEmpty": "Trash is empty", "wiki.trashEmptyAll": "Empty trash", "wiki.confirmEmptyTrash": "Empty trash? This cannot be undone", "wiki.trashEmptied": "Trash emptied",
-      "wiki.cmdNewDesc": "Create a new Markdown at root", "wiki.cmdImportDesc": "Import files from disk", "wiki.cmdSearchDesc": "Focus the search box", "wiki.cmdTrashDesc": "Open the trash view", "wiki.cmdEmptyTrashDesc": "Remove all items in trash", "wiki.cmdExportDesc": "Export current doc as Markdown", "wiki.cmdSettingsDesc": "Open settings view",
+      "wiki.cmdNewDesc": "Create a new Markdown at root", "wiki.cmdImportDesc": "Import files from disk", "wiki.cmdSearchDesc": "Focus the search box", "wiki.cmdTrashDesc": "Open the trash view", "wiki.cmdEmptyTrashDesc": "Remove all items in trash", "wiki.cmdExportDesc": "Export current doc as Markdown", "wiki.cmdSettingsDesc": "Open settings view", "wiki.trashSize": "Size",
       "wiki.trashRestored": "Restored", "wiki.trashPurged": "Permanently deleted",
       "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
       "wiki.cmdPlaceholder": "Type a command or search documents…",

@@ -3,7 +3,7 @@ import {
   computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, makeTranslator, shouldLeaveGuard, isJobTimedOut, loadSearchHistory,
   saveSearchHistory, loadEditTimes, markEdited, buildDownloadName, filterCommands,
-  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits, filterActiveRefs, sortRefsByScore,
+  extractHeadings, findLineIndex, filterLinks, dedupeRefs, countRefs, normalizeSearchHits, filterActiveRefs, sortRefsByScore, formatBytes,
   type TreeNode,
 } from "../logic";
 
@@ -294,4 +294,9 @@ describe("IME 门控", () => {
   it("组合结束后匹配 [[ 弹", () => {
     expect(matchLink("[[al", false)).toBe(true);
   });
+});
+
+describe("formatBytes", () => {
+  it("0 返回 0 B", () => expect(formatBytes(0)).toBe("0 B"));
+  it("KB/MB 换算", () => { expect(formatBytes(2048)).toBe("2.0 KB"); expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB"); });
 });
