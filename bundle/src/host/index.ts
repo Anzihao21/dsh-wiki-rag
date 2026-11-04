@@ -653,6 +653,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     logger,
     writeLog,
     randomUUID,
+    pruneJobs,
   });
 
   // 启动 HTTP API server（供客户端 UI 调用）
@@ -702,116 +703,9 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           })));
         }
 
-        // ---- 导入（六大来源分发；async:true 走后台任务）----
-        if (req.method === 'POST' && pathname === '/api/wiki/import') {
-          let parsed: any;
-          try { parsed = JSON.parse(body || '{}'); } catch {
-            return json(400, { error: '请求体不是合法 JSON' });
-          }
-          if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
-          const source = typeof parsed.source === 'string' ? parsed.source.trim() : '';
-          const parsedKind = typeof parsed.kind === 'string' ? parsed.kind : '';
-          // 内容上传通道（kind=upload）以 fileName+content 为来源，无需 source
-          const isUpload = parsedKind === 'upload';
-          if (!source && !isUpload) return json(400, { error: '缺少导入来源 source' });
-          let folderId: number | null = null;
-          if (parsed.folderId !== undefined && parsed.folderId !== null) {
-            if (typeof parsed.folderId !== 'number') return json(400, { error: 'folderId 必须是数字或 null' });
-            folderId = parsed.folderId;
-          }
-          parsed.folderId = folderId;
-          logger.info('import requested', { source, async: !!parsed.async, folderId });
-
-          // 并发去重：同一路径导入进行中 → 409；内容上传按请求唯一键（多个并发上传互不阻塞）
-          const opKey = isUpload ? `upload:${randomUUID()}` : `import:${source}`;
-          if (!acquire(opKey)) return json(409, { error: 'operation-in-progress' });
-
-          // 同步模式（保持原行为）
-          if (!parsed.async) {
-            try {
-              const result = await dispatchImport(parsed);
-              return json(200, result);
-            } finally {
-              release(opKey);
-            }
-          }
-
-          // 异步模式：立刻返回 jobId，后台跑 FileImporter 并实时更新进度
-          const jobId = randomUUID();
-          const job: Job = {
-            jobId, phase: 'prepare', done: 0, total: 1,
-            message: '任务已创建', status: 'running', startedAt: Date.now(),
-          };
-          jobs.set(jobId, job);
-          (async () => {
-            try {
-              job.result = await runImportJob(parsed, job);
-              job.status = 'done';
-              job.message = '导入完成';
-              logger.info('async import done', { jobId, source });
-              // writeLog 失败不翻转 job 状态（fire-and-forget）
-              writeLog('import-async', `job=${jobId} done`).catch(() => {});
-            } catch (e: any) {
-              job.status = 'error';
-              job.error = e.message;
-              job.message = '导入失败';
-              logger.error('async import failed', { jobId, source, error: e.message });
-              writeLog('import-async-error', `${jobId}: ${e.message}`, { level: 'error' }).catch(() => {});
-            } finally {
-              release(opKey);
-              pruneJobs();
-            }
-          })();
-          return json(200, { jobId });
-        }
-
-        // ---- 检索（补 title/content + 溯源字段 fileId/fileName/sourcePath/score/chunkIndex）----
-        if (req.method === 'POST' && pathname === '/api/wiki/search') {
-          let parsed: any;
-          try { parsed = JSON.parse(body || '{}'); } catch {
-            return json(400, { error: '请求体不是合法 JSON' });
-          }
-          const norm = normalizeSearchInput(parsed?.query, parsed?.topK);
-          if (!norm) {
-            return json(400, { error: '缺少 query' });
-          }
-          const results = await ragSearch(norm.query, norm.topK);
-          logger.info('search executed', { query: norm.query, topK: norm.topK, hits: results.length });
-          return json(200, results.map((r) => ({
-            ...r,
-            title: r.file_name,
-            content: r.chunk_text,
-            fileId: r.file_id,
-            fileName: r.file_name,
-            sourcePath: r.md_path || r.source_path,
-            score: r.score,
-            chunkIndex: r.chunk_index ?? 0,
-          })));
-        }
-
-        // ---- 日志（支持 ?action=&level=&limit= 过滤，返回结构化 level/meta） ----
-        if (req.method === 'GET' && pathname === '/api/wiki/logs') {
-          const action = url.searchParams.get('action') || undefined;
-          const level = url.searchParams.get('level') || undefined;
-          const limit = parseInt(url.searchParams.get('limit') || '200') || 200;
-          const rows = await listLogs({ limit, action, level });
-          return json(200, rows.map((l) => {
-            let meta: unknown;
-            try { meta = l.meta ? JSON.parse(l.meta) : undefined; } catch { meta = l.meta; }
-            return { time: new Date(l.time).toLocaleString(), action: l.action, detail: l.detail, level: l.level, meta };
-          }));
-        }
-
         // ---- 待确认变更（文件监听 Diff 队列）----
         if (req.method === 'GET' && pathname === '/api/wiki/pending-changes') {
           return json(200, pendingChanges);
-        }
-
-        // ---- 统计 ----
-        if (req.method === 'GET' && pathname === '/api/wiki/stats') {
-          const byType = await countByType();
-          const total = Object.values(byType).reduce((a: number, b) => a + b, 0);
-          return json(200, { byType, total, ready: total, stale: 0 });
         }
 
         // ---- 快照：列表 / 新建 ----
@@ -1221,23 +1115,6 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
             `文件夹批量同步 id=${fid} total=${files.length} synced=${synced} skipped=${skipped} needsConfirm=${needsConfirm.length}`
           );
           return json(200, { total: files.length, synced, skipped, needsConfirm });
-        }
-
-        // ---- 设置：GET /settings ----
-        if (req.method === 'GET' && pathname === '/api/wiki/settings') {
-          return json(200, publicSettings());
-        }
-        // ---- 设置：POST /settings（修改存储目录时迁移文件并更新 DB）----
-        if (req.method === 'POST' && pathname === '/api/wiki/settings') {
-          let parsed: any;
-          try { parsed = JSON.parse(body || '{}'); } catch {
-            return json(400, { error: '请求体不是合法 JSON' });
-          }
-          if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
-          await applySettingsPatch(parsed);
-          // writeLog 失败不影响已保存的设置（fire-and-forget）
-          writeLog('settings-update', '设置已保存').catch(() => {});
-          return json(200, { status: 'saved', settings: publicSettings() });
         }
 
         // ---- 批量任务：GET /jobs（最近 20，最新在前）----

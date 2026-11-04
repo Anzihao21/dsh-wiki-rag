@@ -44,6 +44,7 @@ export interface ApiDeps {
   };
   writeLog: (action: string, detail: string, opts?: { level?: string }) => Promise<void>;
   randomUUID: () => string;
+  pruneJobs?: () => void;
 }
 
 export interface ApiResponse {
@@ -126,6 +127,7 @@ export function createApiHandler(deps: ApiDeps) {
             writeLog('import-async-error', `${jobId}: ${e.message}`, { level: 'error' }).catch(() => {});
           } finally {
             release(opKey);
+            deps.pruneJobs?.();
           }
         })();
         return { status: 200, body: { jobId } };
