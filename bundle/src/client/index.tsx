@@ -1583,6 +1583,10 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
 
   // 块上移/下移：交换当前顶层块与相邻兄弟（ProseMirror 事务，进撤销栈）
+  // 块级拖拽评估（v0.0.13d）：自由拖拽把手（HTML5 DnD on 段落）需处理 drop 位置计算、嵌套容器命中、
+  //   与现有选区/撤销栈的事务合并，风险高收益有限；按钮方案已覆盖"调整块顺序"核心诉求，
+  //   且是单事务进撤销栈、可撤销、键盘可达。结论：不落地自由拖拽，保留按钮方案；
+  //   Shift+↑↓ 快捷键与原生文本选择冲突，暂不绑，留待后续用 EditorView props 单独处理。
   const moveBlock = (delta: -1 | 1) => {
     if (!editor) return;
     const { $from } = editor.state.selection;
