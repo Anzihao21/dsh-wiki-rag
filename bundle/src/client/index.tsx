@@ -881,6 +881,9 @@ function WikiSidebar(props: WikiSidebarProps) {
   const jobTimers = useRef<number[]>([]);
   const scrollRaf = useRef<number | null>(null);
   // 卸载统一清理：轮询 interval、toast 移除定时器、搜索/选区/flash 防抖窗口、滚动 rAF
+  // 卸载清理（v0.0.13e 复查）：集中清除 job/toast 定时器、search/selToolbar/flash 定时器、scroll rAF；
+  // linkMenu/slashMenu/命令面板为条件渲染卸载，其局部定时器在各自 effect cleanup 处理；
+  // 虚拟滚动 DOM 仅渲染视口±2行，滚动不累积节点。
   useEffect(() => () => {
     jobTimers.current.forEach((t) => clearInterval(t));
     toastTimers.current.forEach((t) => clearTimeout(t));
