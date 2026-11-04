@@ -50,6 +50,7 @@ import { createSnapshot, restoreSnapshot, listSnapshots, previewRestore } from '
 import { DEFAULT_SETTINGS, type PluginSettings } from '../../../src/main/types';
 import { createLogger } from '../../../src/main/utils/logger';
 import { AppError, BAD_REQUEST } from '../../../src/main/utils/errors';
+import { createApiHandler } from './api-handler';
 import { validateSettingsPatch } from '../../../src/main/settings-validation';
 
 const logger = createLogger('dsh-wiki-rag');
@@ -627,6 +628,24 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   const UPDATE_CHECK_TTL_MS = 5 * 60 * 1000;
   let updateCache: { at: number; latestVersion: string } | null = null;
 
+  // 可测 API handler（核心路由子集）：直调 dispatchImport/runImportJob/applySettingsPatch 等闭包函数
+  const apiHandler = createApiHandler({
+    publicSettings,
+    applySettingsPatch,
+    dispatchImport,
+    runImportJob,
+    acquire,
+    release,
+    jobs,
+    ragSearch,
+    normalizeSearchInput,
+    countByType,
+    listLogs,
+    logger,
+    writeLog,
+    randomUUID,
+  });
+
   // 启动 HTTP API server（供客户端 UI 调用）
   ctx.effect(() => {
     const server = createServer(async (req, res) => {
@@ -647,6 +666,21 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         res.end(JSON.stringify(obj));
       };
       const seg = pathname.split('/').filter(Boolean); // ['api','wiki',...]
+
+      // 可测 API handler 接管核心路由（import/search/logs/stats/settings）；
+      // 返回 404 表示该路由不在 handler 子集内，继续走下面的内联路由
+      const HANDLED_PATHS = new Set([
+        'POST /api/wiki/import',
+        'POST /api/wiki/search',
+        'GET /api/wiki/logs',
+        'GET /api/wiki/stats',
+        'GET /api/wiki/settings',
+        'POST /api/wiki/settings',
+      ]);
+      if (HANDLED_PATHS.has(`${req.method} ${pathname}`)) {
+        const r = await apiHandler(req.method!, pathname, url.searchParams, body);
+        return json(r.status, r.body);
+      }
 
       try {
         // ---- 列表（补 title/kind/chunk_count 字段对齐前端渲染）----
