@@ -211,3 +211,9 @@ LRU 命中率曲线（5k 段，重复率变化）：
 - 回收站容量 size 字段：client 已按 `f.size||0` 回退，host 未补 fs.stat（非阻塞，后续可加）。
 - 498 例全绿，Errors=0。
 - SCHEMA 链路：v1→v6（deleted_at v5 / FTS5 trigram v6）；检索分层：小库全表 / FTS5 MATCH / 短词 LIKE / 零命中退化；软删三路 JOIN 过滤。
+
+## v0.0.14 发布后补做（2026-11-04）
+
+- ZIP 导出请求层端到端：正常返回 path/fileName/size/count、空库 400、异常 500 不泄露 stack。
+- /trash list 补 size 字段（fs.stat md 文件字节，缺失容错 0）。
+- 503 例全绿，Errors=0。
