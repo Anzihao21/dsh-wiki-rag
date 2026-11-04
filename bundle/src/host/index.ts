@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 
-import { initDatabase, getDbPath, closeDatabase, walCheckpoint, run, get, all } from '../../../src/main/db/sqlite-init';
+import { initDatabase, getDbPath, closeDatabase, walCheckpoint, run, get, all, runInTransaction } from '../../../src/main/db/sqlite-init';
 import { FileImporter } from '../../../src/main/file/file-importer';
 import { detectEditConflict } from '../../../src/main/file/edit-conflict';
 import { FileWatcher } from '../../../src/main/file/file-watcher';
@@ -301,20 +301,23 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
   // 每文件最多保留的历史版本数
   const KEEP_FILE_VERSIONS = 3;
   // 人工编辑保存时，把旧内容滚动写入 file_versions（最多保留 3 个版本）
+  // INSERT + DELETE 包一个事务，避免并发编辑时出现"删了但没插入"的中间态
   async function pushFileVersion(fileId: number, content: string): Promise<void> {
     if (!content) return;
     const now = Date.now();
-    run(
-      'INSERT INTO file_versions (file_id, version, content, create_time) VALUES (?, ?, ?, ?)',
-      [fileId, now, content, now]
-    );
-    // 删除超出上限的最旧版本（同文件）
-    run(
-      `DELETE FROM file_versions WHERE file_id = ? AND version NOT IN (
-        SELECT version FROM file_versions WHERE file_id = ? ORDER BY create_time DESC LIMIT ?
-      )`,
-      [fileId, fileId, KEEP_FILE_VERSIONS]
-    );
+    runInTransaction(() => {
+      run(
+        'INSERT INTO file_versions (file_id, version, content, create_time) VALUES (?, ?, ?, ?)',
+        [fileId, now, content, now]
+      );
+      // 删除超出上限的最旧版本（同文件）
+      run(
+        `DELETE FROM file_versions WHERE file_id = ? AND version NOT IN (
+          SELECT version FROM file_versions WHERE file_id = ? ORDER BY create_time DESC LIMIT ?
+        )`,
+        [fileId, fileId, KEEP_FILE_VERSIONS]
+      );
+    });
   }
 
   // 递归扫描可解析文档（与 FileImporter 内部一致，用于批量导入进度统计）
@@ -547,9 +550,15 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           // 源文件已不存在：视为“逻辑上已迁移”，不阻塞 DB 更新
         }
       }
-      // 4. 全部移动完成后再更新 DB
-      for (const u of mdUpdates) await updateMdPath(u.id, u.name, u.newPath);
-      for (const u of zipUpdates) await updateZipPath(u.id, u.newPath);
+      // 4. 全部移动完成后再更新 DB（一批 UPDATE 包一个事务，避免逐行 commit 写放大）
+      runInTransaction(() => {
+        for (const u of mdUpdates) {
+          run('UPDATE knowledge_files SET file_name = ?, md_path = ? WHERE id = ?', [u.name, u.newPath, u.id]);
+        }
+        for (const u of zipUpdates) {
+          run('UPDATE knowledge_files SET zip_archive_path = ? WHERE id = ?', [u.newPath, u.id]);
+        }
+      });
     } catch (e) {
       // 回滚：把已移动的文件 rename 回原处
       for (const m of movedSoFar.reverse()) {
