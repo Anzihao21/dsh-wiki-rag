@@ -47,7 +47,7 @@ export class FileImporter {
    * 导入单个本地文件（本地或局域网共享路径均可，通过 fs 访问）。
    * @param sourcePath 源文件绝对路径
    */
-  async importLocalFile(sourcePath: string): Promise<ImportResult> {
+  async importLocalFile(sourcePath: string, folderId: number | null = null): Promise<ImportResult> {
     const resolved = sourcePath;
     const fileName = path.basename(resolved);
 
@@ -75,16 +75,16 @@ export class FileImporter {
       return { fileId: 0, fileName, mdPath: '', skipped: true, reason: (e as Error).message };
     }
     const type = detectFileType(resolved) === 'unknown' ? 'md' : detectFileType(resolved);
-    return this.commitImport(resolved, fileName, mdText, type as FileType);
+    return this.commitImport(resolved, fileName, mdText, type as FileType, '', folderId);
   }
 
   /** 文件夹批量导入：遍历目录下可解析文档，返回带统计的汇总结果 */
-  async importFolder(folderPath: string): Promise<ImportResult[]> {
+  async importFolder(folderPath: string, folderId: number | null = null): Promise<ImportResult[]> {
     const results: ImportResult[] = [];
     const files = await this.scanParseableFiles(folderPath);
     for (const f of files) {
       try {
-        results.push(await this.importLocalFile(f));
+        results.push(await this.importLocalFile(f, folderId));
       } catch (e) {
         await writeLog('import-folder-error', `${f}: ${(e as Error).message}`);
         results.push({
@@ -148,7 +148,8 @@ export class FileImporter {
     rawFileName: string,
     mdText: string,
     fileType: FileType,
-    presetZipPath = ''
+    presetZipPath = '',
+    folderId: number | null = null
   ): Promise<ImportResult> {
     // 计算入库时实际写入的 source_path（与下方 insert 保持一致）
     const isLocalRef = isLocalFsPath(sourceRef);
@@ -208,7 +209,8 @@ export class FileImporter {
       zip_archive_path: zipPath,
       file_type: fileType,
       create_time: Date.now(),
-      last_sync_time: Date.now()
+      last_sync_time: Date.now(),
+      folder_id: folderId
     });
 
     // 切片 + 向量化（sheet 表格按行分块，pptx 按页 heading，其余按配置模式）

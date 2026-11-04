@@ -251,7 +251,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
   // 导入分发：根据 kind 路由到 FileImporter 对应方法
   async function dispatchImport(body: {
-    source?: string; kind?: string; noteText?: string; intranet?: boolean;
+    source?: string; kind?: string; noteText?: string; intranet?: boolean; folderId?: number | null;
   }) {
     const source = (body.source || '').trim();
     if (!source) throw new Error('缺少导入来源 source');
@@ -262,7 +262,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
     switch (kind) {
       case 'folder':
-        return { summary: importer.summarize(await importer.importFolder(source)) };
+        return { summary: importer.summarize(await importer.importFolder(source, body.folderId ?? null)) };
       case 'url':
         await guardUrlImport(source);
         return importer.importUrl(source, !!body.intranet);
@@ -274,10 +274,10 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
         try {
           const st = await fs.stat(source);
           if (st.isDirectory()) {
-            return { summary: importer.summarize(await importer.importFolder(source)) };
+            return { summary: importer.summarize(await importer.importFolder(source, body.folderId ?? null)) };
           }
         } catch { /* 路径不存在则交给 importLocalFile 报错 */ }
-        return importer.importLocalFile(source);
+        return importer.importLocalFile(source, body.folderId ?? null);
       }
     }
   }
@@ -299,7 +299,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 
   // 异步导入：带进度回调，实时写 job.done/total/message
   async function runImportJob(body: {
-    source?: string; kind?: string; noteText?: string; intranet?: boolean;
+    source?: string; kind?: string; noteText?: string; intranet?: boolean; folderId?: number | null;
   }, job: Job): Promise<any> {
     const source = (body.source || '').trim();
     if (!source) throw new Error('缺少导入来源 source');
@@ -309,7 +309,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     }
 
     // 文件夹批量：逐文件更新进度
-    const importFolderProgressive = async (folderPath: string) => {
+    const importFolderProgressive = async (folderPath: string, folderId: number | null = null) => {
       const files = await walkParseableFiles(folderPath);
       job.total = files.length;
       job.done = 0;
@@ -317,7 +317,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       for (const f of files) {
         job.message = `(${job.done + 1}/${files.length}) ${path.basename(f)}`;
         try {
-          results.push(await importer.importLocalFile(f));
+          results.push(await importer.importLocalFile(f, folderId));
         } catch (e) {
           results.push({
             fileId: 0, fileName: path.basename(f), mdPath: '', skipped: true,
@@ -330,7 +330,7 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     };
 
     if (kind === 'folder') {
-      return importFolderProgressive(source);
+      return importFolderProgressive(source, body.folderId ?? null);
     }
     if (kind === 'url') {
       await guardUrlImport(source);
@@ -348,10 +348,10 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     // file / 默认
     try {
       const st = await fs.stat(source);
-      if (st.isDirectory()) return importFolderProgressive(source);
+      if (st.isDirectory()) return importFolderProgressive(source, body.folderId ?? null);
     } catch { /* 交给 importLocalFile 报错 */ }
     job.total = 1; job.done = 0; job.message = `导入 ${source}`;
-    const r = await importer.importLocalFile(source);
+    const r = await importer.importLocalFile(source, body.folderId ?? null);
     job.done = 1;
     return r;
   }
@@ -573,7 +573,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
           if (typeof parsed !== 'object' || parsed === null) return json(400, { error: '请求体必须是对象' });
           const source = typeof parsed.source === 'string' ? parsed.source.trim() : '';
           if (!source) return json(400, { error: '缺少导入来源 source' });
-          logger.info('import requested', { source, async: !!parsed.async });
+          let folderId: number | null = null;
+          if (parsed.folderId !== undefined && parsed.folderId !== null) {
+            if (typeof parsed.folderId !== 'number') return json(400, { error: 'folderId 必须是数字或 null' });
+            folderId = parsed.folderId;
+          }
+          parsed.folderId = folderId;
+          logger.info('import requested', { source, async: !!parsed.async, folderId });
 
           // 并发去重：同一路径导入进行中 → 409
           const opKey = `import:${source}`;

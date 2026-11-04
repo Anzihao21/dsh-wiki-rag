@@ -127,6 +127,15 @@ const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.expandAll": "全部展开",
   "wiki.collapseAll": "全部折叠",
   "wiki.charCount": "字符",
+  "wiki.cannotMoveIntoSelf": "不能移动到自身的子文件夹下",
+  "wiki.favSection": "收藏",
+  "wiki.recentSection": "最近打开",
+  "wiki.fav": "收藏",
+  "wiki.unfav": "取消收藏",
+  "wiki.dropImport": "释放以导入到知识库",
+  "wiki.filesSelected": "已选 {n} 个文件",
+  "wiki.clear": "清空",
+  "wiki.importSubmitting": "已提交 {n} 个文件导入",
 };
 
 /** 带本地兜底的 t()：宿主 t 缺失或返回 key 本身时回退到本地字典 */
@@ -578,6 +587,28 @@ function collectFolderIds(nodes: TreeNode[] | undefined, out: Set<number>): Set<
   (nodes || []).forEach((n) => { if (n.type === "folder") { out.add(n.id!); collectFolderIds(n.children, out); } });
   return out;
 }
+// 收集某文件夹的全部子孙文件夹 id（用于拖拽防循环校验）
+function subtreeFolderIds(nodes: TreeNode[] | undefined, id: number, out: Set<number>): Set<number> {
+  for (const n of (nodes || [])) {
+    if (n.type === "folder") {
+      if (n.id === id) { collectFolderIds(n.children, out); return out; }
+      subtreeFolderIds(n.children, id, out);
+    }
+  }
+  return out;
+}
+// 查找某文件所在的文件夹链（返回祖先 folder id 数组，根为 []）
+function findDocFolderPath(nodes: TreeNode[] | undefined, fileId: number, trail: number[]): number[] | null {
+  for (const n of (nodes || [])) {
+    if (n.type === "folder") {
+      const sub = findDocFolderPath(n.children, fileId, [...trail, n.id!]);
+      if (sub) return sub;
+    } else if (n.fileId === fileId) {
+      return trail;
+    }
+  }
+  return null;
+}
 
 const ROW_H = 38;
 
@@ -649,6 +680,24 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [diffModal, setDiffModal] = useState<{ old: string; new: string; title: string; fileId?: string; newText?: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onYes: () => void } | null>(null);
   const [scrollToFolderId, setScrollToFolderId] = useState<number | null>(null);
+  const [scrollToFileId, setScrollToFileId] = useState<number | null>(null);
+  const [importFiles, setImportFiles] = useState<string[]>([]);
+  // 拖拽导入悬停遮罩
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
+  // 最近打开 + 收藏（localStorage 持久化）
+  const [favs, setFavs] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem("dsh-wiki-rag:favs") || "[]")); } catch { return new Set(); } });
+  const [recent, setRecent] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("dsh-wiki-rag:recent") || "[]"); } catch { return []; } });
+  const [showFavs, setShowFavs] = useState(true);
+  const [showRecent, setShowRecent] = useState(false);
+  const toggleFav = (id: string) => {
+    setFavs((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      try { localStorage.setItem("dsh-wiki-rag:favs", JSON.stringify([...n])); } catch {}
+      return n;
+    });
+  };
   const [treeExpanded, setTreeExpanded] = useState(true);
   const [restorePreview, setRestorePreview] = useState<{ snapshotId: number; added: string[]; removed: string[]; modified: string[] } | null>(null);
   const [settings, setSettings] = useState<Partial<SettingsState>>({});
@@ -775,6 +824,18 @@ function WikiSidebar(props: WikiSidebarProps) {
   const doImport = async () => {
     if (importInflight.current) return;
     try {
+      // 批量：file tab 且已多选文件 → 并行提交全部
+      if (importType === "file" && importFiles.length) {
+        importInflight.current = true;
+        const jobs = await Promise.all(
+          importFiles.map((src) => request("/import", { method: "POST", body: JSON.stringify({ source: src, kind: "file", async: true }) }))
+        );
+        const first = jobs.find((j: any) => j && j.jobId);
+        if (first) { setJob({ jobId: first.jobId, phase: "import", done: 0, total: 0, message: "", status: "running" }); pollJob(first.jobId); }
+        notify("success", tt(t, "wiki.importSubmitting").replace("{n}", String(importFiles.length)));
+        refreshList();
+        return;
+      }
       let source = "", kind: any = "file", noteText: string | undefined;
       if (importType === "note") {
         if (!noteTitle.trim()) return;
@@ -797,8 +858,26 @@ function WikiSidebar(props: WikiSidebarProps) {
       else notify("error", e?.message || "导入失败");
     } finally {
       importInflight.current = false;
-      setShowImport(false); setImportPath(""); setNoteTitle(""); setNoteContent("");
+      setShowImport(false); setImportPath(""); setImportFiles([]); setNoteTitle(""); setNoteContent("");
     }
+  };
+
+  // 拖拽系统文件到面板 → 直接导入（可指定目标文件夹）
+  const importSystemFiles = async (paths: string[], folderId: number | null = null) => {
+    if (!paths.length) return;
+    importInflight.current = true;
+    try {
+      const jobs = await Promise.all(
+        paths.map((src) => request("/import", { method: "POST", body: JSON.stringify({ source: src, kind: "file", async: true, folderId }) }))
+      );
+      const first = jobs.find((j: any) => j && j.jobId);
+      if (first) { setJob({ jobId: first.jobId, phase: "import", done: 0, total: 0, message: "", status: "running" }); pollJob(first.jobId); }
+      notify("success", tt(t, "wiki.importSubmitting").replace("{n}", String(paths.length)));
+      refreshList();
+    } catch (e: any) {
+      if (e?.offline) notify("error", tt(t, "wiki.offline"));
+      else notify("error", e?.message || "导入失败");
+    } finally { importInflight.current = false; }
   };
 
   // ---------- 删除（DSH 风格确认弹窗） ----------
@@ -824,6 +903,7 @@ function WikiSidebar(props: WikiSidebarProps) {
       const hits = await apiSearch(q.trim());
       setSearchResults(hits.map((r: any, i: number) => ({
         id: String(r.fileId ?? i),
+        fileId: r.fileId as number | undefined,
         title: r.title || r.fileName || `结果 ${i + 1}`,
         type: "MD" as const,
         status: "ready" as const,
@@ -885,6 +965,11 @@ function WikiSidebar(props: WikiSidebarProps) {
   };
   const doMoveFolder = async (id: number, targetParentId: number | null) => {
     if (id === targetParentId) return; // 拖到自身，忽略
+    // 防循环：target 不能是 id 的子孙文件夹
+    if (targetParentId != null && subtreeFolderIds(tree, id, new Set()).has(targetParentId)) {
+      notify("info", tt(t, "wiki.cannotMoveIntoSelf"));
+      return;
+    }
     try { await apiMoveFolder(id, targetParentId); notify("success", tt(t, "wiki.moved")); refreshList(); }
     catch (e: any) { notify("error", e?.message || "移动失败"); }
   };
@@ -959,6 +1044,11 @@ function WikiSidebar(props: WikiSidebarProps) {
 
   // ---------- 加载文档真实内容 ----------
   const openDoc = useCallback(async (id: string) => {
+    setRecent((prev) => {
+      const n = [id, ...prev.filter((x) => x !== id)].slice(0, 10);
+      try { localStorage.setItem("dsh-wiki-rag:recent", JSON.stringify(n)); } catch {}
+      return n;
+    });
     setActiveId(id);
     setView("editor");
     setMdContent("");
@@ -1123,6 +1213,16 @@ function WikiSidebar(props: WikiSidebarProps) {
     }
   }, [rows, scrollToFolderId, viewportH]);
 
+  // 搜索「定位到树」后滚动到对应文件行
+  useEffect(() => {
+    if (scrollToFileId == null) return;
+    const idx = rows.findIndex((r) => r.rowType === "doc" && r.id === scrollToFileId);
+    if (idx >= 0 && listScrollRef.current) {
+      listScrollRef.current.scrollTop = Math.max(0, idx * ROW_H - viewportH / 2);
+      setScrollToFileId(null);
+    }
+  }, [rows, scrollToFileId, viewportH]);
+
   // 树全展开 / 全折叠
   const toggleTreeExpand = useCallback(() => {
     if (treeExpanded) setExpandedFolders(new Set());
@@ -1130,11 +1230,45 @@ function WikiSidebar(props: WikiSidebarProps) {
     setTreeExpanded(!treeExpanded);
   }, [treeExpanded, tree]);
 
+  // 键盘快捷键：Ctrl/Cmd+S 保存；/ 聚焦搜索
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        if (view === "editor") { e.preventDefault(); saveEdit(); }
+        return;
+      }
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const ae = document.activeElement as HTMLElement | null;
+        const tag = ae?.tagName;
+        const editable = tag === "INPUT" || tag === "TEXTAREA" || (!!ae && ae.isContentEditable);
+        if (!editable) { e.preventDefault(); searchInputRef.current?.focus(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, saveEdit]);
+
   const searchingMode = searchResults !== null;
   const isEmpty = rows.length === 0 && !loadingList && docs.length === 0;
 
   return (
-    <div style={fullscreen ? { ...rootStyle, position: "fixed", inset: 0, zIndex: 10050, background: "var(--dsw-alias-bg-layer-0)" } : rootStyle}>
+    <div style={fullscreen ? { ...rootStyle, position: "fixed", inset: 0, zIndex: 10050, background: "var(--dsw-alias-bg-layer-0)" } : { ...rootStyle, position: "relative" }}
+      onDragEnter={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); dragDepth.current++; setDragOver(true); } }}
+      onDragOver={(e) => { if (e.dataTransfer?.files?.length) e.preventDefault(); }}
+      onDragLeave={(e) => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragOver(false); } }}
+      onDrop={(e) => {
+        dragDepth.current = 0; setDragOver(false);
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length) {
+          e.preventDefault();
+          const paths = files.map((f) => (f as any).path || f.name).filter(Boolean);
+          if (paths.length) importSystemFiles(paths);
+        }
+      }}>
+      {/* 拖拽悬停提示遮罩 */}
+      {dragOver && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 20000, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--dsw-alias-bg-layer-1)", border: "2px dashed var(--dsw-alias-state-business-primary)", borderRadius: "var(--dsw-radius-lg)", color: "var(--dsw-alias-state-business-primary)", fontSize: 14, fontWeight: 600, pointerEvents: "none" }}>{tt(t, "wiki.dropImport")}</div>
+      )}
       {/* Toast */}
       <ToastStack toasts={toasts} />
 
@@ -1259,6 +1393,37 @@ function WikiSidebar(props: WikiSidebarProps) {
       <div style={mainLayoutStyle}>
         {/* 左侧：文件树（全屏时加宽，缓解左右失衡） */}
         <div style={fullscreen ? { ...sidebarStyle, width: 340 } : sidebarStyle}>
+          {/* 最近打开 + 收藏快捷区 */}
+          {(recent.length > 0 || favs.size > 0) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 4 }}>
+              {favs.size > 0 && (
+                <>
+                  <div onClick={() => setShowFavs(!showFavs)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: "var(--dsw-alias-label-secondary)", padding: "2px 6px", fontWeight: 600 }}>
+                    <span>{showFavs ? "▾" : "▸"}</span><span style={{ color: "var(--dsw-alias-state-warning)" }}>★</span> {tt(t, "wiki.favSection")} ({favs.size})
+                  </div>
+                  {showFavs && [...favs].map((fid) => {
+                    const d = docs.find((x) => x.id === fid);
+                    return d ? (
+                      <div key={fid} onClick={() => openDoc(fid)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "2px 6px 2px 18px", fontSize: 12, color: "var(--dsw-alias-label-primary)", borderRadius: "var(--dsw-radius-sm)" }}>{d.fileName}</div>
+                    ) : null;
+                  })}
+                </>
+              )}
+              {recent.length > 0 && (
+                <>
+                  <div onClick={() => setShowRecent(!showRecent)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: "var(--dsw-alias-label-secondary)", padding: "2px 6px", fontWeight: 600 }}>
+                    <span>{showRecent ? "▾" : "▸"}</span> {tt(t, "wiki.recentSection")}
+                  </div>
+                  {showRecent && recent.map((fid) => {
+                    const d = docs.find((x) => x.id === fid);
+                    return d ? (
+                      <div key={fid} onClick={() => openDoc(fid)} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "2px 6px 2px 18px", fontSize: 12, color: "var(--dsw-alias-label-primary)", borderRadius: "var(--dsw-radius-sm)" }}>{d.fileName}</div>
+                    ) : null;
+                  })}
+                </>
+              )}
+            </div>
+          )}
           {/* 搜索框 + 退出搜索 */}
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input ref={searchInputRef}
@@ -1308,9 +1473,20 @@ function WikiSidebar(props: WikiSidebarProps) {
                   {importType === "file" && (
                     <>
                       <button title={tt(t, "wiki.browseFile")} onClick={() => fileInputRef.current?.click()} style={{ ...ghostBtn, flexShrink: 0 }}>浏览…</button>
-                      <input ref={fileInputRef} type="file" style={{ display: "none" }}
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportPath((f as any).path || f.name); }} />
+                      <input ref={fileInputRef} type="file" multiple style={{ display: "none" }}
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          const paths = files.map((f) => (f as any).path || f.name);
+                          setImportFiles(paths);
+                          if (paths[0]) setImportPath(paths[0]);
+                        }} />
                     </>
+                  )}
+                  {importFiles.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--dsw-alias-label-secondary)" }}>
+                      <span>{tt(t, "wiki.filesSelected").replace("{n}", String(importFiles.length))}</span>
+                      <button onClick={() => { setImportFiles([]); setImportPath(""); }} style={{ fontSize: 10, padding: "1px 6px", border: "none", cursor: "pointer", borderRadius: 4, background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-secondary)" }}>{tt(t, "wiki.clear")}</button>
+                    </div>
                   )}
                 </div>
                 {importType === "url" && (
@@ -1354,7 +1530,19 @@ function WikiSidebar(props: WikiSidebarProps) {
               searching ? <SkeletonRows count={5} /> :
                 searchResults!.length === 0 ? <div style={emptyHint}>{tt(t, "wiki.noResult")}</div> :
                   searchResults!.map((r, i) => (
-                    <div key={i} onClick={() => { setActiveId(r.id); setMdContent(r.summary); }}
+                    <div key={i} onClick={() => {
+                      const fId = r.fileId;
+                      if (fId != null) {
+                        // 打开全文 + 回树 + 展开路径定位（文档在树中自然高亮）
+                        const path = findDocFolderPath(tree, fId, []);
+                        if (path) setExpandedFolders((prev) => { const n = new Set(prev); path.forEach((p) => n.add(p)); return n; });
+                        setScrollToFileId(fId);
+                        openDoc(String(fId));
+                      } else {
+                        setActiveId(r.id); setMdContent(r.summary);
+                      }
+                      setSearchResults(null); setQ("");
+                    }}
                       style={{
                         padding: "8px 10px", borderRadius: "var(--dsw-radius-md)", cursor: "pointer", marginBottom: 4,
                         background: "var(--dsw-alias-bg-layer-1)", border: "1px solid var(--dsw-alias-border-l4)",
@@ -1367,7 +1555,7 @@ function WikiSidebar(props: WikiSidebarProps) {
                         }}>{r.fileName || "MD"}</span>
                       </div>
                       <div style={{ marginTop: 3, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" }}>{r.summary}</div>
-                      <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8 }}>
+                      <div style={{ marginTop: 4, fontSize: 10, color: "var(--dsw-alias-label-tertiary)", display: "flex", gap: 8, alignItems: "center" }}>
                         {r.sourcePath && <span>{r.sourcePath}</span>}
                         {typeof r.score === "number" && <span>score {r.score.toFixed(3)}</span>}
                       </div>
@@ -1388,6 +1576,13 @@ function WikiSidebar(props: WikiSidebarProps) {
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
                           e.preventDefault();
+                          const files = Array.from(e.dataTransfer?.files || []);
+                          if (files.length) {
+                            // 系统文件拖到文件夹 → 导入到该文件夹
+                            const paths = files.map((f) => (f as any).path || f.name).filter(Boolean);
+                            if (paths.length) importSystemFiles(paths, row.id);
+                            return;
+                          }
                           const fid = e.dataTransfer.getData("text/doc-id");
                           const fld = e.dataTransfer.getData("text/folder-id");
                           if (fid) doMoveDoc(fid, row.id);
@@ -1443,6 +1638,9 @@ function WikiSidebar(props: WikiSidebarProps) {
                       ) : (
                         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: active ? 600 : 500 }}>{row.title}</span>
                       )}
+                      <button title={favs.has(d.id) ? tt(t, "wiki.unfav") : tt(t, "wiki.fav")}
+                        onClick={(e) => { e.stopPropagation(); toggleFav(d.id); }}
+                        style={{ ...iconBtn, flexShrink: 0, fontSize: 13, width: 18, height: 18, color: favs.has(d.id) ? "var(--dsw-alias-state-warning)" : "var(--dsw-alias-label-tertiary)" }}>{favs.has(d.id) ? "★" : "☆"}</button>
                       <span style={{ fontSize: 10, color: st.color }}>●</span>
                     </div>
                   );
