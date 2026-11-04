@@ -73,6 +73,7 @@ export const LOCAL_FALLBACK: Record<string, string> = {
   "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
   "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
   "wiki.cmdPlaceholder": "输入命令或搜索文档…",
+  "wiki.toc": "大纲", "wiki.tocEmpty": "文档无标题",
   "wiki.folderName": "文件夹名称…",
   "wiki.export": "导出 Markdown",
   "wiki.exported": "已导出 Markdown",
@@ -254,4 +255,28 @@ export function filterCommands<T extends { title: string }>(q: string, items: T[
   const s = q.trim().toLowerCase();
   if (!s) return items;
   return items.filter((it) => it.title.toLowerCase().includes(s));
+}
+
+export interface Heading { level: number; text: string; line: number; }
+
+/** 从 Markdown 提取 #/##/### 标题（行号从 0 计） */
+export function extractHeadings(md: string): Heading[] {
+  const out: Heading[] = [];
+  String(md || "").split("\n").forEach((line, i) => {
+    const m = line.match(/^(#{1,3})\s+(.*\S)\s*#*$/);
+    if (m) out.push({ level: m[1].length, text: m[2], line: i });
+  });
+  return out;
+}
+
+/** 在内容中查找首个命中片段所在行号（找不到返回 -1） */
+export function findLineIndex(content: string, snippet: string): number {
+  const s = String(snippet || "").trim();
+  if (!s) return -1;
+  const lines = String(content || "").split("\n");
+  for (let i = 0; i < lines.length; i++) if (lines[i].includes(s)) return i;
+  // 退一步：取片段前 8 字符
+  const head = s.slice(0, 8);
+  for (let i = 0; i < lines.length; i++) if (head && lines[i].includes(head)) return i;
+  return -1;
 }

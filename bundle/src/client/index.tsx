@@ -30,6 +30,7 @@ import {
   tt, computeDiff, flattenTree, collectFolderIds, subtreeFolderIds, findDocFolderPath,
   toBase64, shouldLeaveGuard, isJobTimedOut, loadSearchHistory, saveSearchHistory,
   loadEditTimes, markEdited as saveEditTimesMark, buildDownloadName, filterCommands,
+  extractHeadings, findLineIndex,
   type TreeNode, type FlatRow, type DiffRow,
 } from "./logic";
 
@@ -576,6 +577,7 @@ function WikiSidebar(props: WikiSidebarProps) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdQ, setCmdQ] = useState("");
   const [cmdSel, setCmdSel] = useState(0);
+  const [tocOpen, setTocOpen] = useState(false);
   // 未保存离开守卫：切换 view / 文档时若有改动，先弹确认
   const [leaveGuard, setLeaveGuard] = useState<{ action: () => void } | null>(null);
   // 多选批量操作
@@ -2230,6 +2232,29 @@ function WikiSidebar(props: WikiSidebarProps) {
                 <button onClick={saveEdit} disabled={mdContent === savedContent} style={{ ...primaryBtn, opacity: mdContent === savedContent ? 0.4 : 1, cursor: mdContent === savedContent ? "not-allowed" : "pointer" }}>
                   {tt(t, "wiki.save")}
                 </button>
+                <div style={{ position: "relative" }}>
+                  <button title={tt(t, "wiki.toc")} onClick={() => setTocOpen(!tocOpen)} style={iconBtn}>≡</button>
+                  {tocOpen && (() => {
+                    const heads = extractHeadings(mdContent);
+                    return (
+                      <>
+                        <div style={{ position: "fixed", inset: 0, zIndex: 10000 }} onClick={() => setTocOpen(false)} />
+                        <div style={{ position: "absolute", right: 0, top: 26, zIndex: 10001, background: "var(--dsw-alias-bg-layer-1)", borderRadius: "var(--dsw-radius-md)", border: "1px solid var(--dsw-alias-border-l4)", padding: 4, minWidth: 200, maxHeight: 320, overflowY: "auto", boxShadow: "var(--dsw-shadow-lv2)" }}>
+                          {heads.length === 0 ? <div style={{ padding: 8, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" }}>{tt(t, "wiki.tocEmpty")}</div> :
+                            heads.map((h, i) => (
+                              <div key={i} onClick={() => { setTocOpen(false);
+                                const hs = Array.from(editorScrollRef.current?.querySelectorAll(`h${h.level}, h${Math.min(h.level + 1, 3)}, h${Math.max(h.level - 1, 1)}`) || []);
+                                const hit = hs.find((el) => (el.textContent || "").trim().startsWith(h.text.slice(0, 8)));
+                                (hit || hs[i])?.scrollIntoView({ block: "start", behavior: "smooth" });
+                              }}
+                                style={{ padding: "5px 8px", fontSize: 12, cursor: "pointer", paddingLeft: 8 + h.level * 10, color: "var(--dsw-alias-label-primary)" }}>
+                                {h.text}
+                              </div>))}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
               {/* Tiptap 富文本编辑区：ProseMirror 内核，所见即所得；超宽行长限 720px */}
               <div ref={editorScrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}
@@ -2845,6 +2870,7 @@ function apply(ctx: any): void {
       "wiki.trashRestored": "已恢复", "wiki.trashPurged": "已彻底删除",
       "wiki.trashPurgeConfirm": "彻底删除后不可恢复，确定？", "wiki.trashEmptyConfirm": "清空回收站后不可恢复，确定？",
       "wiki.cmdPlaceholder": "输入命令或搜索文档…",
+      "wiki.toc": "大纲", "wiki.tocEmpty": "文档无标题",
       "wiki.clear": "清空",
     },
     en: {
@@ -2911,6 +2937,7 @@ function apply(ctx: any): void {
       "wiki.trashRestored": "Restored", "wiki.trashPurged": "Permanently deleted",
       "wiki.trashPurgeConfirm": "Permanently delete? This cannot be undone.", "wiki.trashEmptyConfirm": "Empty trash? This cannot be undone.",
       "wiki.cmdPlaceholder": "Type a command or search documents…",
+      "wiki.toc": "Outline", "wiki.tocEmpty": "No headings",
       "wiki.clear": "Clear",
     },
   }), "wiki: dictionaries");
