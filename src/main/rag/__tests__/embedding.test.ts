@@ -111,3 +111,30 @@ describe('embedding openai provider 校验', () => {
     await expect(embedText('x')).rejects.toThrow(/\[embedding\/openai\]/);
   });
 });
+
+describe('fallback LRU memo', () => {
+  it('重复文本第二次命中缓存（hits 增加）', async () => {
+    const { clearFallbackCache, fallbackCacheStats } = await import('../embedding');
+    clearFallbackCache();
+    await embedText('lru test text alpha');
+    expect(fallbackCacheStats().misses).toBe(1);
+    expect(fallbackCacheStats().hits).toBe(0);
+    await embedText('lru test text alpha');
+    expect(fallbackCacheStats().hits).toBe(1);
+    // 命中返回相同 Buffer
+    const a = await embedText('lru test text alpha');
+    const b = await embedText('lru test text alpha');
+    expect(a.equals(b)).toBe(true);
+  });
+
+  it('LRU 淘汰：超过上限后最久未用被逐出', async () => {
+    const { clearFallbackCache, fallbackCacheStats } = await import('../embedding');
+    clearFallbackCache();
+    for (let i = 0; i < 2005; i++) {
+      await embedText(`unique text number ${i}`);
+    }
+    // 缓存 size 不超过上限+少量
+    expect(fallbackCacheStats().size).toBeLessThanOrEqual(2000);
+    expect(fallbackCacheStats().size).toBeGreaterThan(1900);
+  });
+});

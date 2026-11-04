@@ -15,6 +15,24 @@ let settings: PluginSettings | null = null;
 let localEmbedder: any = null;   // @xenova/transformers pipeline 实例
 const embedDim = 256;
 
+// fallback 哈希路径的 LRU memo（key=text 内容，value=向量 Buffer；上限 2000）
+const FALLBACK_CACHE_MAX = 2000;
+const fallbackCache = new Map<string, Buffer>();
+let fallbackHits = 0;
+let fallbackMisses = 0;
+
+/** 仅供测试/诊断：返回缓存命中统计。 */
+export function fallbackCacheStats(): { hits: number; misses: number; size: number } {
+  return { hits: fallbackHits, misses: fallbackMisses, size: fallbackCache.size };
+}
+
+/** 仅供测试/诊断：清空缓存。 */
+export function clearFallbackCache(): void {
+  fallbackCache.clear();
+  fallbackHits = 0;
+  fallbackMisses = 0;
+}
+
 /** 初始化 embedding 模块（在宿主插件 apply 时调用一次）。 */
 export async function initEmbedding(s: PluginSettings): Promise<void> {
   settings = s;
@@ -49,8 +67,24 @@ export async function embedText(text: string): Promise<Buffer> {
     return embedLocal(text);
   }
 
-  // 3. 降级：哈希向量
-  return embedHash(text, embedDim);
+  // 3. 降级：哈希向量（带 LRU memo，重复文本直接复用）
+  const cached = fallbackCache.get(text);
+  if (cached) {
+    fallbackHits++;
+    // LRU：移到末尾
+    fallbackCache.delete(text);
+    fallbackCache.set(text, cached);
+    return cached;
+  }
+  fallbackMisses++;
+  const buf = embedHash(text, embedDim);
+  fallbackCache.set(text, buf);
+  if (fallbackCache.size > FALLBACK_CACHE_MAX) {
+    // 淘汰最久未用（Map 迭代序=插入序）
+    const oldest = fallbackCache.keys().next().value;
+    if (oldest !== undefined) fallbackCache.delete(oldest);
+  }
+  return buf;
 }
 
 // ---------- OpenAI 兼容 embedding ----------
