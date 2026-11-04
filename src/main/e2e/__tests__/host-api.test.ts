@@ -297,3 +297,39 @@ describe('host-api /export/zip 失败路径', () => {
     expect(JSON.stringify(r.body)).not.toMatch(/at\s+\w+/);
   });
 });
+
+describe('host-api 错误分支清扫', () => {
+  it('POST /trash/empty 未配置 → 501', async () => {
+    const handler = createApiHandler(makeDeps());
+    const r = await handler('POST', '/api/wiki/trash/empty', EMPTY_QUERY, '');
+    expect(r.status).toBe(501);
+  });
+
+  it('DELETE /trash/1（缺 type 段）→ 400', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('DELETE', '/api/wiki/trash/1', EMPTY_QUERY, '');
+    expect(r.status).toBe(400);
+  });
+
+  it('POST /trash/restore 非法 JSON → 400', async () => {
+    const deps = makeDeps({
+      trash: {
+        list: async () => ({ files: [], folders: [] }),
+        restore: async () => {},
+        purge: async () => {},
+        empty: async () => ({ files: 0, folders: 0 }),
+      },
+    });
+    const handler = createApiHandler(deps);
+    const r = await handler('POST', '/api/wiki/trash/restore', EMPTY_QUERY, '{bad json');
+    expect(r.status).toBe(400);
+  });
+});
