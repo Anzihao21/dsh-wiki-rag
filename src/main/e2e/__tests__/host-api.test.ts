@@ -403,3 +403,27 @@ describe('host-api /export/zip 请求层端到端', () => {
     expect(JSON.stringify(r.body)).not.toMatch(/at\s+\w+/);
   });
 });
+
+describe('createApiHandler 白名单路由覆盖（防死代码复发）', () => {
+  it('未注入 trash/export 时对应路由 501', async () => {
+    const deps = makeDeps({ trash: undefined, exportZip: undefined });
+    const handler = createApiHandler(deps);
+    // GET /trash
+    let r = await handler('GET', '/api/wiki/trash', EMPTY_QUERY, '');
+    expect(r.status).toBe(501);
+    // POST /export/zip
+    r = await handler('POST', '/api/wiki/export/zip', EMPTY_QUERY, '');
+    expect(r.status).toBe(501);
+  });
+
+  it('并发请求结果稳定（Promise.all）', async () => {
+    const deps = makeDeps({
+      search: async () => ({ results: [], queryTimeMs: 1, count: 0 }),
+    });
+    const handler = createApiHandler(deps);
+    const rs = await Promise.all(Array.from({ length: 5 }, () =>
+      handler('POST', '/api/wiki/search', EMPTY_QUERY, JSON.stringify({ query: 'test' }))
+    ));
+    rs.forEach((r) => expect(r.status).toBe(200));
+  });
+});
