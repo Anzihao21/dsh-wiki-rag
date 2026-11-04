@@ -71,10 +71,34 @@ export async function initDatabase(filePath?: string): Promise<void> {
   const dir = path.dirname(dbPath);
   await fs.mkdir(dir, { recursive: true });
 
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  runSchema();
-  migrate();
+  // 打开 + 初始化 schema 可能因 DB 损坏/磁盘错误失败；失败时备份损坏文件并重建空库
+  try {
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    runSchema();
+    migrate();
+  } catch (e) {
+    // 关闭可能已部分打开的连接
+    try { db?.close(); } catch { /* ignore */ }
+    db = null;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${dbPath}.corrupt-${stamp}`;
+    try {
+      await fs.rename(dbPath, backupPath);
+    } catch {
+      // 源文件已不存在或不可改名：忽略，直接建新库
+    }
+    // 顺手把 -wal / -shm 一并清走，避免与新库混在一起
+    for (const suffix of ['-wal', '-shm']) {
+      await fs.rm(`${dbPath}${suffix}`, { force: true }).catch(() => {});
+    }
+    console.warn(`[dsh-wiki-rag] DB 初始化失败，已备份损坏文件到 ${backupPath} 并重建空库: ${(e as Error).message}`);
+    // 重建空库（二次失败直接抛，让宿主知道这次真救不回来）
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    runSchema();
+    migrate();
+  }
 }
 
 /** 当前 schema 版本（user_version） */

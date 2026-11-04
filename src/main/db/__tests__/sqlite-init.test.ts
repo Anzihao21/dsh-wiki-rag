@@ -57,3 +57,23 @@ describe('sqlite-init WAL 与关闭顺序', () => {
     expect(() => walCheckpoint()).not.toThrow();
   });
 });
+
+describe('sqlite-init 崩溃自愈', () => {
+  it('DB 文件损坏时自动备份为 .corrupt-时间戳 并重建空库', async () => {
+    const dbPath = path.join(tmpDir, 'corrupt.db');
+    // 写入一段非 SQLite 二进制，模拟损坏文件（pragma 时会报 "file is not a database"）
+    await fs.writeFile(dbPath, 'this is not a sqlite database at all\x00\x01\x02');
+    await initDatabase(dbPath);
+    // 重建后能正常写日志
+    await writeLog('after-recovery', 'ok');
+    expect(isDbInitialized()).toBe(true);
+    // 损坏文件已被改名备份
+    const files = await fs.readdir(tmpDir);
+    expect(files).toContain('corrupt.db');
+    const backup = files.find((f) => f.startsWith('corrupt.db.corrupt-'));
+    expect(backup).toBeTruthy();
+    // 备份文件内容仍是原始损坏字节
+    const backupContent = await fs.readFile(path.join(tmpDir, backup!), 'utf-8');
+    expect(backupContent).toContain('not a sqlite');
+  });
+});
